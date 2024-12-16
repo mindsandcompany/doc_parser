@@ -56,6 +56,13 @@ onnxruntime = [
   { version = ">=1.7.0,<1.20.0", optional = true, markers = "python_version < '3.10'" },
   { version = "^1.7.0", optional = true, markers = "python_version >= '3.10'" }
 ]
+langchain = "^0.2.5"
+langchain-core = "^0.2.9"
+langchain-community = "^0.2.5"
+fastapi = "^0.110.2"
+weasyprint = "^57.2"  # For HTML to PDF conversion.
+pymupdf = "^1.24.5"
+weaviate-client = "^3.26.2"
 
 [tool.poetry.group.dev.dependencies]
 black = {extras = ["jupyter"], version = "^24.4.2"}
@@ -165,7 +172,7 @@ extend-ignore = ["E203", "E501"]
 
 [tool.semantic_release]
 # for default values check:
-# https://github.com/python-semantic-release/python-semantic-release/blob/v7.32.2/semantic_release/defaults.cfg
+# git branch -d komipo-1223/python-semantic-release/blob/v7.32.2/semantic_release/defaults.cfg
 
 version_source = "tag_only"
 branch = "main"

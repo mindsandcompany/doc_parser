@@ -341,13 +341,32 @@ def process_pdf(org_document: DoclingDocument):
                     parent=new_doc.body
                 )
         if isinstance(item, PictureItem):
-            new_doc.add_picture(
-                annotations=[],
-                image=None,
-                caption=[],
-                prov=item.prov[0],
-                parent=new_doc.body
-            )
+            if len(group_cache) > 0:
+                new_doc.add_group(
+                    label=GroupLabel.LIST,
+                    name="list",
+                    parent=new_doc.body
+                )
+                for group in group_cache:
+                    last_level = add_headers(group, new_doc, last_level)
+                group_cache = []
+                last_level = 0
+            if len(new_doc.groups) > 0:
+                new_doc.add_picture(
+                    annotations=[],
+                    image=None,
+                    caption=[],
+                    prov=item.prov[0],
+                    parent=new_doc.groups[-1]
+                )
+            else:
+                new_doc.add_picture(
+                    annotations=[],
+                    image=None,
+                    caption=[],
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
         if isinstance(item, TextItem):
             if item.label == 'page_header':
                 group_cache.append(item)
@@ -363,7 +382,7 @@ def process_pdf(org_document: DoclingDocument):
                         parent=new_doc.body
                     )
                     for group in group_cache:
-                        add_headers(group, new_doc, last_level)
+                        last_level = add_headers(group, new_doc, last_level)
                     group_cache = []
                     last_level = 0
                 if len(new_doc.groups) > 0:
@@ -383,7 +402,7 @@ def process_pdf(org_document: DoclingDocument):
                         parent=new_doc.body
                     )
                     for group in group_cache:
-                        add_headers(group, new_doc, last_level)
+                        last_level = add_headers(group, new_doc, last_level)
                     group_cache = []
                     last_level = 0
                 if len(new_doc.groups) > 0:

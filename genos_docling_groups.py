@@ -1,12 +1,15 @@
-from __future__ import annotations
-
 import json
 import os
+import typing
 
 import fitz
 from collections import defaultdict
 from datetime import datetime
 from typing import Optional, Iterable, Any, List, Dict, Tuple
+
+from pydantic import (
+    Field,
+)
 
 # import fitz
 from fastapi import Request
@@ -37,6 +40,7 @@ from docling_core.transforms.chunker import (
     BaseChunker,
     DocChunk,
     DocMeta,
+    HierarchicalChunker,
 )
 from docling_core.types import DoclingDocument
 
@@ -53,21 +57,41 @@ from docling_core.types.doc import (
     TableCell,
     TableData,
     GroupItem,
-
+    RefItem,
     DocItem,
     PictureItem,
     SectionHeaderItem,
     TableItem,
     TextItem,
-    PageItem
+    PageItem,
+    NodeItem,
 )
 from collections import Counter
 import re
 
+class ListItem(TextItem):
+    """SectionItem."""
+
+    label: typing.Literal[DocItemLabel.LIST_ITEM] = (
+        DocItemLabel.LIST_ITEM  # type: ignore[assignment]
+    )
+    enumerated: bool = False
+    marker: str = "-"  # The bullet or number symbol that prefixes this list item
 
 ####################################################
 #################### 전처리 코드 #####################
 ####################################################
+def extract_docling_info(input_dir):
+    json_files = []
+    for root, _, files in os.walk(input_dir):
+        for file in files:
+            if file == "result_.json":
+                json_files.append(os.path.join(root, file))
+
+    for idx, file_path in enumerate(json_files, start=1):
+        process_pdf(file_path, input_dir)
+
+
 def get_max_page(result):
     max_page = 0
     for item, level in result.iterate_items():
@@ -78,6 +102,7 @@ def get_max_page(result):
             if item.prov[0].page_no > max_page:
                 max_page = item.prov[0].page_no
     return max_page
+
 
 def get_max_height(result):
     max_height = 0
@@ -100,6 +125,7 @@ def get_max_height(result):
     else:
         page_header_text = ''
     return max_height, page_header_text, page_heights
+
 
 def get_delete_line_from_table(max_height, result, page_heights):
     max_below_line = max_height * 0.8
@@ -150,6 +176,7 @@ def get_delete_line_from_table(max_height, result, page_heights):
     else:
         delete_line = max_below_line
     return delete_line, target_page, page_delete_lines
+
 
 def update_target_page_from_text(header_table_delete_line, result, target_page, page_delete_lines, max_height):
     re_pattern_texts = r'^(절\s?차\s?서|품\s?질\s?매\s?뉴\s?얼)$'
@@ -228,27 +255,33 @@ def update_target_page_from_text(header_table_delete_line, result, target_page, 
                 page_num_trigger[page_no] = True
     return target_page, page_delete_lines
 
-def process_pdf(org_document: DoclingDocument):
+
+def process_pdf(file_path, input_dir):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+        result = DoclingDocument.model_validate(data)
+
+    output_dir = os.path.dirname(file_path)
 
     origin = DocumentOrigin(
-        filename=org_document.origin.filename,
+        filename=result.origin.filename,
         mimetype="application/pdf",
-        binary_hash=org_document.origin.binary_hash,
+        binary_hash=result.origin.binary_hash,
     )
 
     new_doc = DoclingDocument(
         name="file", origin=origin
     )
-    max_height, page_header_text, page_heights = get_max_height(org_document)
+    max_height, page_header_text, page_heights = get_max_height(result)
     # print("max_height:", max_height)
     # print("page_header_text:", page_header_text)
 
     # print("page_heights", page_heights)
-    header_table_delete_line, target_page, page_delete_lines = get_delete_line_from_table(max_height, org_document,
+    header_table_delete_line, target_page, page_delete_lines = get_delete_line_from_table(max_height, result,
                                                                                           page_heights)
     # print("header_table_delete_line:", header_table_delete_line)
     # print("page_delete_lines:", page_delete_lines)
-    updated_target_page, updated_page_delete_lines = update_target_page_from_text(header_table_delete_line, org_document,
+    updated_target_page, updated_page_delete_lines = update_target_page_from_text(header_table_delete_line, result,
                                                                                   target_page, page_delete_lines,
                                                                                   max_height)
     # print("updated_target_page:", updated_target_page)
@@ -256,39 +289,9 @@ def process_pdf(org_document: DoclingDocument):
 
     # updated_delete_line -= 5
 
-    group_cache = []
-    # last_text_item = None
-    last_level = 0
-
-    def add_headers(group, new_doc, last_level):
-        if group.label == 'page_header':
-            new_doc.add_heading(
-                text=group.text,
-                orig=group.text,
-                level=1,
-                prov=group.prov[0],
-                parent=new_doc.groups[-1]
-            )
-        elif group.label == 'section_header':
-            last_level += 1
-            new_doc.add_heading(
-                text=group.text,
-                orig=group.text,
-                level=last_level,
-                prov=group.prov[0],
-                parent=new_doc.groups[-1]
-            )
-        elif group.label == 'caption':
-            last_level += 1
-            new_doc.add_heading(
-                text=group.text,
-                orig=group.text,
-                level=last_level,
-                prov=group.prov[0],
-                parent=new_doc.groups[-1]
-            )
-
-    for key, item in org_document.pages.items():
+    group_cache = None
+    last_text_item = None
+    for key, item in result.pages.items():
         if isinstance(item, PageItem):
             # print("item.page_no:", item.page_no)
             new_doc.add_page(
@@ -297,7 +300,7 @@ def process_pdf(org_document: DoclingDocument):
                 image=item.image,
             )
     label_list = ['page_header', 'section_header', 'list_item']
-    for item, level in org_document.iterate_items():
+    for item, level in result.iterate_items():
         page_no = item.prov[0].page_no
         if item.prov[0].page_no != 1:
             if isinstance(item, TextItem) and ''.join(item.text.split()) == ''.join(page_header_text.split()):
@@ -316,16 +319,12 @@ def process_pdf(org_document: DoclingDocument):
                 else:
                     continue
         if isinstance(item, TableItem):
-            if len(group_cache) > 0:
-                new_doc.add_group(
-                    label=GroupLabel.LIST,
-                    name="list",
-                    parent=new_doc.body
-                )
-                for group in group_cache:
-                    add_headers(group, new_doc, last_level)
-                group_cache = []
-                last_level = 0
+            #    new_doc.add_table(
+            #         data=item.data,
+            #         caption=[],
+            #         prov=item.prov[0],
+            #         parent=new_doc.body
+            #     )
             if len(new_doc.groups) > 0:
                 new_doc.add_table(
                     data=item.data,
@@ -340,51 +339,80 @@ def process_pdf(org_document: DoclingDocument):
                     prov=item.prov[0],
                     parent=new_doc.body
                 )
+            # if last_text_item:
+            #     new_doc.add_group(
+            #         label=GroupLabel.LIST,
+            #         name="list",
+            #         parent=new_doc.body
+            #     )
+            #     new_doc.add_table(
+            #         data=item.data,
+            #         caption=[],
+            #         prov=item.prov[0],
+            #         parent=new_doc.groups[-1]
+            #     )
+            # else:
+            #     new_doc.add_table(
+            #         data=item.data,
+            #         caption=[],
+            #         prov=item.prov[0],
+            #         parent=new_doc.body
+            #     )
         if isinstance(item, PictureItem):
-            if len(group_cache) > 0:
-                new_doc.add_group(
-                    label=GroupLabel.LIST,
-                    name="list",
-                    parent=new_doc.body
-                )
-                for group in group_cache:
-                    last_level = add_headers(group, new_doc, last_level)
-                group_cache = []
-                last_level = 0
-            if len(new_doc.groups) > 0:
-                new_doc.add_picture(
-                    annotations=[],
-                    image=None,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.groups[-1]
-                )
-            else:
-                new_doc.add_picture(
-                    annotations=[],
-                    image=None,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.body
-                )
+            new_doc.add_picture(
+                annotations=[],
+                image=None,
+                caption=[],
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
         if isinstance(item, TextItem):
             if item.label == 'page_header':
-                group_cache.append(item)
+                new_doc.add_heading(
+                    text=item.text,
+                    orig=item.text,
+                    level=1,
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
+                group_cache = item
+                last_text_item = item
             elif item.label == 'section_header':
-                group_cache.append(item)
+                new_doc.add_heading(
+                    text=item.text,
+                    orig=item.text,
+                    level=item.level,
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
+                group_cache = item
+                last_text_item = item
             elif item.label == 'caption':
-                group_cache.append(item)
+                new_doc.add_heading(
+                    text=item.text,
+                    orig=item.text,
+                    level=1,
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
+                group_cache = item
+                last_text_item = item
             elif item.label == 'list_item':
-                if len(group_cache) > 0:
+                if group_cache != None:
                     new_doc.add_group(
                         label=GroupLabel.LIST,
                         name="list",
                         parent=new_doc.body
                     )
-                    for group in group_cache:
-                        last_level = add_headers(group, new_doc, last_level)
-                    group_cache = []
-                    last_level = 0
+                    new_doc.add_list_item(
+                        text=group_cache.text,
+                        enumerated=False,
+                        marker=None,
+                        orig=group_cache.text,
+                        prov=group_cache.prov[0],
+                        parent=new_doc.groups[-1]
+                    )
+                    group_cache = None
                 if len(new_doc.groups) > 0:
                     new_doc.add_list_item(
                         text=item.text,
@@ -395,16 +423,21 @@ def process_pdf(org_document: DoclingDocument):
                         parent=new_doc.groups[-1]
                     )
             elif item.label == 'text' or item.label == 'checkbox_unselected' or item.label == 'code' or item.label == 'paragraph':
-                if len(group_cache) > 0:
+                if group_cache != None:
                     new_doc.add_group(
                         label=GroupLabel.LIST,
                         name="list",
                         parent=new_doc.body
                     )
-                    for group in group_cache:
-                        last_level = add_headers(group, new_doc, last_level)
-                    group_cache = []
-                    last_level = 0
+                    new_doc.add_list_item(
+                        text=group_cache.text,
+                        enumerated=False,
+                        marker=None,
+                        orig=group_cache.text,
+                        prov=group_cache.prov[0],
+                        parent=new_doc.groups[-1]
+                    )
+                    group_cache = None
                 if len(new_doc.groups) > 0:
                     new_doc.add_text(
                         label=item.label,
@@ -422,249 +455,15 @@ def process_pdf(org_document: DoclingDocument):
                         parent=new_doc.body
                     )
 
-    return new_doc
+    # new_doc.save_as_json(Path(os.path.join(output_dir, "docling_info_edit.json")))
+    with open(os.path.join(output_dir, "result_edit2_.json"), "w", encoding="utf-8") as fw:
+        json.dump(new_doc.export_to_dict(), fw, indent=2, ensure_ascii=False)
+    print(f"Processed {file_path}")
+
 
 ####################################################
 #################### 전처리 코드 #####################
 ####################################################
-
-#
-# Copyright IBM Corp. 2024 - 2024
-# SPDX-License-Identifier: MIT
-#
-
-"""Chunker implementation leveraging the document structure."""
-
-import logging
-import re
-from typing import Any, ClassVar, Final, Iterator, Literal, Optional
-
-from pandas import DataFrame
-from pydantic import Field, StringConstraints, field_validator
-from typing_extensions import Annotated
-
-from docling_core.search.package import VERSION_PATTERN
-from docling_core.transforms.chunker import BaseChunk, BaseChunker, BaseMeta
-from docling_core.types import DoclingDocument as DLDocument
-from docling_core.types.doc.document import (
-    DocItem,
-    DocumentOrigin,
-    LevelNumber,
-    ListItem,
-    SectionHeaderItem,
-    TableItem,
-    TextItem,
-)
-from docling_core.types.doc.labels import DocItemLabel
-
-_VERSION: Final = "1.0.0"
-
-_KEY_SCHEMA_NAME = "schema_name"
-_KEY_VERSION = "version"
-_KEY_DOC_ITEMS = "doc_items"
-_KEY_HEADINGS = "headings"
-_KEY_CAPTIONS = "captions"
-_KEY_ORIGIN = "origin"
-
-_logger = logging.getLogger(__name__)
-
-
-class DocMeta(BaseMeta):
-    """Data model for Hierarchical Chunker chunk metadata."""
-
-    schema_name: Literal["docling_core.transforms.chunker.DocMeta"] = Field(
-        default="docling_core.transforms.chunker.DocMeta",
-        alias=_KEY_SCHEMA_NAME,
-    )
-    version: Annotated[str, StringConstraints(pattern=VERSION_PATTERN, strict=True)] = (
-        Field(
-            default=_VERSION,
-            alias=_KEY_VERSION,
-        )
-    )
-    doc_items: list[DocItem] = Field(
-        alias=_KEY_DOC_ITEMS,
-        min_length=1,
-    )
-    headings: Optional[list[str]] = Field(
-        default=None,
-        alias=_KEY_HEADINGS,
-        min_length=1,
-    )
-    captions: Optional[list[str]] = Field(
-        default=None,
-        alias=_KEY_CAPTIONS,
-        min_length=1,
-    )
-    origin: Optional[DocumentOrigin] = Field(
-        default=None,
-        alias=_KEY_ORIGIN,
-    )
-
-    excluded_embed: ClassVar[list[str]] = [
-        _KEY_SCHEMA_NAME,
-        _KEY_VERSION,
-        _KEY_DOC_ITEMS,
-        _KEY_ORIGIN,
-    ]
-    excluded_llm: ClassVar[list[str]] = [
-        _KEY_SCHEMA_NAME,
-        _KEY_VERSION,
-        _KEY_DOC_ITEMS,
-        _KEY_ORIGIN,
-    ]
-
-    @field_validator(_KEY_VERSION)
-    @classmethod
-    def check_version_is_compatible(cls, v: str) -> str:
-        """Check if this meta item version is compatible with current version."""
-        current_match = re.match(VERSION_PATTERN, _VERSION)
-        doc_match = re.match(VERSION_PATTERN, v)
-        if (
-            doc_match is None
-            or current_match is None
-            or doc_match["major"] != current_match["major"]
-            or doc_match["minor"] > current_match["minor"]
-        ):
-            raise ValueError(f"incompatible version {v} with schema version {_VERSION}")
-        else:
-            return _VERSION
-
-
-class DocChunk(BaseChunk):
-    """Data model for document chunks."""
-
-    meta: DocMeta
-
-
-class HierarchicalChunker(BaseChunker):
-    r"""Chunker implementation leveraging the document layout.
-
-    Args:
-        merge_list_items (bool): Whether to merge successive list items.
-            Defaults to True.
-        delim (str): Delimiter to use for merging text. Defaults to "\n".
-    """
-
-    merge_list_items: bool = True
-
-    @classmethod
-    def _triplet_serialize(cls, table_df: DataFrame) -> str:
-
-        # copy header as first row and shift all rows by one
-        table_df.loc[-1] = table_df.columns  # type: ignore[call-overload]
-        table_df.index = table_df.index + 1
-        table_df = table_df.sort_index()
-
-        rows = [str(item).strip() for item in table_df.iloc[:, 0].to_list()]
-        cols = [str(item).strip() for item in table_df.iloc[0, :].to_list()]
-
-        nrows = table_df.shape[0]
-        ncols = table_df.shape[1]
-        texts = [
-            f"{rows[i]}, {cols[j]} = {str(table_df.iloc[i, j]).strip()}"
-            for i in range(1, nrows)
-            for j in range(1, ncols)
-        ]
-        output_text = ". ".join(texts)
-
-        return output_text
-
-    def chunk(self, dl_doc: DLDocument, **kwargs: Any) -> Iterator[BaseChunk]:
-        r"""Chunk the provided document.
-
-        Args:
-            dl_doc (DLDocument): document to chunk
-
-        Yields:
-            Iterator[Chunk]: iterator over extracted chunks
-        """
-        heading_by_level: dict[LevelNumber, str] = {}
-        list_items: list[TextItem] = []
-        for item, level in dl_doc.iterate_items():
-            captions = None
-            if isinstance(item, DocItem):
-
-                # first handle any merging needed
-                if self.merge_list_items:
-                    if isinstance(
-                        item, ListItem
-                    ) or (  # TODO remove when all captured as ListItem:
-                        isinstance(item, TextItem)
-                        and item.label == DocItemLabel.LIST_ITEM
-                    ):
-                        list_items.append(item)
-                        continue
-                    elif list_items:  # need to yield
-                        yield DocChunk(
-                            text=self.delim.join([i.text for i in list_items]),
-                            meta=DocMeta(
-                                doc_items=list_items,
-                                headings=[
-                                    heading_by_level[k]
-                                    for k in sorted(heading_by_level)
-                                ]
-                                or None,
-                                origin=dl_doc.origin,
-                            ),
-                        )
-                        list_items = []  # reset
-
-                if isinstance(item, SectionHeaderItem) or (
-                    isinstance(item, TextItem)
-                    and item.label in [DocItemLabel.SECTION_HEADER, DocItemLabel.TITLE]
-                ):
-                    level = (
-                        item.level
-                        if isinstance(item, SectionHeaderItem)
-                        else (0 if item.label == DocItemLabel.TITLE else 1)
-                    )
-                    heading_by_level[level] = item.text
-
-                    # remove headings of higher level as they just went out of scope
-                    keys_to_del = [k for k in heading_by_level if k > level]
-                    for k in keys_to_del:
-                        heading_by_level.pop(k, None)
-                    continue
-
-                if isinstance(item, TextItem) or (
-                    (not self.merge_list_items) and isinstance(item, ListItem)
-                ):
-                    text = item.text
-                elif isinstance(item, TableItem):
-                    table_df = item.export_to_dataframe()
-                    if table_df.shape[0] < 1 or table_df.shape[1] < 1:
-                        # at least two cols needed, as first column contains row headers
-                        continue
-                    text = self._triplet_serialize(table_df=table_df)
-                    captions = [
-                        c.text for c in [r.resolve(dl_doc) for r in item.captions]
-                    ] or None
-                else:
-                    continue
-                c = DocChunk(
-                    text=text,
-                    meta=DocMeta(
-                        doc_items=[item],
-                        headings=[heading_by_level[k] for k in sorted(heading_by_level)]
-                        or None,
-                        captions=captions,
-                        origin=dl_doc.origin,
-                    ),
-                )
-                yield c
-
-        if self.merge_list_items and list_items:  # need to yield
-            yield DocChunk(
-                text=self.delim.join([i.text for i in list_items]),
-                meta=DocMeta(
-                    doc_items=list_items,
-                    headings=[heading_by_level[k] for k in sorted(heading_by_level)]
-                    or None,
-                    origin=dl_doc.origin,
-                ),
-            )
-
 
 class GenOSVectorMeta(BaseModel):
     class Config:
@@ -682,6 +481,7 @@ class GenOSVectorMeta(BaseModel):
     n_page: int = None
     reg_date: str = None
     bboxes: str = None
+
 
 class GenOSVectorMetaBuilder:
     def __init__(self):
@@ -761,6 +561,103 @@ class GenOSVectorMetaBuilder:
         )
 
 
+LevelNumber = typing.Annotated[int, Field(ge=1, le=100)]
+
+
+class DocChunkBuilder(BaseModel):
+
+    def __init__(self, document: DoclingDocument, **data: Any):
+        super().__init__(**data)
+        self.text: str = None
+        self.meta: DocMeta = None
+
+    def build(self, document: DoclingDocument) -> typing.Iterator[DocChunk]:
+        heading_by_level: dict[LevelNumber, str] = {}
+        list_items: list[TextItem] = []
+        for item, level in document.iterate_items():
+            captions = None
+            if isinstance(item, DocItem):
+
+                # first handle any merging needed
+                if self.merge_list_items:
+                    if isinstance(
+                            item, ListItem
+                    ) or (  # TODO remove when all captured as ListItem:
+                            isinstance(item, TextItem)
+                            and item.label == DocItemLabel.LIST_ITEM
+                    ):
+                        list_items.append(item)
+                        continue
+                    elif list_items:  # need to yield
+                        yield DocChunk(
+                            text=self.delim.join([i.text for i in list_items]),
+                            meta=DocMeta(
+                                doc_items=list_items,
+                                headings=[
+                                             heading_by_level[k]
+                                             for k in sorted(heading_by_level)
+                                         ]
+                                         or None,
+                                origin=document.origin,
+                            ),
+                        )
+                        list_items = []  # reset
+
+                if isinstance(item, SectionHeaderItem) or (
+                        isinstance(item, TextItem)
+                        and item.label in [DocItemLabel.SECTION_HEADER, DocItemLabel.TITLE]
+                ):
+                    level = (
+                        item.level
+                        if isinstance(item, SectionHeaderItem)
+                        else (0 if item.label == DocItemLabel.TITLE else 1)
+                    )
+                    heading_by_level[level] = item.text
+
+                    # remove headings of higher level as they just went out of scope
+                    keys_to_del = [k for k in heading_by_level if k > level]
+                    for k in keys_to_del:
+                        heading_by_level.pop(k, None)
+                    continue
+
+                if isinstance(item, TextItem) or (
+                        (not self.merge_list_items) and isinstance(item, ListItem)
+                ):
+                    text = item.text
+                elif isinstance(item, TableItem):
+                    table_df = item.export_to_dataframe()
+                    if table_df.shape[0] < 1 or table_df.shape[1] < 2:
+                        # at least two cols needed, as first column contains row headers
+                        continue
+                    text = self._triplet_serialize(table_df=table_df)
+                    captions = [
+                                   c.text for c in [r.resolve(self.document) for r in item.captions]
+                               ] or None
+                else:
+                    continue
+                c = DocChunk(
+                    text=text,
+                    meta=DocMeta(
+                        doc_items=[item],
+                        headings=[heading_by_level[k] for k in sorted(heading_by_level)]
+                                 or None,
+                        captions=captions,
+                        origin=document.origin,
+                    ),
+                )
+                yield c
+
+        if self.merge_list_items and list_items:  # need to yield
+            yield DocChunk(
+                text=self.delim.join([i.text for i in list_items]),
+                meta=DocMeta(
+                    doc_items=list_items,
+                    headings=[heading_by_level[k] for k in sorted(heading_by_level)]
+                             or None,
+                    origin=document.origin,
+                ),
+            )
+
 class DocumentProcessor:
 
     def __init__(self):
@@ -804,12 +701,25 @@ class DocumentProcessor:
         # NOTE: 파일 하나 처리 시 convert로 변경.
         # conv_results = doc_converter.convert_all([file_path], raises_on_error=True)
         conv_result: ConversionResult = self.converter.convert(file_path, raises_on_error=True)
-        return process_pdf(conv_result.document)
+        return conv_result.document
 
     def load_documents(self, file_path: str, **kwargs: dict) -> DoclingDocument:
         # ducling 방식으로 문서 로드
         return self.load_documents_with_docling(file_path, **kwargs)
         # return documents
+
+    def groups_to_chunks(self, document: DoclingDocument) -> List[DocChunk]:
+        chunks: List[DocChunk] = []
+        groups: List[GroupItem] = document.groups
+        for idx, group in enumerate(groups):
+            chunks.append(
+                DocChunkBuilder(document)
+                .build(group)
+            )
+        # TODO: 페이지 관련 이슈 처리 시 해당 부분도 수정 필요
+        for chunk in chunks:
+            self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
+        return chunks
 
     def split_documents(self, documents: DoclingDocument, **kwargs: dict) -> List[DocChunk]:
         ##FIXME: Hierarchical Chunker 로 수정
@@ -986,17 +896,17 @@ class DocumentProcessor:
                             parent=new_doc.body
                         )
         # TODO: 최종 전처리 document로 chunk 추출
-        chunker: HierarchicalChunker = HierarchicalChunker()
-        chunks: List[DocChunk] = list(chunker.chunk(dl_doc=new_doc, **kwargs))
+        return self.groups_to_chunks(new_doc)
+        # chunker: HierarchicalChunker = HierarchicalChunker()
+        # chunks: List[DocChunk] = list(chunker.chunk(dl_doc=new_doc, **kwargs))
         # TODO: 페이지 관련 이슈 처리 시 해당 부분도 수정 필요
-        for chunk in chunks:
-            self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
+        # for chunk in chunks:
+        #     self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
         return chunks
 
     def compose_vectors(self, document: DoclingDocument, chunks: List[DocChunk], file_path: str, **kwargs: dict) -> \
             list[dict]:
         pdf_path = file_path.replace('.hwp', '.pdf').replace('.txt', '.pdf').replace('.json', '.pdf')
-
         if os.path.exists(pdf_path):
             doc = fitz.open(pdf_path)
 
@@ -1055,11 +965,11 @@ class DocumentProcessor:
 
     async def __call__(self, request: Request, file_path: str, **kwargs: dict):
         document: DoclingDocument = self.load_documents(file_path, **kwargs)
-        await assert_cancelled(request)
+        # await assert_cancelled(request)
 
         # Extract Chunk from DoclingDocument
         chunks: List[DocChunk] = self.split_documents(document, **kwargs)
-        await assert_cancelled(request)
+        # await assert_cancelled(request)
 
         vectors: list[dict] = self.compose_vectors(document, chunks, file_path, **kwargs)
         return vectors

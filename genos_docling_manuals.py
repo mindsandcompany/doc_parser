@@ -778,6 +778,8 @@ class DocumentProcessor:
         pipe_line_options.generate_picture_images = True
         pipe_line_options.do_ocr = True
         pipe_line_options.ocr_options.lang = ["ko", 'en']
+        # FIXME : SET OCR MODEL STORAGE PATH
+        pipe_line_options.ocr_options.model_storage_directory = ""
         pipe_line_options.do_table_structure = True
         pipe_line_options.images_scale = 2
         pipe_line_options.table_structure_options.do_cell_matching = True

@@ -78,6 +78,8 @@ class ListItem(TextItem):
     enumerated: bool = False
     marker: str = "-"  # The bullet or number symbol that prefixes this list item
 
+
+
 ####################################################
 #################### 전처리 코드 #####################
 ####################################################

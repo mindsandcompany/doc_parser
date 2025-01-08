@@ -3,35 +3,35 @@ from __future__ import annotations
 import json
 import os
 
-import fitz
+# import fitz
 from collections import defaultdict
 from datetime import datetime
 from typing import Optional, Iterable, Any, List, Dict, Tuple
 
 # import fitz
 from fastapi import Request
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+#from langchain.text_splitter import RecursiveCharacterTextSplitter
+#from langchain_core.documents import Document
 from pydantic import BaseModel
 
-from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+#from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
 from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
-from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+#from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.document import ConversionStatus
+#from docling.datamodel.document import ConversionStatus
 from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
     AcceleratorOptions,
-    EasyOcrOptions,
-    OcrEngine,
-    PdfBackend,
+    #EasyOcrOptions,
+    #OcrEngine,
+    #PdfBackend,
     PdfPipelineOptions,
     TableFormerMode,
 )
 # docling imports
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.document import ConversionResult
-from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+# from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling_core.transforms.chunker import (
     BaseChunk,
     BaseChunker,
@@ -42,17 +42,17 @@ from docling_core.types import DoclingDocument
 
 from docling_core.types.doc import (
     BoundingBox,
-    CoordOrigin,
+    #CoordOrigin,
     DocItemLabel,
     DoclingDocument,
     DocumentOrigin,
     GroupLabel,
-    ImageRef,
-    ProvenanceItem,
-    Size,
-    TableCell,
-    TableData,
-    GroupItem,
+    #ImageRef,
+    #ProvenanceItem,
+    #Size,
+    #TableCell,
+    #TableData,
+    #GroupItem,
 
     DocItem,
     PictureItem,
@@ -64,6 +64,22 @@ from docling_core.types.doc import (
 from collections import Counter
 import re
 
+# ============================================
+
+import warnings
+from typing import Iterable, Iterator, Optional, Union
+
+from pydantic import BaseModel, ConfigDict, PositiveInt, TypeAdapter, model_validator
+from typing_extensions import Self
+
+try:
+    import semchunk
+    from transformers import AutoTokenizer, PreTrainedTokenizerBase
+except ImportError:
+    raise RuntimeError(
+        "Module requires 'chunking' extra; to install, run: "
+        "`pip install 'docling-core[chunking]'`"
+    )
 
 ####################################################
 #################### 전처리 코드 #####################
@@ -152,8 +168,8 @@ def get_delete_line_from_table(max_height, result, page_heights):
     return delete_line, target_page, page_delete_lines
 
 def update_target_page_from_text(header_table_delete_line, result, target_page, page_delete_lines, max_height):
-    re_pattern_texts = r'^(절\s?차\s?서|품\s?질\s?매\s?뉴\s?얼)$'
-    re_pattern = r'^(페\s?이\s?지\s?:?|시\s?행\s?일\s?자\s?:?|절차서 번호).*'
+    re_pattern_texts = r'^(절\s?차\s?서|(운\s?전\s?)?지\s?침\s?서|품\s?질\s?매\s?뉴\s?얼)$'
+    re_pattern = r"(^((페|폐)\s?이\s?지\s?:?|시\s?행\s?일\s?자\s?:?|절차서 번호).*|.*시행일자\s?:\s?('\d{2}.\d{2}|\d{4}.\s?\d{2})$)"
     re_pattern_2 = r'.*(페이지(\s?:\s?|\s)\d{1,3}\s?/\s?\d{1,3})$'
     re_pattern_page_no = r'^\d{1,3}\s?의\s?\d{1,3}$'
     re_pattern_3 = r'.*(페\s?이\s?지\s?:\s?(\d{1,3})?)$'
@@ -162,7 +178,6 @@ def update_target_page_from_text(header_table_delete_line, result, target_page, 
     page_num_trigger = {}
     page_delete_line_update = {}
     initial_page_delete_lines = page_delete_lines.copy()
-
     def update_target_page(item, item_above_flag):
         page_no = item.prov[0].page_no
         if item_above_flag:
@@ -215,8 +230,7 @@ def update_target_page_from_text(header_table_delete_line, result, target_page, 
                     if item.prov[0].bbox.b < updated_delete_line:
                         updated_delete_line = item.prov[0].bbox.b
                     page_num_trigger[page_no] = True
-            if re.match(re_pattern, item.text) or re.match(re_pattern_2, item.text) or re.match(re_pattern_3,
-                                                                                                item.text):
+            if re.match(re_pattern, item.text) or re.match(re_pattern_2, item.text) or re.match(re_pattern_3, item.text):
                 if page_no in page_num_trigger and page_num_trigger[page_no]:
                     if re.match(re_pattern_page_no, item.text) or re.match(re_pattern_3_page_no, item.text):
                         update_target_page(item, item_above_flag)
@@ -240,57 +254,25 @@ def process_pdf(org_document: DoclingDocument):
         name="file", origin=origin
     )
     max_height, page_header_text, page_heights = get_max_height(org_document)
-    # print("max_height:", max_height)
-    # print("page_header_text:", page_header_text)
-
-    # print("page_heights", page_heights)
-    header_table_delete_line, target_page, page_delete_lines = get_delete_line_from_table(max_height, org_document,
-                                                                                          page_heights)
-    # print("header_table_delete_line:", header_table_delete_line)
-    # print("page_delete_lines:", page_delete_lines)
+    header_table_delete_line, target_page, page_delete_lines = get_delete_line_from_table(max_height, org_document, page_heights)
     updated_target_page, updated_page_delete_lines = update_target_page_from_text(header_table_delete_line, org_document,
                                                                                   target_page, page_delete_lines,
                                                                                   max_height)
-    # print("updated_target_page:", updated_target_page)
-    # print("updated_page_delete_lines:", updated_page_delete_lines)
-
-    # updated_delete_line -= 5
-
-    group_cache = []
-    # last_text_item = None
+    section_header_cache = []
     last_level = 0
-
-    def add_headers(group, new_doc, last_level):
-        if group.label == 'page_header':
-            new_doc.add_heading(
-                text=group.text,
-                orig=group.text,
-                level=1,
-                prov=group.prov[0],
-                parent=new_doc.groups[-1]
-            )
-        elif group.label == 'section_header':
-            last_level += 1
-            new_doc.add_heading(
-                text=group.text,
-                orig=group.text,
-                level=last_level,
-                prov=group.prov[0],
-                parent=new_doc.groups[-1]
-            )
-        elif group.label == 'caption':
-            last_level += 1
-            new_doc.add_heading(
-                text=group.text,
-                orig=group.text,
-                level=last_level,
-                prov=group.prov[0],
-                parent=new_doc.groups[-1]
-            )
+    def add_headers(header, new_doc, last_level):
+        last_level += 1
+        new_doc.add_heading(
+            text=header.text,
+            orig=header.text,
+            level=last_level,
+            prov=header.prov[0],
+            parent=new_doc.body
+        )
+        return last_level
 
     for key, item in org_document.pages.items():
         if isinstance(item, PageItem):
-            # print("item.page_no:", item.page_no)
             new_doc.add_page(
                 page_no=item.page_no,
                 size=item.size,
@@ -307,120 +289,62 @@ def process_pdf(org_document: DoclingDocument):
                     continue
             if page_no in updated_page_delete_lines and item.prov[0].bbox.t > updated_page_delete_lines[page_no]:
                 if item.prov[0].bbox.b < updated_page_delete_lines[page_no]:
-                    middle_line = item.prov[0].bbox.b + (item.prov[0].bbox.t - item.prov[0].bbox.b) / 2
+                    middle_line = item.prov[0].bbox.b + (item.prov[0].bbox.t - item.prov[0].bbox.b)/2
                     if middle_line > updated_page_delete_lines[page_no]:
                         continue
                     else:
                         pass
-                    # pass
                 else:
                     continue
         if isinstance(item, TableItem):
-            if len(group_cache) > 0:
-                new_doc.add_group(
-                    label=GroupLabel.LIST,
-                    name="list",
-                    parent=new_doc.body
-                )
-                for group in group_cache:
-                    add_headers(group, new_doc, last_level)
-                group_cache = []
+            if len(section_header_cache)>0:
+                for header in section_header_cache:
+                    last_level = add_headers(header, new_doc, last_level)
+                section_header_cache = []
                 last_level = 0
-            if len(new_doc.groups) > 0:
-                new_doc.add_table(
-                    data=item.data,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.groups[-1]
-                )
-            else:
-                new_doc.add_table(
-                    data=item.data,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.body
-                )
-        if isinstance(item, PictureItem):
-            if len(group_cache) > 0:
-                new_doc.add_group(
-                    label=GroupLabel.LIST,
-                    name="list",
-                    parent=new_doc.body
-                )
-                for group in group_cache:
-                    last_level = add_headers(group, new_doc, last_level)
-                group_cache = []
-                last_level = 0
-            if len(new_doc.groups) > 0:
-                new_doc.add_picture(
-                    annotations=[],
-                    image=None,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.groups[-1]
-                )
-            else:
-                new_doc.add_picture(
-                    annotations=[],
-                    image=None,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.body
-                )
+            new_doc.add_table(
+                data=item.data,
+                caption=[],
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
         if isinstance(item, TextItem):
-            if item.label == 'page_header':
-                group_cache.append(item)
+            if item.label in ['page_header', 'caption']:
+                new_doc.add_heading(
+                    text=item.text,
+                    orig=item.text,
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
             elif item.label == 'section_header':
-                group_cache.append(item)
-            elif item.label == 'caption':
-                group_cache.append(item)
-            elif item.label == 'list_item':
-                if len(group_cache) > 0:
-                    new_doc.add_group(
-                        label=GroupLabel.LIST,
-                        name="list",
-                        parent=new_doc.body
-                    )
-                    for group in group_cache:
-                        last_level = add_headers(group, new_doc, last_level)
-                    group_cache = []
+                section_header_cache.append(item)
+            elif item.label=='list_item':
+                if len(section_header_cache)>0:
+                    for header in section_header_cache:
+                        last_level = add_headers(header, new_doc, last_level)
+                    section_header_cache = []
                     last_level = 0
-                if len(new_doc.groups) > 0:
-                    new_doc.add_list_item(
-                        text=item.text,
-                        enumerated=item.enumerated,
-                        marker=item.marker,
-                        orig=item.text,
-                        prov=item.prov[0],
-                        parent=new_doc.groups[-1]
-                    )
-            elif item.label == 'text' or item.label == 'checkbox_unselected' or item.label == 'code' or item.label == 'paragraph':
-                if len(group_cache) > 0:
-                    new_doc.add_group(
-                        label=GroupLabel.LIST,
-                        name="list",
-                        parent=new_doc.body
-                    )
-                    for group in group_cache:
-                        last_level = add_headers(group, new_doc, last_level)
-                    group_cache = []
+                new_doc.add_list_item(
+                    text=item.text,
+                    enumerated=item.enumerated,
+                    marker=item.marker,
+                    orig=item.text,
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
+            elif item.label=='text' or item.label=='checkbox_unselected' or item.label=='code' or item.label=='paragraph':
+                if len(section_header_cache)>0:
+                    for header in section_header_cache:
+                        last_level = add_headers(header, new_doc, last_level)
+                    section_header_cache = []
                     last_level = 0
-                if len(new_doc.groups) > 0:
-                    new_doc.add_text(
-                        label=item.label,
-                        text=item.text,
-                        orig=item.text,
-                        prov=item.prov[0],
-                        parent=new_doc.groups[-1]
-                    )
-                else:
-                    new_doc.add_text(
-                        label=item.label,
-                        text=item.text,
-                        orig=item.text,
-                        prov=item.prov[0],
-                        parent=new_doc.body
-                    )
+                new_doc.add_text(
+                    label=item.label,
+                    text=item.text,
+                    orig=item.text,
+                    prov=item.prov[0],
+                    parent=new_doc.body
+                )
 
     return new_doc
 
@@ -435,106 +359,24 @@ def process_pdf(org_document: DoclingDocument):
 
 """Chunker implementation leveraging the document structure."""
 
-import logging
-import re
 from typing import Any, ClassVar, Final, Iterator, Literal, Optional
 
 from pandas import DataFrame
 from pydantic import Field, StringConstraints, field_validator
-from typing_extensions import Annotated
 
-from docling_core.search.package import VERSION_PATTERN
-from docling_core.transforms.chunker import BaseChunk, BaseChunker, BaseMeta
+#from docling_core.transforms.chunker import BaseChunk, BaseChunker, BaseMeta
 from docling_core.types import DoclingDocument as DLDocument
 from docling_core.types.doc.document import (
-    DocItem,
+    #DocItem,
     DocumentOrigin,
     LevelNumber,
     ListItem,
-    SectionHeaderItem,
-    TableItem,
-    TextItem,
+    #SectionHeaderItem,
+    #TableItem,
+    #TextItem,
 )
 from docling_core.types.doc.labels import DocItemLabel
 
-_VERSION: Final = "1.0.0"
-
-_KEY_SCHEMA_NAME = "schema_name"
-_KEY_VERSION = "version"
-_KEY_DOC_ITEMS = "doc_items"
-_KEY_HEADINGS = "headings"
-_KEY_CAPTIONS = "captions"
-_KEY_ORIGIN = "origin"
-
-_logger = logging.getLogger(__name__)
-
-
-class DocMeta(BaseMeta):
-    """Data model for Hierarchical Chunker chunk metadata."""
-
-    schema_name: Literal["docling_core.transforms.chunker.DocMeta"] = Field(
-        default="docling_core.transforms.chunker.DocMeta",
-        alias=_KEY_SCHEMA_NAME,
-    )
-    version: Annotated[str, StringConstraints(pattern=VERSION_PATTERN, strict=True)] = (
-        Field(
-            default=_VERSION,
-            alias=_KEY_VERSION,
-        )
-    )
-    doc_items: list[DocItem] = Field(
-        alias=_KEY_DOC_ITEMS,
-        min_length=1,
-    )
-    headings: Optional[list[str]] = Field(
-        default=None,
-        alias=_KEY_HEADINGS,
-        min_length=1,
-    )
-    captions: Optional[list[str]] = Field(
-        default=None,
-        alias=_KEY_CAPTIONS,
-        min_length=1,
-    )
-    origin: Optional[DocumentOrigin] = Field(
-        default=None,
-        alias=_KEY_ORIGIN,
-    )
-
-    excluded_embed: ClassVar[list[str]] = [
-        _KEY_SCHEMA_NAME,
-        _KEY_VERSION,
-        _KEY_DOC_ITEMS,
-        _KEY_ORIGIN,
-    ]
-    excluded_llm: ClassVar[list[str]] = [
-        _KEY_SCHEMA_NAME,
-        _KEY_VERSION,
-        _KEY_DOC_ITEMS,
-        _KEY_ORIGIN,
-    ]
-
-    @field_validator(_KEY_VERSION)
-    @classmethod
-    def check_version_is_compatible(cls, v: str) -> str:
-        """Check if this meta item version is compatible with current version."""
-        current_match = re.match(VERSION_PATTERN, _VERSION)
-        doc_match = re.match(VERSION_PATTERN, v)
-        if (
-            doc_match is None
-            or current_match is None
-            or doc_match["major"] != current_match["major"]
-            or doc_match["minor"] > current_match["minor"]
-        ):
-            raise ValueError(f"incompatible version {v} with schema version {_VERSION}")
-        else:
-            return _VERSION
-
-
-class DocChunk(BaseChunk):
-    """Data model for document chunks."""
-
-    meta: DocMeta
 
 
 class HierarchicalChunker(BaseChunker):
@@ -640,6 +482,8 @@ class HierarchicalChunker(BaseChunker):
                     captions = [
                         c.text for c in [r.resolve(dl_doc) for r in item.captions]
                     ] or None
+                elif isinstance(item, PictureItem):
+                    text = ''.join(str(value) for value in heading_by_level.values())
                 else:
                     continue
                 c = DocChunk(
@@ -664,6 +508,250 @@ class HierarchicalChunker(BaseChunker):
                     origin=dl_doc.origin,
                 ),
             )
+
+class HybridChunker(BaseChunker):
+    r"""Chunker doing tokenization-aware refinements on top of document layout chunking.
+
+    Args:
+        tokenizer: The tokenizer to use; either instantiated object or name or path of
+            respective pretrained model
+        max_tokens: The maximum number of tokens per chunk. If not set, limit is
+            resolved from the tokenizer
+        merge_peers: Whether to merge undersized chunks sharing same relevant metadata
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    tokenizer: Union[PreTrainedTokenizerBase, str] = (
+        "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    max_tokens: int = None  # type: ignore[assignment]
+    merge_peers: bool = True
+
+    _inner_chunker: HierarchicalChunker = HierarchicalChunker()
+
+    @model_validator(mode="after")
+    def _patch_tokenizer_and_max_tokens(self) -> Self:
+        self._tokenizer = (
+            self.tokenizer
+            if isinstance(self.tokenizer, PreTrainedTokenizerBase)
+            else AutoTokenizer.from_pretrained(self.tokenizer)
+        )
+        if self.max_tokens is None:
+            self.max_tokens = TypeAdapter(PositiveInt).validate_python(
+                self._tokenizer.model_max_length
+            )
+        return self
+
+    def _count_tokens(self, text: Optional[Union[str, list[str]]]):
+        if text is None:
+            return 0
+        elif isinstance(text, list):
+            total = 0
+            for t in text:
+                total += self._count_tokens(t)
+            return total
+        return len(self._tokenizer.tokenize(text, max_length=None))
+
+    class _ChunkLengthInfo(BaseModel):
+        total_len: int
+        text_len: int
+        other_len: int
+
+    def _doc_chunk_length(self, doc_chunk: DocChunk):
+        text_length = self._count_tokens(doc_chunk.text)
+        headings_length = self._count_tokens(doc_chunk.meta.headings)
+        captions_length = self._count_tokens(doc_chunk.meta.captions)
+        total = text_length + headings_length + captions_length
+        return self._ChunkLengthInfo(
+            total_len=total,
+            text_len=text_length,
+            other_len=total - text_length,
+        )
+
+    def _make_chunk_from_doc_items(
+        self, doc_chunk: DocChunk, window_text: str, window_start: int, window_end: int
+    ):
+        meta = DocMeta(
+            doc_items=doc_chunk.meta.doc_items[window_start : window_end + 1],
+            headings=doc_chunk.meta.headings,
+            captions=doc_chunk.meta.captions,
+            origin=doc_chunk.meta.origin,
+        )
+        new_chunk = DocChunk(text=window_text, meta=meta)
+        return new_chunk
+
+    def _merge_text(self, t1, t2):
+        if t1 == "":
+            return t2
+        elif t2 == "":
+            return t1
+        else:
+            return f"{t1}{self.delim}{t2}"
+
+    def _split_by_doc_items(self, doc_chunk: DocChunk) -> list[DocChunk]:
+        if doc_chunk.meta.doc_items is None or len(doc_chunk.meta.doc_items) <= 1:
+            return [doc_chunk]
+        length = self._doc_chunk_length(doc_chunk)
+        if length.total_len <= self.max_tokens:
+            return [doc_chunk]
+        else:
+            chunks = []
+            window_start = 0
+            window_end = 0
+            window_text = ""
+            window_text_length = 0
+            other_length = length.other_len
+            num_items = len(doc_chunk.meta.doc_items)
+            while window_end < num_items:
+                doc_item = doc_chunk.meta.doc_items[window_end]
+                if isinstance(doc_item, TextItem):
+                    text = doc_item.text
+                else:
+                    raise RuntimeError("Non-TextItem split not implemented yet")
+                text_length = self._count_tokens(text)
+                if (
+                    text_length + window_text_length + other_length < self.max_tokens
+                    and window_end < num_items - 1
+                ):
+                    # Still room left to add more to this chunk AND still at least one
+                    # item left
+                    window_end += 1
+                    window_text_length += text_length
+                    window_text = self._merge_text(window_text, text)
+                elif text_length + window_text_length + other_length < self.max_tokens:
+                    # All the items in the window fit into the chunk and there are no
+                    # other items left
+                    window_text = self._merge_text(window_text, text)
+                    new_chunk = self._make_chunk_from_doc_items(
+                        doc_chunk, window_text, window_start, window_end
+                    )
+                    chunks.append(new_chunk)
+                    window_end = num_items
+                elif window_start == window_end:
+                    # Only one item in the window and it doesn't fit into the chunk. So
+                    # we'll just make it a chunk for now and it will get split in the
+                    # plain text splitter.
+                    window_text = self._merge_text(window_text, text)
+                    new_chunk = self._make_chunk_from_doc_items(
+                        doc_chunk, window_text, window_start, window_end
+                    )
+                    chunks.append(new_chunk)
+                    window_start = window_end + 1
+                    window_end = window_start
+                    window_text = ""
+                    window_text_length = 0
+                else:
+                    # Multiple items in the window but they don't fit into the chunk.
+                    # However, the existing items must have fit or we wouldn't have
+                    # gotten here. So we put everything but the last item into the chunk
+                    # and then start a new window INCLUDING the current window end.
+                    new_chunk = self._make_chunk_from_doc_items(
+                        doc_chunk, window_text, window_start, window_end - 1
+                    )
+                    chunks.append(new_chunk)
+                    window_start = window_end
+                    window_text = ""
+                    window_text_length = 0
+            return chunks
+
+    def _split_using_plain_text(
+        self,
+        doc_chunk: DocChunk,
+    ) -> list[DocChunk]:
+        lengths = self._doc_chunk_length(doc_chunk)
+        if lengths.total_len <= self.max_tokens:
+            return [DocChunk(**doc_chunk.export_json_dict())]
+        else:
+            # How much room is there for text after subtracting out the headers and
+            # captions:
+            available_length = self.max_tokens - lengths.other_len
+            sem_chunker = semchunk.chunkerify(
+                self._tokenizer, chunk_size=available_length
+            )
+            if available_length <= 0:
+                warnings.warn(
+                    f"Headers and captions for this chunk are longer than the total amount of size for the chunk, chunk will be ignored: {doc_chunk.text=}"  # noqa
+                )
+                return []
+            text = doc_chunk.text
+            segments = sem_chunker.chunk(text)
+            chunks = [DocChunk(text=s, meta=doc_chunk.meta) for s in segments]
+            return chunks
+
+    def _merge_chunks_with_matching_metadata(self, chunks: list[DocChunk]):
+        output_chunks = []
+        window_start = 0
+        window_end = 0
+        num_chunks = len(chunks)
+        while window_end < num_chunks:
+            chunk = chunks[window_end]
+            lengths = self._doc_chunk_length(chunk)
+            headings_and_captions = (chunk.meta.headings, chunk.meta.captions)
+            ready_to_append = False
+            if window_start == window_end:
+                # starting a new block of chunks to potentially merge
+                current_headings_and_captions = headings_and_captions
+                window_text = chunk.text
+                window_other_length = lengths.other_len
+                window_text_length = lengths.text_len
+                window_items = chunk.meta.doc_items
+                window_end += 1
+                first_chunk_of_window = chunk
+            elif (
+                headings_and_captions == current_headings_and_captions
+                and window_text_length + window_other_length + lengths.text_len
+                <= self.max_tokens
+            ):
+                # there is room to include the new chunk so add it to the window and
+                # continue
+                window_text = self._merge_text(window_text, chunk.text)
+                window_text_length += lengths.text_len
+                window_items = window_items + chunk.meta.doc_items
+                window_end += 1
+            else:
+                ready_to_append = True
+
+            if ready_to_append or window_end == num_chunks:
+                # no more room OR the start of new metadata.  Either way, end the block
+                # and use the current window_end as the start of a new block
+                if window_start + 1 == window_end:
+                    # just one chunk so use it as is
+                    output_chunks.append(first_chunk_of_window)
+                else:
+                    new_meta = DocMeta(
+                        doc_items=window_items,
+                        headings=current_headings_and_captions[0],
+                        captions=current_headings_and_captions[1],
+                        origin=chunk.meta.origin,
+                    )
+                    new_chunk = DocChunk(
+                        text=window_text,
+                        meta=new_meta,
+                    )
+                    output_chunks.append(new_chunk)
+                # no need to reset window_text, etc. because that will be reset in the
+                # next iteration in the if window_start == window_end block
+                window_start = window_end
+
+        return output_chunks
+
+    def chunk(self, dl_doc: DoclingDocument, **kwargs) -> Iterator[BaseChunk]:
+        r"""Chunk the provided document.
+
+        Args:
+            dl_doc (DLDocument): document to chunk
+
+        Yields:
+            Iterator[Chunk]: iterator over extracted chunks
+        """
+        res: Iterable[DocChunk]
+        res = self._inner_chunker.chunk(dl_doc=dl_doc, **kwargs)  # type: ignore
+        res = [x for c in res for x in self._split_by_doc_items(c)]
+        res = [x for c in res for x in self._split_using_plain_text(c)]
+        if self.merge_peers:
+            res = self._merge_chunks_with_matching_metadata(res)
+        return iter(res)
 
 
 class GenOSVectorMeta(BaseModel):
@@ -778,8 +866,6 @@ class DocumentProcessor:
         pipe_line_options.generate_picture_images = True
         pipe_line_options.do_ocr = True
         pipe_line_options.ocr_options.lang = ["ko", 'en']
-        # FIXME : SET OCR MODEL STORAGE PATH
-        pipe_line_options.ocr_options.model_storage_directory = ""
         pipe_line_options.do_table_structure = True
         pipe_line_options.images_scale = 2
         pipe_line_options.table_structure_options.do_cell_matching = True
@@ -818,178 +904,12 @@ class DocumentProcessor:
         ## NOTE: HierarchicalChunker -> HybridChunker로 공식 문서 변경 됨.
         ## 관련 url : https://ds4sd.github.io/docling/usage/#chunking
         ## 관련 url : https://ds4sd.github.io/docling/examples/hybrid_chunking/
-        # chunker: HybridChunker = HybridChunker()
+        chunker: HybridChunker = HybridChunker()
         # TODO: 전처리 코드 넣기
-        result = documents
-
-        origin = DocumentOrigin(
-            filename=result.origin.filename,
-            mimetype="application/pdf",
-            binary_hash=result.origin.binary_hash,
-        )
-        new_doc = DoclingDocument(
-            name="file", origin=origin
-        )
-
-        max_height, page_header_text, page_heights = get_max_height(result)
-        header_table_delete_line, target_page, page_delete_lines = get_delete_line_from_table(max_height, result,
-                                                                                              page_heights)
-        updated_target_page, updated_page_delete_lines = update_target_page_from_text(header_table_delete_line, result,
-                                                                                      target_page, page_delete_lines,
-                                                                                      max_height)
-        group_cache = None
-        last_text_item = None
-        for key, item in result.pages.items():
-            if isinstance(item, PageItem):
-                # print("item.page_no:", item.page_no)
-                new_doc.add_page(
-                    page_no=item.page_no,
-                    size=item.size,
-                    image=item.image,
-                )
-        label_list = ['page_header', 'section_header', 'list_item']
-        for item, level in result.iterate_items():
-            page_no = item.prov[0].page_no
-            if item.prov[0].page_no != 1:
-                if isinstance(item, TextItem) and ''.join(item.text.split()) == ''.join(page_header_text.split()):
-                    if item.label in label_list:
-                        continue
-                    elif page_no in updated_page_delete_lines and item.prov[0].bbox.t > updated_page_delete_lines[
-                        page_no]:
-                        continue
-                if page_no in updated_page_delete_lines and item.prov[0].bbox.t > updated_page_delete_lines[page_no]:
-                    if item.prov[0].bbox.b < updated_page_delete_lines[page_no]:
-                        middle_line = item.prov[0].bbox.b + (item.prov[0].bbox.t - item.prov[0].bbox.b) / 2
-                        if middle_line > updated_page_delete_lines[page_no]:
-                            continue
-                        else:
-                            pass
-                        # pass
-                    else:
-                        continue
-            if isinstance(item, TableItem):
-                #    new_doc.add_table(
-                #         data=item.data,
-                #         caption=[],
-                #         prov=item.prov[0],
-                #         parent=new_doc.body
-                #     )
-                if len(new_doc.groups) > 0:
-                    new_doc.add_table(
-                        data=item.data,
-                        caption=[],
-                        prov=item.prov[0],
-                        parent=new_doc.groups[-1]
-                    )
-                else:
-                    new_doc.add_table(
-                        data=item.data,
-                        caption=[],
-                        prov=item.prov[0],
-                        parent=new_doc.body
-                    )
-                # if last_text_item:
-                #     new_doc.add_group(
-                #         label=GroupLabel.LIST,
-                #         name="list",
-                #         parent=new_doc.body
-                #     )
-                #     new_doc.add_table(
-                #         data=item.data,
-                #         caption=[],
-                #         prov=item.prov[0],
-                #         parent=new_doc.groups[-1]
-                #     )
-                # else:
-                #     new_doc.add_table(
-                #         data=item.data,
-                #         caption=[],
-                #         prov=item.prov[0],
-                #         parent=new_doc.body
-                #     )
-            if isinstance(item, PictureItem):
-                new_doc.add_picture(
-                    annotations=[],
-                    image=None,
-                    caption=[],
-                    prov=item.prov[0],
-                    parent=new_doc.body
-                )
-            if isinstance(item, TextItem):
-                if item.label == 'page_header':
-                    new_doc.add_heading(
-                        text=item.text,
-                        orig=item.text,
-                        level=1,
-                        prov=item.prov[0],
-                        parent=new_doc.body
-                    )
-                    group_cache = item
-                    last_text_item = item
-                elif item.label == 'section_header':
-                    new_doc.add_heading(
-                        text=item.text,
-                        orig=item.text,
-                        level=item.level,
-                        prov=item.prov[0],
-                        parent=new_doc.body
-                    )
-                    group_cache = item
-                    last_text_item = item
-                elif item.label == 'caption':
-                    new_doc.add_heading(
-                        text=item.text,
-                        orig=item.text,
-                        level=1,
-                        prov=item.prov[0],
-                        parent=new_doc.body
-                    )
-                    group_cache = item
-                    last_text_item = item
-                elif item.label == 'list_item':
-                    if group_cache != None:
-                        new_doc.add_group(
-                            label=GroupLabel.LIST,
-                            name="list",
-                            parent=new_doc.body
-                        )
-                        group_cache = None
-                    if len(new_doc.groups) > 0:
-                        new_doc.add_list_item(
-                            text=item.text,
-                            enumerated=item.enumerated,
-                            marker=item.marker,
-                            orig=item.text,
-                            prov=item.prov[0],
-                            parent=new_doc.groups[-1]
-                        )
-                elif item.label == 'text' or item.label == 'checkbox_unselected' or item.label == 'code' or item.label == 'paragraph':
-                    if group_cache != None:
-                        new_doc.add_group(
-                            label=GroupLabel.LIST,
-                            name="list",
-                            parent=new_doc.body
-                        )
-                        group_cache = None
-                    if len(new_doc.groups) > 0:
-                        new_doc.add_text(
-                            label=item.label,
-                            text=item.text,
-                            orig=item.text,
-                            prov=item.prov[0],
-                            parent=new_doc.groups[-1]
-                        )
-                    else:
-                        new_doc.add_text(
-                            label=item.label,
-                            text=item.text,
-                            orig=item.text,
-                            prov=item.prov[0],
-                            parent=new_doc.body
-                        )
+        
         # TODO: 최종 전처리 document로 chunk 추출
-        chunker: HierarchicalChunker = HierarchicalChunker()
-        chunks: List[DocChunk] = list(chunker.chunk(dl_doc=new_doc, **kwargs))
+        # chunker: HierarchicalChunker = HierarchicalChunker()
+        chunks: List[DocChunk] = list(chunker.chunk(dl_doc=documents, **kwargs))
         # TODO: 페이지 관련 이슈 처리 시 해당 부분도 수정 필요
         for chunk in chunks:
             self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
@@ -999,8 +919,8 @@ class DocumentProcessor:
             list[dict]:
         pdf_path = file_path.replace('.hwp', '.pdf').replace('.txt', '.pdf').replace('.json', '.pdf')
 
-        if os.path.exists(pdf_path):
-            doc = fitz.open(pdf_path)
+        # if os.path.exists(pdf_path):
+        #     doc = fitz.open(pdf_path)
 
         global_metadata = dict(
             n_chunk_of_doc=len(chunks),
@@ -1057,11 +977,11 @@ class DocumentProcessor:
 
     async def __call__(self, request: Request, file_path: str, **kwargs: dict):
         document: DoclingDocument = self.load_documents(file_path, **kwargs)
-        await assert_cancelled(request)
+        # await assert_cancelled(request)
 
         # Extract Chunk from DoclingDocument
         chunks: List[DocChunk] = self.split_documents(document, **kwargs)
-        await assert_cancelled(request)
+        # await assert_cancelled(request)
 
         vectors: list[dict] = self.compose_vectors(document, chunks, file_path, **kwargs)
         return vectors

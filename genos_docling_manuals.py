@@ -977,11 +977,11 @@ class DocumentProcessor:
 
     async def __call__(self, request: Request, file_path: str, **kwargs: dict):
         document: DoclingDocument = self.load_documents(file_path, **kwargs)
-        # await assert_cancelled(request)
+        await assert_cancelled(request)
 
         # Extract Chunk from DoclingDocument
         chunks: List[DocChunk] = self.split_documents(document, **kwargs)
-        # await assert_cancelled(request)
+        await assert_cancelled(request)
 
         vectors: list[dict] = self.compose_vectors(document, chunks, file_path, **kwargs)
         return vectors

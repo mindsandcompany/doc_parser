@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Viewer with Toggle</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 체크박스 영역 -->
+    <div class="controls">
+        <div class="first-line">
+            <label>
+                <input type="checkbox" id="toggle-text" checked>
+                Text Boxes
+            </label>
+            <label>
+                <input type="checkbox" id="toggle-group" checked>
+                Group Boxes
+            </label>
+            <label>
+                <input type="checkbox" id="toggle-chunk" checked>
+                Chunk Boxes
+            </label>
+            <label>
+                <input type="checkbox" id="toggle-chunk-hybrid" checked>
+                Chunk Hybrid
+            </label>
+            <!-- <fieldset id="json_filedset">
+                <div><input type="radio" name="json" id="viewjson">원본</div>
+                <div><input type="radio" name="json" id="viewjson_edit" checked>수정본</div>
+            </fieldset> -->
+            <label>
+                <input type="checkbox" id="toggle-origin">
+                원본보기
+            </label>
+            <input type="button" value="원본json" id="showJsonOrigin"/>
+            <input type="button" value="수정본json" id="showJsonButton"/>
+            <input type="button" value="Chunk_json" id="showChunkButton"/>
+            <input type="button" value="Chunk_hybrid" id="showChunkHybridButton"/>
+
+        </div>
+        <div id="file-path">
+            No data
+        </div>
+    </div>
+
+    <!-- 트리 뷰와 캔버스 컨테이너 -->
+    <div class="container">
+        <div class="tree-view" id="tree-view"></div>
+        <div class="preview" id="preview">
+            <canvas id="canvas"></canvas>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

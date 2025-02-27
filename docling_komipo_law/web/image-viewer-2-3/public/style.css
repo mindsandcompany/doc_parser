@@ -1,0 +1,97 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column; /* 상단 체크박스를 추가하므로 세로 배치 */
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    flex: 1; /* 화면의 남은 공간을 차지 */
+    width: 100%;
+    height: calc(100vh - 50px);;
+    overflow: hidden; /* 브라우저 크기 변화에 따라 영역을 유지 */
+}
+
+.controls {
+    padding: 10px;
+    background-color: #f4f4f4;
+    border-bottom: 1px solid #ccc;
+    flex-shrink: 0; /* 크기 축소 방지 */
+}
+
+.controls .first-line{
+    display: flex;
+}
+
+.tree-view {
+    width: 300px; /* 고정된 너비 (px 단위) */
+    background: #f4f4f4;
+    padding: 10px;
+    overflow-y: auto;
+    border-right: 1px solid #ccc;
+    flex-shrink: 0; /* 크기 축소 방지 */
+}
+
+.tree-view .folder,
+.tree-view .file {
+    margin-left: 0; /* 기본값 */
+}
+
+.tree-view .children {
+    margin-left: 20px; /* 들여쓰기 (2칸) */
+}
+
+.tree-view .folder {
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.tree-view .file {
+    cursor: pointer;
+    color: #555;
+}
+
+.tree-view .file:hover {
+    text-decoration: underline;
+}
+
+.preview {
+    flex: 1; /* 트리뷰 옆에 남은 공간을 모두 차지 */
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    overflow: auto; /* 스크롤 방지 */
+    background: #fff;
+    position: relative; /* 캔버스 크기 조정을 위해 필요 */
+}
+
+#canvas {
+    display: block;
+    width: 100%; /* 브라우저 크기에 맞게 조정 */
+    height: auto; /* 브라우저 크기에 맞게 조정 */
+    object-fit: contain; /* 비율 유지하면서 캔버스를 영역에 맞게 조정 */
+}
+
+.tree-view .selected {
+    background-color: #007BFF; /* 선택된 아이템 배경색 */
+    color: white; /* 텍스트 색 */
+    font-weight: bold; /* 텍스트 강조 */
+}
+
+.tree-view .children {
+    margin-left: 20px; /* 들여쓰기 */
+    display: none; /* 기본적으로 접힘 상태 */
+}
+
+.tree-view .folder {
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#json_filedset {
+    display: flex;
+}

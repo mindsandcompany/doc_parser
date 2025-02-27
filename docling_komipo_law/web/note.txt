@@ -1,0 +1,10 @@
+tar -xf node-v22.11.0-linux-x64.tar.xz
+tar -xzf yarn-v1.22.22.tar.gz
+
+cd node-v22.11.0-linux-x64/bin/
+sudo ln -s /home/mnc/work/web/node-v22.11.0-linux-x64/bin/node /usr/local/bin/node
+sudo ln -s /home/mnc/work/web/node-v22.11.0-linux-x64/bin/npm /usr/local/bin/npm
+
+cd ../../yarn-v1.22.22/bin/
+sudo ln -s /home/mnc/work/web/yarn-v1.22.22/bin/yarn /usr/local/bin/yarn
+

@@ -22,7 +22,6 @@ class ExamplePictureClassifierPipelineOptions(PdfPipelineOptions):
 
 
 class ExamplePictureClassifierEnrichmentModel(BaseEnrichmentModel):
-
     def __init__(self, enabled: bool):
         self.enabled = enabled
 
@@ -54,7 +53,6 @@ class ExamplePictureClassifierEnrichmentModel(BaseEnrichmentModel):
 
 
 class ExamplePictureClassifierPipeline(StandardPdfPipeline):
-
     def __init__(self, pipeline_options: ExamplePictureClassifierPipelineOptions):
         super().__init__(pipeline_options)
         self.pipeline_options: ExamplePictureClassifierPipeline
@@ -73,7 +71,7 @@ class ExamplePictureClassifierPipeline(StandardPdfPipeline):
 def main():
     logging.basicConfig(level=logging.INFO)
 
-    input_doc_path = Path("./tests/data/2206.01062.pdf")
+    input_doc_path = Path("./tests/data/pdf/2206.01062.pdf")
 
     pipeline_options = ExamplePictureClassifierPipelineOptions()
     pipeline_options.images_scale = 2.0

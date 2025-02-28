@@ -26,11 +26,86 @@ To see all available options (export formats etc.) run `docling --help`. More de
 
 ### Advanced options
 
+#### Model prefetching and offline usage
+
+By default, models are downloaded automatically upon first usage. If you would prefer
+to explicitly prefetch them for offline use (e.g. in air-gapped environments) you can do
+that as follows:
+
+**Step 1: Prefetch the models**
+
+Use the `docling-tools models download` utility:
+
+```sh
+$ docling-tools models download
+Downloading layout model...
+Downloading tableformer model...
+Downloading picture classifier model...
+Downloading code formula model...
+Downloading easyocr models...
+Models downloaded into $HOME/.cache/docling/models.
+```
+
+Alternatively, models can be programmatically downloaded using `docling.utils.model_downloader.download_models()`.
+
+**Step 2: Use the prefetched models**
+
+```python
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import EasyOcrOptions, PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
+
+artifacts_path = "/local/path/to/models"
+
+pipeline_options = PdfPipelineOptions(artifacts_path=artifacts_path)
+doc_converter = DocumentConverter(
+    format_options={
+        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+    }
+)
+```
+
+Or using the CLI:
+
+```sh
+docling --artifacts-path="/local/path/to/models" FILE
+```
+
+#### Using remote services
+
+The main purpose of Docling is to run local models which are not sharing any user data with remote services.
+Anyhow, there are valid use cases for processing part of the pipeline using remote services, for example invoking OCR engines from cloud vendors or the usage of hosted LLMs.
+
+In Docling we decided to allow such models, but we require the user to explicitly opt-in in communicating with external services.
+
+```py
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
+
+pipeline_options = PdfPipelineOptions(enable_remote_services=True)
+doc_converter = DocumentConverter(
+    format_options={
+        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+    }
+)
+```
+
+When the value `enable_remote_services=True` is not set, the system will raise an exception `OperationNotAllowed()`.
+
+_Note: This option is only related to the system sending user data to remote services. Control of pulling data (e.g. model weights) follows the logic described in [Model prefetching and offline usage](#model-prefetching-and-offline-usage)._
+
+##### List of remote model services
+
+The options in this list require the explicit `enable_remote_services=True` when processing the documents.
+
+- `PictureDescriptionApiOptions`: Using vision models via API calls.
+
+
 #### Adjust pipeline features
 
 The example file [custom_convert.py](./examples/custom_convert.py) contains multiple ways
 one can adjust the conversion pipeline and features.
-
 
 ##### Control PDF table extraction options
 
@@ -70,28 +145,6 @@ doc_converter = DocumentConverter(
 )
 ```
 
-##### Provide specific artifacts path
-
-By default, artifacts such as models are downloaded automatically upon first usage. If you would prefer to use a local path where the artifacts have been explicitly prefetched, you can do that as follows:
-
-```python
-from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
-
-# # to explicitly prefetch:
-# artifacts_path = StandardPdfPipeline.download_models_hf()
-
-artifacts_path = "/local/path/to/artifacts"
-
-pipeline_options = PdfPipelineOptions(artifacts_path=artifacts_path)
-doc_converter = DocumentConverter(
-    format_options={
-        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-    }
-)
-```
 
 #### Impose limits on the document size
 
@@ -125,6 +178,39 @@ result = converter.convert(source)
 
 You can limit the CPU threads used by Docling by setting the environment variable `OMP_NUM_THREADS` accordingly. The default setting is using 4 CPU threads.
 
+
+#### Use specific backend converters
+
+!!! note
+
+    This section discusses directly invoking a [backend](./concepts/architecture.md),
+    i.e. using a low-level API. This should only be done when necessary. For most cases,
+    using a `DocumentConverter` (high-level API) as discussed in the sections above
+    should suffice — and is the recommended way.
+
+By default, Docling will try to identify the document format to apply the appropriate conversion backend (see the list of [supported formats](./supported_formats.md)).
+You can restrict the `DocumentConverter` to a set of allowed document formats, as shown in the [Multi-format conversion](./examples/run_with_formats.py) example.
+Alternatively, you can also use the specific backend that matches your document content. For instance, you can use `HTMLDocumentBackend` for HTML pages:
+
+```python
+import urllib.request
+from io import BytesIO
+from docling.backend.html_backend import HTMLDocumentBackend
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.document import InputDocument
+
+url = "https://en.wikipedia.org/wiki/Duck"
+text = urllib.request.urlopen(url).read()
+in_doc = InputDocument(
+    path_or_stream=BytesIO(text),
+    format=InputFormat.HTML,
+    backend=HTMLDocumentBackend,
+    filename="duck.html",
+)
+backend = HTMLDocumentBackend(in_doc=in_doc, path_or_stream=BytesIO(text))
+dl_doc = backend.convert()
+print(dl_doc.export_to_markdown())
+```
 
 ## Chunking
 

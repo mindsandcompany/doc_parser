@@ -426,7 +426,7 @@ from docling_core.types.doc.document import (
 from docling_core.types.doc.labels import DocItemLabel
 
 
-class HierarchicalChunker(OrgHierarchicalChunker):
+#class HierarchicalChunker(OrgHierarchicalChunker):
     
 class HierarchicalChunker(BaseChunker):
     r"""Chunker implementation leveraging the document layout.

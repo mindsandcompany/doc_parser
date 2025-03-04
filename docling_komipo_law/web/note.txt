@@ -1,10 +1,21 @@
+# node, npm, yarn 압축해제제
 tar -xf node-v22.11.0-linux-x64.tar.xz
 tar -xzf yarn-v1.22.22.tar.gz
 
+# 심볼릭링크 생성
 cd node-v22.11.0-linux-x64/bin/
-sudo ln -s /home/mnc/work/web/node-v22.11.0-linux-x64/bin/node /usr/local/bin/node
-sudo ln -s /home/mnc/work/web/node-v22.11.0-linux-x64/bin/npm /usr/local/bin/npm
+sudo ln -sf /home/mnc/work/doc_parser/docling_komipo_law/web/node-v22.11.0-linux-x64/bin/node /usr/local/bin/node
+sudo ln -sf /home/mnc/work/doc_parser/docling_komipo_law/web/node-v22.11.0-linux-x64/bin/npm /usr/local/bin/npm
 
 cd ../../yarn-v1.22.22/bin/
-sudo ln -s /home/mnc/work/web/yarn-v1.22.22/bin/yarn /usr/local/bin/yarn
+sudo ln -sf /home/mnc/work/doc_parser/docling_komipo_law/web/yarn-v1.22.22/bin/yarn /usr/local/bin/yarn
 
+# local npm 패키지 압축해제제
+cd ../../image-viewer-2-3/
+tar -xzf npm_packages.tar.gz
+
+# npm 패키지 오프라인 설치
+yarn install --offline
+
+# 서버 실행
+node server.js

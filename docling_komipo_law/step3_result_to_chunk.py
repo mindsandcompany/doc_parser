@@ -483,7 +483,7 @@ def process_pdf(file_path, input_dir):
 # extract_docling_info(input_dir)
 # input_dir = "./output2/규정_drm해제/절차서"
 # extract_docling_info(input_dir)
-input_dir = "./output2"
+input_dir = "./output"
 extract_docling_info(input_dir)
 #input_dir = "./output2/규정_drm해제/매뉴얼/전사매뉴얼-안전-001_전사안전보건경영매뉴얼_2024-09-10_[매뉴얼] 안전보건 경영매뉴얼(Rev.12).hwp"
 #extract_docling_info(input_dir)

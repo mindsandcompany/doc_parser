@@ -30,9 +30,9 @@ from docling_core.types.doc import (
 )
 
 if __name__ == "__main__":
-    target_directory = Path("./input/manual")
+    target_directory = Path("./input")
     # target_directory = Path("./01.사규규정지침_drm해제/규정_drm해제")
-    output_directory = Path("./output2")
+    output_directory = Path("./output")
     ## 파일 목록 확인
     files: list[str] = list_files_recursively(target_directory)
     pipe_line_options = PdfPipelineOptions()

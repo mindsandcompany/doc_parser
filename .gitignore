@@ -5,6 +5,12 @@ ds_convert_models/
 # Created by https://www.toptal.com/developers/gitignore/api/python,macos,virtualenv,pycharm,visualstudiocode,emacs,vim,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,macos,virtualenv,pycharm,visualstudiocode,emacs,vim,jupyternotebooks
 
+docling_komipo_law/web/image-viewer-2-3/node_modules/
+docling_komipo_law/web/node-v22.11.0-linux-x64/
+docling_komipo_law/web/yarn-v1.22.22/
+docling_komipo_law/web/image-viewer-2-3/npm_packages/
+docling_komipo_law/output/
+
 ### Emacs ###
 # -*- mode: gitignore; -*-
 *~

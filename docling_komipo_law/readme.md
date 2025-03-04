@@ -1,5 +1,5 @@
 # Image Viewer 설치
-### 폐쇄망 환경일 경우
+### 폐쇄망 환경일 경우(권장)
 - web/ 폴더의 node.tar.gz, yarn.tar.gz 설치 : 설치방법은 web/폴더의 note.txt 참조
 ### 인터넷 환경일 경우
 - node-v22.11.0 설치
@@ -17,10 +17,11 @@
     ```
     web/image-viewer-2-3/node server.js
     ```
-- bbox color
+- bbox color(public/script.js/536라인,574라인,646라인 설정가능능)
   - Hybrid chunk : violet
   - Hierachical Chunk : red
   - items(texts, tables, pictures) : orange
+- 뷰어 실행후(localhost:3003), 화면상단 체크박스로 표시/해제 가능.
 
 # PDF 전처리
 - step1, step2, step3, step4 순서대로 실행

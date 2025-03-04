@@ -6,8 +6,8 @@ const app = express();
 const PORT = 3003;
 
 // 폴더 경로 설정
-const FOLDER_TO_SERVE = path.join(__dirname, '../../output2');
-const FOLDER_TO_SERVE_JSON = path.join(__dirname, '../../output2');
+const FOLDER_TO_SERVE = path.join(__dirname, '../../output');
+const FOLDER_TO_SERVE_JSON = path.join(__dirname, '../../output');
 
 // 정적 파일 제공
 app.use(express.static('public'));

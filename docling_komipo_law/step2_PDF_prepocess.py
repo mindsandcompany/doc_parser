@@ -363,7 +363,7 @@ def process_pdf(file_path, input_dir):
         json.dump(new_doc.export_to_dict(), fw, indent=2, ensure_ascii=False)
     print(f"Processed {file_path}")
 
-input_dir = "./output2/"
+input_dir = "./output/"
 extract_docling_info(input_dir)
 # input_dir = "./output2/규정_drm해제/절차서"
 # extract_docling_info(input_dir)

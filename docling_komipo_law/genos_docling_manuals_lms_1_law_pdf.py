@@ -853,7 +853,7 @@ class GenOSVectorMetaBuilder:
             self, i_page: int, i_chunk_on_page: int, n_chunk_of_page: int
     ) -> "GenOSVectorMetaBuilder":
         """페이지 정보 설정"""
-        self.i_page = i_page - 1 # -1 for Docling Preprocessor
+        self.i_page = i_page
         self.i_chunk_on_page = i_chunk_on_page
         self.n_chunk_of_page = n_chunk_of_page
         return self

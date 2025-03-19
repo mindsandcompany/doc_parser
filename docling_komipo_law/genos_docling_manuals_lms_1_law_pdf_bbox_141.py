@@ -30,8 +30,8 @@ from docling.datamodel.pipeline_options import (
     TableFormerMode,
 )
 # docling imports
-from docling.document_converter import DocumentConverter, PdfFormatOption, HTMLFormatOption
-from docling.datamodel.document import ConversionResult, InputDocument
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.datamodel.document import ConversionResult
 from docling_core.transforms.chunker import HierarchicalChunker as OrgHierarchicalChunker
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker as OrgHybridChunker
 from docling_core.transforms.chunker import (
@@ -65,8 +65,6 @@ from docling_core.types.doc import (
 )
 from collections import Counter
 import re
-from docling.backend.html_backend import HTMLDocumentBackend
-import subprocess
 
 # ============================================
 
@@ -85,10 +83,320 @@ except ImportError:
         "`pip install 'docling-core[chunking]'`"
     )
 
+#from genos_utils import upload_files
+
 #os.environ['HF_HOME'] = "/home/mnc/temp/.cache/huggingface"
 ####################################################
 #################### 전처리 코드 #####################
 ####################################################
+def get_max_page(result):
+    max_page = 0
+    for item, level in result.iterate_items():
+        if isinstance(item, TextItem):
+            if item.prov[0].page_no > max_page:
+                max_page = item.prov[0].page_no
+        elif isinstance(item, TableItem):
+            if item.prov[0].page_no > max_page:
+                max_page = item.prov[0].page_no
+    return max_page
+
+def get_max_height(result):
+    max_height = 0
+    page_header_texts = []
+    page_heights = {}
+    for item, level in result.iterate_items():
+        if isinstance(item, TextItem):
+            if item.label == 'page_header':
+                page_header_texts.append(item.text)
+        if item.prov[0].bbox.t > max_height:
+            max_height = item.prov[0].bbox.t
+        page_no = item.prov[0].page_no
+        if page_no not in page_heights:
+            page_heights[page_no] = int(item.prov[0].bbox.t)
+        else:
+            page_heights[page_no] = max(page_heights[page_no], int(item.prov[0].bbox.t))
+    header_counter = Counter(page_header_texts)
+    if len(header_counter.most_common()) > 0:
+        page_header_text = header_counter.most_common(1)[0][0]
+    else:
+        page_header_text = ''
+    return max_height, page_header_text, page_heights
+
+# 테이블기준으로 삭제선 설정.
+def get_delete_line_from_table(max_height, result, page_heights):
+    max_below_line = max_height*0.8
+    re_pattern_texts = r'^(절\s?차\s?서|(운\s?전\s?)?지\s?침\s?서|품\s?질\s?매\s?뉴\s?얼)$'
+    re_pattern = r'^(페\s?이\s?지\s?:?|시\s?행\s?일\s?자\s?:?|절차서 번호|개\s?정\s?번\s?호\s?:?).*'
+    re_pattern_2 = r'.*(페이지(\s?:\s?|\s)\d{1,3}\s?/\s?\d{1,3})$'
+    delete_lines = []
+    page_delete_lines = {}
+    first_header_detect = {}
+    def update_target_page(item):
+        page_no = item.prov[0].page_no
+        if page_no not in page_delete_lines:
+            page_delete_lines[page_no] = int(item.prov[0].bbox.b)
+        else:
+            page_delete_lines[page_no] = min(page_delete_lines[page_no], int(item.prov[0].bbox.b))
+    for item, level in result.iterate_items():
+        if isinstance(item, TableItem):
+            page_no = item.prov[0].page_no
+            # 해당 페이지의 첫번째 헤더테이블을 찾았으면, 중단
+            if page_no in first_header_detect and first_header_detect[page_no]:
+                continue
+            cnt = 0
+            if item.prov[0].bbox.t > page_heights[page_no]*0.80 and item.prov[0].bbox.b > page_heights[page_no]*0.5:
+                for cell in item.data.table_cells:
+                    # 테이블내 셀값은 10개 이내로 조사. 엉뚱한 테이블이 걸리지 않기 위함.
+                    cnt += 1
+                    if cnt == 10:
+                        break
+                    if re.match(re_pattern_texts, cell.text):
+                        update_target_page(item)
+                        first_header_detect[page_no] = True
+                    elif re.match(re_pattern, cell.text):
+                        if cell.column_header == True and cell.text == "페이지":
+                            continue
+                        if item.prov[0].bbox.b < max_below_line:
+                            max_below_line = item.prov[0].bbox.b
+                        update_target_page(item)
+                        delete_lines.append(int(item.prov[0].bbox.b))
+                        first_header_detect[page_no] = True
+                    elif re.match(re_pattern_2, cell.text):
+                        update_target_page(item)
+                        first_header_detect[page_no] = True
+    # 빈도수가 가장 높은 삭제선을 대표값으로 설정.
+    delete_line_counter = Counter(delete_lines)
+    if len(delete_line_counter.most_common()) > 0:
+        delete_line = delete_line_counter.most_common(1)[0][0]
+    else:
+        delete_line = None
+    return delete_line, page_delete_lines
+
+# 테이블이 없을경우, 
+def update_delete_line_from_text(header_table_delete_line, result, page_delete_lines, max_height):
+    re_pattern_texts = r'^(절\s?차\s?서|(운\s?전\s?)?지\s?침\s?서|품\s?질\s?매\s?뉴\s?얼)$'
+    re_pattern = r"(^((페|폐)\s?이\s?지\s?:?|시\s?행\s?일\s?자\s?:?|절차서 번호).*|.*시행일자\s?:\s?('\d{2}.\d{2}|\d{4}.\s?\d{2}.?)$)"
+    re_pattern_2 = r'.*(페이지(\s?:\s?|\s)\d{1,3}\s?/\s?\d{1,3})$'
+    re_pattern_page_no = r'^\d{1,3}\s?의\s?\d{1,3}$'
+    re_pattern_3 = r'.*(페\s?이\s?지\s?:\s?(\d{1,3})?)$'
+    re_pattern_3_page_no = r'^\d{1,3}\s?/\s?\d{1,3}$'
+    if header_table_delete_line:
+        updated_delete_line = header_table_delete_line
+    else:
+        updated_delete_line = max_height*0.8
+    page_num_trigger = {} # 헤더부분 "페이지" 텍스트를 찾았을경우, 아래 2번째 라인의 날짜 형식을 찾기위한 변수.
+    page_delete_line_update = {} # 양면 문서 우측의 첫번째 텍스트를 찾았을경우, 더이상 업데이트 하지 않기 위한 변수.
+    initial_page_delete_lines = page_delete_lines.copy()
+    page_delete_lines_text = {} # 현재 함수에서 얻어진 삭제선.
+    def update_target_page(item, item_above_flag):
+        page_no = item.prov[0].page_no
+        if item_above_flag:
+            if page_no in page_delete_line_update and page_delete_line_update[page_no] == True:
+                pass
+            else:
+                if page_no in page_delete_lines:
+                    del page_delete_lines[page_no]
+                    page_delete_line_update[page_no] = True
+        if page_no not in page_delete_lines:
+            page_delete_lines[page_no] = int(item.prov[0].bbox.b)
+        else:
+            page_delete_lines[page_no] = min(page_delete_lines[page_no], int(item.prov[0].bbox.b))
+        
+        if page_no not in page_delete_lines_text:
+            page_delete_lines_text[page_no] = int(item.prov[0].bbox.b)
+        else:
+            page_delete_lines_text[page_no] = min(page_delete_lines_text[page_no], int(item.prov[0].bbox.b))
+
+    for item, level in result.iterate_items():
+        item_above_flag = False # 양면 문서에서 좌측에 테이블이 있어서, 우측의 본문이 잘린 경우를 위한 변수.
+        if isinstance(item, TextItem):
+            page_no = item.prov[0].page_no
+            if page_no in initial_page_delete_lines:
+                # 테이블로 정해진 삭제선이 있고, 그보다 작으면 조사를 안해도 되지만, 
+                if item.prov[0].bbox.t < initial_page_delete_lines[page_no]:
+                    continue
+                else:
+                    # 삭제선보다 높은위치에 있는 텍스트는 다시 조사.
+                    # 양면 문서의 우측에 텍스트가 존재하는 문서를 대비함.
+                    item_above_flag = True
+            if item.prov[0].bbox.t > updated_delete_line:
+                if page_no in page_num_trigger and page_num_trigger[page_no]:
+                    if re.match(re_pattern_page_no, item.text) or re.match(re_pattern_3_page_no, item.text):
+                        update_target_page(item, item_above_flag)
+                if re.match(re_pattern_texts, item.text):
+                    update_target_page(item, item_above_flag)
+                elif re.match(re_pattern, item.text):
+                    update_target_page(item, item_above_flag)
+                elif re.match(re_pattern_2, item.text):
+                    update_target_page(item, item_above_flag)
+                    page_num_trigger[page_no] = True
+                elif re.match(re_pattern_3, item.text):
+                    update_target_page(item, item_above_flag)
+                    page_num_trigger[page_no] = True
+            elif item.prov[0].bbox.t > updated_delete_line * 0.6:
+                if page_no in page_num_trigger and page_num_trigger[page_no]:
+                    if re.match(re_pattern_page_no, item.text) or re.match(re_pattern_3_page_no, item.text):
+                        update_target_page(item, item_above_flag)
+                if re.match(re_pattern, item.text) or re.match(re_pattern_2, item.text):
+                    update_target_page(item, item_above_flag)
+                    if item.prov[0].bbox.b < updated_delete_line:
+                        updated_delete_line = item.prov[0].bbox.b
+                    page_num_trigger[page_no] = True
+                elif re.match(re_pattern_3, item.text):
+                    update_target_page(item, item_above_flag)
+                    if item.prov[0].bbox.b < updated_delete_line:
+                        updated_delete_line = item.prov[0].bbox.b
+                    page_num_trigger[page_no] = True
+            if re.match(re_pattern, item.text) or re.match(re_pattern_2, item.text) or re.match(re_pattern_3, item.text):
+                if page_no in page_num_trigger and page_num_trigger[page_no]:
+                    if re.match(re_pattern_page_no, item.text) or re.match(re_pattern_3_page_no, item.text):
+                        update_target_page(item, item_above_flag)
+                if item.prov[0].bbox.t < max_height * 0.5:
+                    continue
+                elif re.match(r'^(절차서 제목)', item.text):
+                    continue
+                update_target_page(item, item_above_flag)
+                page_num_trigger[page_no] = True
+
+    for item, level in result.iterate_items():
+        item_above_flag = False # 양면 문서에서 좌측에 테이블이 있어서, 우측의 본문이 잘린 경우를 위한 변수.
+        if isinstance(item, TextItem):
+            page_no = item.prov[0].page_no
+            if page_no in page_delete_lines_text and item.prov[0].bbox.t > page_delete_lines_text[page_no] and item.prov[0].bbox.b < page_delete_lines_text[page_no]:
+                if page_no in page_delete_lines:
+                    if page_delete_lines[page_no] > item.prov[0].bbox.b:
+                        page_delete_lines[page_no] = item.prov[0].bbox.b
+    return page_delete_lines
+
+def process_pdf(org_document: DoclingDocument):
+
+    origin = DocumentOrigin(
+        filename=org_document.origin.filename,
+        mimetype="application/pdf",
+        binary_hash=org_document.origin.binary_hash,
+    )
+
+    new_doc = DoclingDocument(
+        name="file", origin=origin
+    )
+    max_height, page_header_text, page_heights = get_max_height(org_document)
+    header_table_delete_line, page_delete_lines = get_delete_line_from_table(max_height, org_document, page_heights)
+    updated_page_delete_lines = update_delete_line_from_text(header_table_delete_line, org_document, page_delete_lines, max_height)
+
+    section_header_cache = []
+    last_level = 0
+    def add_headers(header, new_doc, last_level):
+        last_level += 1
+        new_doc.add_heading(
+            text=header.text,
+            orig=header.text,
+            level=last_level,
+            prov=header.prov[0],
+            parent=new_doc.body
+        )
+        return last_level
+
+    def attach_text(item, new_doc):
+        nonlocal section_header_cache
+        nonlocal last_level
+        if item.label in ['page_header', 'caption']:
+            new_doc.add_heading(
+                text=item.text,
+                orig=item.text,
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
+        elif item.label == 'section_header':
+            section_header_cache.append(item)
+        elif item.label=='list_item':
+            if len(section_header_cache)>0:
+                for header in section_header_cache:
+                    last_level = add_headers(header, new_doc, last_level)
+                section_header_cache = []
+                last_level = 0
+            new_doc.add_list_item(
+                text=item.text,
+                enumerated=item.enumerated,
+                marker=item.marker,
+                orig=item.text,
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
+        elif item.label=='text' or item.label=='checkbox_unselected' or item.label=='code' or item.label=='paragraph':
+            # print("text", item.self_ref)
+            if len(section_header_cache)>0:
+                for header in section_header_cache:
+                    last_level = add_headers(header, new_doc, last_level)
+                section_header_cache = []
+                last_level = 0
+            new_doc.add_text(
+                label=item.label,
+                text=item.text,
+                orig=item.text,
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
+
+    for key, item in org_document.pages.items():
+        if isinstance(item, PageItem):
+            new_doc.add_page(
+                page_no=item.page_no,
+                size=item.size,
+                image=item.image,
+            )
+    label_list = ['page_header', 'section_header', 'list_item']
+    for item, level in org_document.iterate_items():
+        page_no = item.prov[0].page_no
+        if item.prov[0].page_no != 1:
+            if isinstance(item, TextItem) and ''.join(item.text.split()) == ''.join(page_header_text.split()):
+                if item.label in label_list:
+                    continue
+                elif page_no in updated_page_delete_lines and item.prov[0].bbox.t > updated_page_delete_lines[page_no]:
+                    continue
+            if page_no in updated_page_delete_lines and item.prov[0].bbox.t > updated_page_delete_lines[page_no]:
+                if item.prov[0].bbox.b < updated_page_delete_lines[page_no]:
+                    middle_line = item.prov[0].bbox.b + (item.prov[0].bbox.t - item.prov[0].bbox.b)/2
+                    if middle_line > updated_page_delete_lines[page_no]:
+                        continue
+                    else:
+                        pass
+                else:
+                    continue
+        if isinstance(item, PictureItem):
+            if len(section_header_cache)>0:
+                for header in section_header_cache:
+                    last_level = add_headers(header, new_doc, last_level)
+                section_header_cache = []
+                last_level = 0
+            new_doc.add_picture(
+                annotations=[],
+                image=item.image,
+                caption=[],
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
+            if len(item.children) > 0:
+                for child in item.children:
+                    for text in org_document.texts:
+                        if text.self_ref == child.cref:
+                            attach_text(text, new_doc)
+                            break
+        elif isinstance(item, TableItem):
+            if len(section_header_cache)>0:
+                for header in section_header_cache:
+                    last_level = add_headers(header, new_doc, last_level)
+                section_header_cache = []
+                last_level = 0
+            new_doc.add_table(
+                data=item.data,
+                caption=[],
+                prov=item.prov[0],
+                parent=new_doc.body
+            )
+        elif isinstance(item, TextItem):
+            attach_text(item, new_doc)
+
+    return new_doc
 
 ####################################################
 #################### 전처리 코드 #####################
@@ -120,7 +428,8 @@ from docling_core.types.doc.document import (
 from docling_core.types.doc.labels import DocItemLabel
 
 
-
+#class HierarchicalChunker(OrgHierarchicalChunker):
+    
 class HierarchicalChunker(BaseChunker):
     r"""Chunker implementation leveraging the document layout.
 
@@ -132,7 +441,6 @@ class HierarchicalChunker(BaseChunker):
 
     merge_list_items: bool = True
     delim: str = "\n"
-    
 
     @classmethod
     def _triplet_serialize(cls, table_df: DataFrame) -> str:
@@ -148,9 +456,9 @@ class HierarchicalChunker(BaseChunker):
         nrows = table_df.shape[0]
         ncols = table_df.shape[1]
         texts = [
-            f"{str(table_df.iloc[i, j]).strip()}"
-            for i in range(0, nrows)
-            for j in range(0, ncols)
+            f"{rows[i]}, {cols[j]} = {str(table_df.iloc[i, j]).strip()}"
+            for i in range(1, nrows)
+            for j in range(1, ncols)
         ]
         output_text = ". ".join(texts)
 
@@ -167,13 +475,6 @@ class HierarchicalChunker(BaseChunker):
         """
         heading_by_level: dict[LevelNumber, str] = {}
         list_items: list[TextItem] = []
-        title_cnt = 1
-        re_pattern_jang = r'^제\d{1,3}장.*'
-        re_pattern_jeol = r'^제\d{1,3}절.*'
-        re_pattern_jo = r'^제\d{1,3}조.*'
-        re_pattern_clean = r'[\n\t]+'
-        url_temp = ""
-        
         for item, level in dl_doc.iterate_items():
             captions = None
             if isinstance(item, DocItem):
@@ -195,7 +496,7 @@ class HierarchicalChunker(BaseChunker):
                                 doc_items=list_items,
                                 headings=[
                                     heading_by_level[k]
-                                    for k in sorted(heading_by_level)
+                                    for k in sorted(heading_by_level) if k != 4
                                 ]
                                 or None,
                                 origin=dl_doc.origin,
@@ -223,65 +524,8 @@ class HierarchicalChunker(BaseChunker):
                 if isinstance(item, TextItem) or (
                     (not self.merge_list_items) and isinstance(item, ListItem)
                 ):
-                    if title_cnt == 1:
-                        if item.text.startswith("http://"):
-                            url_temp = item.text
-                            title_cnt += 1
-                        else:
-                            heading_by_level[1] = item.text+", "
-                            title_cnt += 1
-                            continue
-                    elif title_cnt == 2:
-                        if url_temp != "":
-                            heading_by_level[1] = item.text+", "
-                            title_cnt += 1
-                            continue
-                    else:
-                        title_cnt += 1
-                        if re.match(re_pattern_jang, item.text):
-                            heading_by_level[2] = item.text
-                            heading_by_level[3] = ""
-                            heading_by_level[4] = ""
-                            continue
-                        elif re.match(re_pattern_jeol, item.text):
-                            heading_by_level[3] = item.text
-                            heading_by_level[4] = ""
-                            continue
-                        elif re.match(re_pattern_jo, item.text):
-                            text_ = re.sub(re_pattern_clean, "", item.text)
-                            match = re.match(r'제.*?조\s?\([^()]*\)', text_)
-                            if match:
-                                heading = match.group(0)
-                                heading_by_level[4] = heading
-                                print("heading : ", heading)
-                                #continue
-                            else:
-                                match = re.match(r'^제.*?조', text_)
-                                heading = match.group(0)
-                                heading_by_level[4] = heading
-                                print("heading : ", heading)
-                                #continue
-                        elif item.text[:2] == "부칙":
-                            heading_by_level[2] = ""
-                            heading_by_level[3] = ""
-                            heading_by_level[4] = ""
-                        else:
-                            heading_by_level[4] = ""
-                    text = re.sub(re_pattern_clean, "", item.text, count=2)
+                    text = item.text
                 elif isinstance(item, TableItem):
-                    item_header = item.data.table_cells[0].text.strip()
-                    if title_cnt == 1:
-                        heading_by_level[1] = item_header
-                        title_cnt += 1
-                    else:
-                        if re.match(re_pattern_jang, item_header):
-                            heading_by_level[2] = item_header
-                        elif re.match(re_pattern_jeol, item_header):
-                            heading_by_level[3] = item_header
-                        elif re.match(re_pattern_jo, item_header):
-                            heading_by_level[4] = item_header
-                    if len(item.data.table_cells) == 1:
-                        continue
                     table_df = item.export_to_dataframe()
                     if table_df.shape[0] < 1 or table_df.shape[1] < 1:
                         # at least two cols needed, as first column contains row headers
@@ -291,7 +535,7 @@ class HierarchicalChunker(BaseChunker):
                         c.text for c in [r.resolve(dl_doc) for r in item.captions]
                     ] or None
                 elif isinstance(item, PictureItem):
-                    text = ''.join(str(value) for key, value in heading_by_level.items() if key != 4)
+                    text = ''.join(str(value) for value in heading_by_level.values())
                 else:
                     continue
                 c = DocChunk(
@@ -580,7 +824,7 @@ class GenOSVectorMeta(BaseModel):
     n_page: int = None
     reg_date: str = None
     bboxes: str = None
-    doc_items: list = None
+    page_bboxes: list = None
 
 class GenOSVectorMetaBuilder:
     def __init__(self):
@@ -597,13 +841,9 @@ class GenOSVectorMetaBuilder:
         self.n_page: Optional[int] = None
         self.reg_date: Optional[str] = None
         self.bboxes: str = None
-        self.doc_items = []
-        self.doc_items: list = None
-        self.url: str = None
-        self.title: str = None
-        self.chapter: str = None
-        self.section: str = None
-        self.article: str = None
+        self.chunk_bboxes: list = None
+        self.media_files: list = None
+
 
     def set_text(self, text: str) -> "GenOSVectorMetaBuilder":
         """텍스트와 관련된 데이터를 설정"""
@@ -635,17 +875,10 @@ class GenOSVectorMetaBuilder:
         #         })
         # NOTE: docling은 BOTTOMLEFT인데 해당 좌표 그대로 활용되는지 ?
         conv = []
-        if bbox != []:
-            conv.append({
-                'p1': {'x': bbox.l, 'y': bbox.t},
-                'p2': {'x': bbox.r, 'y': bbox.b},
-            })
-        else:
-            # conv.append({
-            #     'p1': {'x': 0, 'y': 0},
-            #     'p2': {'x': 0, 'y': 0},
-            # })
-            conv.append({})
+        conv.append({
+            'p1': {'x': bbox.l, 'y': bbox.t},
+            'p2': {'x': bbox.r, 'y': bbox.b},
+        })
         self.bboxes = json.dumps(conv)
         return self
 
@@ -656,30 +889,26 @@ class GenOSVectorMetaBuilder:
                 setattr(self, key, value)
         return self
 
-    def set_doc_items(self, doc_items: list) -> "GenOSVectorMetaBuilder":
-        self.doc_items = doc_items
-        return self
-    
-    def set_doc_url(self, url: str) -> "GenOSVectorMetaBuilder":
-        self.url = url
+    def set_chunk_bboxes(self, doc_items: list) -> "GenOSVectorMetaBuilder":
+        self.chunk_bboxes = []
+        for item in doc_items:
+            label = item.self_ref
+            type_ = item.label
+            page_no = item.prov[0].page_no
+            bbox = item.prov[0].bbox
+            bbox_data = {'l':bbox.l,'t':bbox.t,'r':bbox.r,'b':bbox.b}
+            self.chunk_bboxes.append({'page':page_no,'bbox':bbox_data,'type':type_})
         return self
 
-    def set_doc_headings(self, headings: list) -> "GenOSVectorMetaBuilder":
-        re_pattern_jang = r'^제\d{1,3}장.*'
-        re_pattern_jeol = r'^제\d{1,3}절.*'
-        re_pattern_jo = r'^제\d{1,3}조.*'
-        for h in headings:
-            if re.match(re_pattern_jang, h):
-                self.chapter = h
-            elif re.match(re_pattern_jeol, h):
-                self.section = h
-            elif re.match(re_pattern_jo, h):
-                if ")" in h:
-                    self.article = h[:h.find(")") + 1]
-                else:
-                    self.article = h[:h.find("조") + 1]
-            else:
-                self.title = h
+    def set_media_files(self, doc_items: list) -> "GenOSVectorMetaBuilder":
+        temp_list = []
+        for item in doc_items:
+            if isinstance(item, PictureItem):
+                path = str(item.image.uri)
+                name = path.rsplit("/",1)[-1]
+                temp_list.append({'name': name, 'type': 'image' })
+                #temp_list.append(name)
+        self.media_files = temp_list
         return self
 
     def build(self) -> GenOSVectorMeta:
@@ -697,12 +926,8 @@ class GenOSVectorMetaBuilder:
             n_page=self.n_page,
             reg_date=self.reg_date,
             bboxes=self.bboxes,
-            #doc_items=self.doc_items,
-            doc_url=self.url,
-            title=self.title,
-            chapter=self.chapter,
-            section=self.section,
-            article=self.article,
+            chunk_bboxes=self.chunk_bboxes,
+            media_files=self.media_files,
         )
 
 
@@ -733,9 +958,9 @@ class DocumentProcessor:
 
         self.converter = DocumentConverter(
             format_options={
-                InputFormat.HTML: HTMLFormatOption(
-                    # pipeline_options=pipe_line_options,
-                    # backend=DoclingParseV2DocumentBackend
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=pipe_line_options,
+                    backend=DoclingParseV2DocumentBackend
                 )
             }
         )
@@ -751,8 +976,8 @@ class DocumentProcessor:
         # NOTE: 처리시 파일 하나를 병렬로 처리하는지?? 아니면 폴더 단위로 병렬 처리 하는지??
         # NOTE: 파일 하나 처리 시 convert로 변경.
         # conv_results = doc_converter.convert_all([file_path], raises_on_error=True)
-        conv_result: ConversionResult = self.converter.convert(file_path, raises_on_error=True)
-        return conv_result.document
+        conv_result: ConversionResult = self.converter.convert(file_path, raises_on_error=False)
+        return process_pdf(conv_result.document)
 
     def load_documents(self, file_path: str, **kwargs: dict) -> DoclingDocument:
         # ducling 방식으로 문서 로드
@@ -764,22 +989,28 @@ class DocumentProcessor:
         ## NOTE: HierarchicalChunker -> HybridChunker로 공식 문서 변경 됨.
         ## 관련 url : https://ds4sd.github.io/docling/usage/#chunking
         ## 관련 url : https://ds4sd.github.io/docling/examples/hybrid_chunking/
-        #chunker: HybridChunker = HybridChunker()
+        chunker: HybridChunker = HybridChunker()
         # TODO: 전처리 코드 넣기
         
         # TODO: 최종 전처리 document로 chunk 추출
-        chunker: HierarchicalChunker = HierarchicalChunker()
+        # chunker: HierarchicalChunker = HierarchicalChunker()
         chunks: List[DocChunk] = list(chunker.chunk(dl_doc=documents, **kwargs))
         # TODO: 페이지 관련 이슈 처리 시 해당 부분도 수정 필요
         for chunk in chunks:
-            #self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
-            self.page_chunk_counts[1] += 1
+            self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
         return chunks
 
     def safe_join(self, iterable):
         if not isinstance(iterable, (list, tuple, set)):
             return ''
         return ''.join(map(str, iterable)) + '\n'
+    
+    def remove_extension(self, filename):
+        if filename.endswith(".pdf"):
+            filename = filename.rsplit(".pdf", 1)[0]
+        if filename.endswith(".pdf") or filename.endswith(".hwp"):
+            filename = filename.rsplit(".", 1)[0]
+        return filename+", "
 
     def compose_vectors(self, document: DoclingDocument, chunks: List[DocChunk], file_path: str, **kwargs: dict) -> \
             list[dict]:
@@ -787,41 +1018,36 @@ class DocumentProcessor:
 
         # if os.path.exists(pdf_path):
         #     doc = fitz.open(pdf_path)
+        #print(kwargs)
+        #if kwargs['FILENAME']:
 
+        filename = kwargs.get('FILENAME', "==filename is empty.==")
+        
         global_metadata = dict(
             n_chunk_of_doc=len(chunks),
             n_page=document.num_pages(),
-            reg_date=datetime.now().isoformat(timespec='seconds') + 'Z'
+            reg_date=datetime.now().isoformat(timespec='seconds') + 'Z',
         )
 
         current_page = None
         chunk_index_on_page = 0
         vectors = []
-        doc_url = ""
 
         for chunk_idx, chunk in enumerate(chunks):
             ## NOTE: chunk가 두 페이지에 걸쳐 있는 경우 첫번째 아이템을 사용
             ## NOTE: chunk가 두 페이지에 걸쳐서 있는 경우 bounding box 처리를 어떻게 해야하는 지...
             ## NOTE: 현재 구조에서는 처리가 불가
             ## NOTE: 임시로 페이지 넘어가는 경우 chunk를 분할해서 처리
-            # chunk_page = chunk.meta.doc_items[0].prov[0].page_no
-            chunk_page = 1
-            if chunk_idx == 0 and chunk.text.startswith("http://"):
-                doc_url = chunk.text
-                global_metadata["url"] = chunk.text
-                continue
-            #content = self.safe_join(chunk.meta.headings) + chunk.text
-            content = chunk.text
+            chunk_page = chunk.meta.doc_items[0].prov[0].page_no
+            content = self.remove_extension(filename) + self.safe_join(chunk.meta.headings) + chunk.text
             vector = (GenOSVectorMetaBuilder()
                       .set_text(content)
                       .set_page_info(chunk_page, chunk_index_on_page, self.page_chunk_counts[chunk_page])
                       .set_chunk_index(chunk_idx)
-                    #   .set_bboxes(chunk.meta.doc_items[0].prov[0].bbox)
-                      .set_bboxes([])
+                      .set_bboxes(chunk.meta.doc_items[0].prov[0].bbox)
                       .set_global_metadata(**global_metadata)
-                      #.set_doc_items(chunk.meta.doc_items)
-                      .set_doc_url(doc_url)
-                      .set_doc_headings(chunk.meta.headings)
+                      .set_chunk_bboxes(chunk.meta.doc_items)
+                      .set_media_files(chunk.meta.doc_items)
                       ).build()
             vectors.append(vector)
 
@@ -850,51 +1076,66 @@ class DocumentProcessor:
 
             chunk_index_on_page += 1
 
+            file_list = self.get_media_files(chunk.meta.doc_items)
+            #await upload_files(file_list, request=request)
+
         return vectors
 
-    async def __call__(self, request: Request, file_path: str, **kwargs: dict):
-        # in_doc = InputDocument(
-        #     path_or_stream=file_path,
-        #     format=InputFormat.HTML,
-        #     backend=HTMLDocumentBackend,
-        # )
-        # backend = HTMLDocumentBackend(
-        #     in_doc=in_doc,
-        #     path_or_stream=file_path,
-        # )
-        # document = backend.convert()
+    def get_media_files(self, doc_items: list):
+        temp_list = []
+        for item in doc_items:
+            if isinstance(item, PictureItem):
+                path = str(item.image.uri)
+                name = path.rsplit("/",1)[-1]
+                temp_list.append({ 'path': path, 'name': name})
+                #temp_list.append(path)
 
-        # old_file = file_path
-        # file_path = file_path[:-4] + ".html"
-        # subprocess.run(["mv", old_file, file_path])
-        #subprocess.run(["touch", old_file+".testfile.txt"])
-        code = """
-from bs4 import BeautifulSoup
-import sys
-file = sys.argv[1]
-with open(file, "r", encoding="utf-8") as f:
-    html_content = f.read()
-soup = BeautifulSoup(html_content, "html.parser")
-if not soup.body:
-    sys.exit()
-for div in soup.find_all('div', id='jo'):
-    div.name = 'p'
-with open(file, "w", encoding="utf-8") as f:
-    f.write(str(soup))
-        """
-        subprocess.run(["python3", "-c", code, file_path])
+        return temp_list
+
+    async def __call__(self, request: Request, file_path: str, **kwargs: dict):
         document: DoclingDocument = self.load_documents(file_path, **kwargs)
         # await assert_cancelled(request)
+
+        output_path, output_file = os.path.split(file_path)
+        filename, _ = os.path.splitext(output_file)
+        artifacts_dir = Path(f"{output_path}/{filename}")
+        #artifacts_dir = os.path.join(output_path, filename)
+        if artifacts_dir.is_absolute():
+            reference_path = None
+        else:
+            reference_path = artifacts_dir.parent
+        document = document._with_pictures_refs(image_dir=artifacts_dir, reference_path=reference_path)
 
         # Extract Chunk from DoclingDocument
         chunks: List[DocChunk] = self.split_documents(document, **kwargs)
         # await assert_cancelled(request)
+
+        # vectors: list[dict] = self.compose_vectors(document, chunks, file_path, **kwargs)
+        # print(chunks)
+
 
         vectors = []
         if len(chunks) > 1:
             vectors: list[dict] = self.compose_vectors(document, chunks, file_path, **kwargs)
         else:
             raise GenosServiceException(1, f"chunk length is 0")
+        
+        """
+        # 미디어 파일 업로드 방법
+        media_files = [
+            { 'path': '/tmp/graph.jpg', 'name': 'graph.jpg', 'type': 'image' },
+            { 'path': '/result/1/graph.jpg', 'name': '1/graph.jpg', 'type': 'image' },
+        ]
+
+        # 업로드 요청 시에는 path, name 필요
+        file_list = [{k: v for k, v in file.items() if k != 'type'} for file in media_files]
+        await upload_files(file_list, request=request)
+
+        # 메타에 저장시에는 name, type 필요
+        meta = [{k: v for k, v in file.items() if k != 'path'} for file in media_files]
+        vectors[0].media_files = meta
+        """
+
         return vectors
 
 

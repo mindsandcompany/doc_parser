@@ -240,10 +240,33 @@ class HierarchicalChunker(BaseChunker):
                         title_cnt += 1
                         if re.match(re_pattern_jang, item.text):
                             heading_by_level[2] = item.text
+                            heading_by_level[3] = ""
+                            heading_by_level[4] = ""
                             continue
                         elif re.match(re_pattern_jeol, item.text):
                             heading_by_level[3] = item.text
+                            heading_by_level[4] = ""
                             continue
+                        elif re.match(re_pattern_jo, item.text):
+                            text_ = re.sub(re_pattern_clean, "", item.text)
+                            match = re.match(r'제.*?조\s?\([^()]*\)', text_)
+                            if match:
+                                heading = match.group(0)
+                                heading_by_level[4] = heading
+                                print("heading : ", heading)
+                                #continue
+                            else:
+                                match = re.match(r'^제.*?조', text_)
+                                heading = match.group(0)
+                                heading_by_level[4] = heading
+                                print("heading : ", heading)
+                                #continue
+                        elif item.text[:2] == "부칙":
+                            heading_by_level[2] = ""
+                            heading_by_level[3] = ""
+                            heading_by_level[4] = ""
+                        else:
+                            heading_by_level[4] = ""
                     text = re.sub(re_pattern_clean, "", item.text, count=2)
                 elif isinstance(item, TableItem):
                     item_header = item.data.table_cells[0].text.strip()
@@ -652,9 +675,9 @@ class GenOSVectorMetaBuilder:
                 self.section = h
             elif re.match(re_pattern_jo, h):
                 if ")" in h:
-                    self.article = h.split("(", 1)[0]
+                    self.article = h[:h.find(")") + 1]
                 else:
-                    self.article = h[:3]
+                    self.article = h[:h.find("조") + 1]
             else:
                 self.title = h
         return self
@@ -788,7 +811,7 @@ class DocumentProcessor:
                 global_metadata["url"] = chunk.text
                 continue
             # content = self.safe_join(chunk.meta.headings) + chunk.text
-            content = chunk.text
+            content = chunk.meta.headings[1] + chunk.text
             vector = (GenOSVectorMetaBuilder()
                       .set_text(content)
                       .set_page_info(chunk_page, chunk_index_on_page, self.page_chunk_counts[chunk_page])

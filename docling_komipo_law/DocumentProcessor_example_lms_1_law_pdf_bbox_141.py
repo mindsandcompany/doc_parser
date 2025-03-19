@@ -1,6 +1,6 @@
 from fastapi import Request
 
-from genos_docling_manuals_lms_1_law_pdf import DocumentProcessor
+from genos_docling_manuals_lms_1_law_pdf_bbox_141 import DocumentProcessor
 
 # 파일 경로 및 요청 설정
 # file_path = "input/direction01_mis_20140911.pdf"
@@ -38,8 +38,9 @@ from genos_docling_manuals_lms_1_law_pdf import DocumentProcessor
 #file_path = "./input/Invalid_Code_Point/신보령지침-정비-036_보조터빈DXDGapSetting및교_2019-04-18_두산중공업 BFPT DXD SETTING 지침서.pdf.pdf"
 #file_path = "./input/mimetype_test_plain/전사절차-안전보건-035_AEO수출입안전관리절차서_2020-05-18_AEO 수출입안전관리 절차서 NO.3 운영.pdf.pdf"
 #file_path = "./input/cancelled/발전소공용지침-운영-001_기력및복합발전소성능시험지침서_2021-05-11_[발전소공용지침-운영-001]기력 및 복합 발전소 성능시험 지침서_REV1.pdf.pdf"
-file_path = "./input/manual/서울매뉴얼-안전-001_서울안전보건경영매뉴얼_2023-04-03_0. [서울매뉴얼-안전-001] 안전보건 경영매뉴얼.hwp.pdf"
+#file_path = "./input/manual/서울매뉴얼-안전-001_서울안전보건경영매뉴얼_2023-04-03_0. [서울매뉴얼-안전-001] 안전보건 경영매뉴얼.hwp.pdf"
 #file_path = "./input/Invalid_Code_Point/신보령지침-정비-036_보조터빈DXDGapSetting및교_2019-04-18_두산중공업 BFPT DXD SETTING 지침서.pdf.pdf"
+file_path = "./input/mimetype_test_plain/건공절차-건설-001_건설기자재공장검사업무절차_2020-10-21_서식7. 신재생 발전설비 표준 QIP&ITP.pdf.pdf"
 
 # DocumentProcessor 인스턴스 생성
 doc_processor = DocumentProcessor()
@@ -49,7 +50,8 @@ mock_request = Request(scope={"type": "http"})
 
 # 비동기 메서드 실행
 import asyncio
-
+#import json
+import pprint
 
 async def process_document():
     print(file_path)
@@ -60,4 +62,9 @@ async def process_document():
 # 메인 루프 실행
 result = asyncio.run(process_document())
 
-print(result)
+#print(result)
+
+with open("output_pdf_bbox.txt", "w", encoding="utf-8") as f:
+    #print(result, file=f)
+    #f.write(json.dumps(result, indent=4, ensure_ascii=False))
+    f.write(pprint.pformat(result, indent=4))

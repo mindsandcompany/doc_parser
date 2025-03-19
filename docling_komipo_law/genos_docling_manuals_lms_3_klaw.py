@@ -628,18 +628,19 @@ class GenOSVectorMetaBuilder:
         re_pattern_jang = r'^제\d{1,3}장.*'
         re_pattern_jeol = r'^제\d{1,3}절.*'
         re_pattern_jo = r'^제\d{1,3}조.*'
-        for h in headings:
-            if re.match(re_pattern_jang, h):
-                self.chapter = h
-            elif re.match(re_pattern_jeol, h):
-                self.section = h
-            elif re.match(re_pattern_jo, h):
-                if ")" in h:
-                    self.article = h.split("(", 1)[0]
+        if headings:
+            for h in headings:
+                if re.match(re_pattern_jang, h):
+                    self.chapter = h
+                elif re.match(re_pattern_jeol, h):
+                    self.section = h
+                elif re.match(re_pattern_jo, h):
+                    if ")" in h:
+                    self.article = h[:h.find(")") + 1]
                 else:
-                    self.article = h[:3]
-            else:
-                self.title = h
+                    self.article = h[:h.find("조") + 1]
+                else:
+                    self.title = h
         return self
 
     def build(self) -> GenOSVectorMeta:
@@ -772,7 +773,7 @@ class DocumentProcessor:
                 global_metadata["url"] = chunk.text
                 continue
             #content = self.safe_join(chunk.meta.headings) + chunk.text
-            content = chunk.text
+            content = chunk.meta.headings[1] + chunk.text
             vector = (GenOSVectorMetaBuilder()
                       .set_text(content)
                       .set_page_info(chunk_page, chunk_index_on_page, self.page_chunk_counts[chunk_page])

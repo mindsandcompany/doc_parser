@@ -253,13 +253,13 @@ class HierarchicalChunker(BaseChunker):
                             if match:
                                 heading = match.group(0)
                                 heading_by_level[4] = heading
-                                print("heading : ", heading)
+                                #print("heading : ", heading)
                                 #continue
                             else:
                                 match = re.match(r'^제.*?조', text_)
                                 heading = match.group(0)
                                 heading_by_level[4] = heading
-                                print("heading : ", heading)
+                                #print("heading : ", heading)
                                 #continue
                         elif item.text[:2] == "부칙":
                             heading_by_level[2] = ""
@@ -607,7 +607,7 @@ class GenOSVectorMetaBuilder:
 
     def set_text(self, text: str) -> "GenOSVectorMetaBuilder":
         """텍스트와 관련된 데이터를 설정"""
-        self.text = text
+        self.text = self.title.rstrip().rstrip(",") + ", " + text
         self.n_char = len(text)
         self.n_word = len(text.split())
         self.n_line = len(text.splitlines())
@@ -678,7 +678,7 @@ class GenOSVectorMetaBuilder:
                     self.article = h[:h.find(")") + 1]
                 else:
                     self.article = h[:h.find("조") + 1]
-            else:
+            elif h != "":
                 self.title = h
         return self
 
@@ -811,8 +811,9 @@ class DocumentProcessor:
                 global_metadata["url"] = chunk.text
                 continue
             # content = self.safe_join(chunk.meta.headings) + chunk.text
-            content = chunk.meta.headings[1] + chunk.text
+            content = chunk.text
             vector = (GenOSVectorMetaBuilder()
+                      .set_doc_headings(chunk.meta.headings)
                       .set_text(content)
                       .set_page_info(chunk_page, chunk_index_on_page, self.page_chunk_counts[chunk_page])
                       .set_chunk_index(chunk_idx)
@@ -821,7 +822,7 @@ class DocumentProcessor:
                       .set_global_metadata(**global_metadata)
                       #.set_doc_items(chunk.meta.doc_items)
                       .set_doc_url(doc_url)
-                      .set_doc_headings(chunk.meta.headings)
+                      
                       ).build()
             vectors.append(vector)
 

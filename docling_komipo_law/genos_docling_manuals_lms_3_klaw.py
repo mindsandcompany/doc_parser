@@ -563,7 +563,7 @@ class GenOSVectorMetaBuilder:
 
     def set_text(self, text: str) -> "GenOSVectorMetaBuilder":
         """텍스트와 관련된 데이터를 설정"""
-        self.text = text
+        self.text = self.title.rstrip().rstrip(",") + ", " + text
         self.n_char = len(text)
         self.n_word = len(text.split())
         self.n_line = len(text.splitlines())
@@ -636,9 +636,9 @@ class GenOSVectorMetaBuilder:
                     self.section = h
                 elif re.match(re_pattern_jo, h):
                     if ")" in h:
-                    self.article = h[:h.find(")") + 1]
-                else:
-                    self.article = h[:h.find("조") + 1]
+                        self.article = h[:h.find(")") + 1]
+                    else:
+                        self.article = h[:h.find("조") + 1]
                 else:
                     self.title = h
         return self
@@ -773,8 +773,9 @@ class DocumentProcessor:
                 global_metadata["url"] = chunk.text
                 continue
             #content = self.safe_join(chunk.meta.headings) + chunk.text
-            content = chunk.meta.headings[1] + chunk.text
+            content = chunk.text
             vector = (GenOSVectorMetaBuilder()
+                      .set_doc_headings(chunk.meta.headings)
                       .set_text(content)
                       .set_page_info(chunk_page, chunk_index_on_page, self.page_chunk_counts[chunk_page])
                       .set_chunk_index(chunk_idx)
@@ -784,7 +785,6 @@ class DocumentProcessor:
                       #.set_doc_items(chunk.meta.doc_items)
                       #.set_args(json.dumps(kwargs))
                       .set_doc_url(doc_url)
-                      .set_doc_headings(chunk.meta.headings)
                       ).build()
             vectors.append(vector)
 

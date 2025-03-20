@@ -6,7 +6,7 @@ from genos_docling_manuals_lms_3_klaw import DocumentProcessor
 # file_path = "./input/49210_19990828.html"
 # file_path = "./input_html/266391_20241112.html"
 # file_path = "./input_html/266391_20241112.html"
-file_path = "./input/law_2501_url/3274_19890329.html"
+file_path = "./input/klaw_2501_url/3274_19890329.html"
 
 # DocumentProcessor 인스턴스 생성
 doc_processor = DocumentProcessor()

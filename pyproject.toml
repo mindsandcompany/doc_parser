@@ -55,7 +55,7 @@ pydantic-settings = "^2.3.0"
 huggingface_hub = ">=0.23,<1"
 requests = "^2.32.2"
 easyocr = "^1.7"
-tesserocr = { version = "^2.7.1", optional = true }
+tesserocr = { version = "^2.7.1" }
 certifi = ">=2024.7.4"
 rtree = "^1.3.0"
 scipy = [

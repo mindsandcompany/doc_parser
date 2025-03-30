@@ -8,9 +8,10 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult, DoclingDocument
 from docling.document_converter import DocumentConverter
 
+from .test_data_gen_flag import GEN_TEST_DATA
 from .verify_utils import verify_document, verify_export
 
-GENERATE = False
+GENERATE = GEN_TEST_DATA
 
 
 def get_csv_paths():
@@ -58,7 +59,11 @@ def test_e2e_valid_csv_conversions():
             pred_itxt, str(gt_path) + ".itxt"
         ), "export to indented-text"
 
-        assert verify_document(doc, str(gt_path) + ".json"), "export to json"
+        assert verify_document(
+            pred_doc=doc,
+            gtfile=str(gt_path) + ".json",
+            generate=GENERATE,
+        ), "export to json"
 
 
 def test_e2e_invalid_csv_conversions():

@@ -1,6 +1,6 @@
 # FAQ
 
-This is a collection of FAQ collected from the user questions on <https://github.com/DS4SD/docling/discussions>.
+This is a collection of FAQ collected from the user questions on <https://github.com/docling-project/docling/discussions>.
 
 
 ??? question "Is Python 3.13 supported?"
@@ -41,7 +41,7 @@ This is a collection of FAQ collected from the user questions on <https://github
     ]
     ```
 
-    Source: Issue [#283](https://github.com/DS4SD/docling/issues/283#issuecomment-2465035868)
+    Source: Issue [#283](https://github.com/docling-project/docling/issues/283#issuecomment-2465035868)
 
 
 ??? question "Are text styles (bold, underline, etc) supported?"
@@ -74,7 +74,7 @@ This is a collection of FAQ collected from the user questions on <https://github
     )
     ```
 
-    Source: Issue [#326](https://github.com/DS4SD/docling/issues/326)
+    Source: Issue [#326](https://github.com/docling-project/docling/issues/326)
 
 
 ??? question " Which model weights are needed to run Docling?"
@@ -84,7 +84,7 @@ This is a collection of FAQ collected from the user questions on <https://github
 
     For processing PDF documents, Docling requires the model weights from <https://huggingface.co/ds4sd/docling-models>.
 
-    When OCR is enabled, some engines also require model artifacts. For example EasyOCR, for which Docling has [special pipeline options](https://github.com/DS4SD/docling/blob/main/docling/datamodel/pipeline_options.py#L68) to control the runtime behavior.
+    When OCR is enabled, some engines also require model artifacts. For example EasyOCR, for which Docling has [special pipeline options](https://github.com/docling-project/docling/blob/main/docling/datamodel/pipeline_options.py#L68) to control the runtime behavior.
 
 
 ??? question "SSL error downloading model weights"
@@ -149,8 +149,8 @@ This is a collection of FAQ collected from the user questions on <https://github
 
     **Details**:
 
-    Using the [`HybridChunker`](./concepts/chunking.md#hybrid-chunker) often triggers a warning like this:
-    > Token indices sequence length is longer than the specified maximum sequence length for this model (530 > 512). Running this sequence through the model will result in indexing errors
+    Using the [`HybridChunker`](../concepts/chunking.md#hybrid-chunker) often triggers a warning like this:
+    > Token indices sequence length is longer than the specified maximum sequence length for this model (531 > 512). Running this sequence through the model will result in indexing errors
 
     This is a warning that is emitted by transformers, saying that actually *running this sequence through the model* will result in indexing errors, i.e. the problematic case is only if one indeed passes the particular sequence through the (embedding) model.
 
@@ -163,14 +163,17 @@ This is a collection of FAQ collected from the user questions on <https://github
     The snippet below can be used for getting the actual maximum chunk size (for users wanting to confirm that this does not exceed the model limit):
 
     ```python
-    max_len = 0
+    chunk_max_len = 0
     for i, chunk in enumerate(chunks):
         ser_txt = chunker.serialize(chunk=chunk)
-        ser_tokens = len(tokenizer.tokenize(ser_txt, max_len_length=None))
-        if ser_tokens > max_len:
-            max_len = ser_tokens
+        ser_tokens = len(tokenizer.tokenize(ser_txt))
+        if ser_tokens > chunk_max_len:
+            chunk_max_len = ser_tokens
         print(f"{i}\t{ser_tokens}\t{repr(ser_txt[:100])}...")
-    print(f"{max_len=}")
+    print(f"Longest chunk yielded: {chunk_max_len} tokens")
+    print(f"Model max length: {tokenizer.model_max_length}")
     ```
 
-    Source: Issue [docling-core#119](https://github.com/DS4SD/docling-core/issues/119)
+    Also see [docling#725](https://github.com/docling-project/docling/issues/725).
+
+    Source: Issue [docling-core#119](https://github.com/docling-project/docling-core/issues/119)

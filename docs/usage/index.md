@@ -17,12 +17,17 @@ print(result.document.export_to_markdown())  # output: "### Docling Technical Re
 
 You can also use Docling directly from your command line to convert individual files —be it local or by URL— or whole directories.
 
-A simple example would look like this:
 ```console
 docling https://arxiv.org/pdf/2206.01062
 ```
+You can also use 🥚[SmolDocling](https://huggingface.co/ds4sd/SmolDocling-256M-preview) and other VLMs via Docling CLI:
+```bash
+docling --pipeline vlm --vlm-model smoldocling https://arxiv.org/pdf/2206.01062
+```
+This will use MLX acceleration on supported Apple Silicon hardware.
 
-To see all available options (export formats etc.) run `docling --help`. More details in the [CLI reference page](./reference/cli.md).
+
+To see all available options (export formats etc.) run `docling --help`. More details in the [CLI reference page](../reference/cli.md).
 
 ### Advanced options
 
@@ -71,6 +76,13 @@ Or using the CLI:
 docling --artifacts-path="/local/path/to/models" FILE
 ```
 
+Or using the `DOCLING_ARTIFACTS_PATH` environment variable:
+
+```sh
+export DOCLING_ARTIFACTS_PATH="/local/path/to/models"
+python my_docling_script.py
+```
+
 #### Using remote services
 
 The main purpose of Docling is to run local models which are not sharing any user data with remote services.
@@ -104,7 +116,7 @@ The options in this list require the explicit `enable_remote_services=True` when
 
 #### Adjust pipeline features
 
-The example file [custom_convert.py](./examples/custom_convert.py) contains multiple ways
+The example file [custom_convert.py](../examples/custom_convert.py) contains multiple ways
 one can adjust the conversion pipeline and features.
 
 ##### Control PDF table extraction options
@@ -128,7 +140,7 @@ doc_converter = DocumentConverter(
 )
 ```
 
-Since docling 1.16.0: You can control which TableFormer mode you want to use. Choose between `TableFormerMode.FAST` (default) and `TableFormerMode.ACCURATE` (better, but slower) to receive better quality with difficult table structures.
+Since docling 1.16.0: You can control which TableFormer mode you want to use. Choose between `TableFormerMode.FAST` (faster but less accurate) and `TableFormerMode.ACCURATE` (default) to receive better quality with difficult table structures.
 
 ```python
 from docling.datamodel.base_models import InputFormat
@@ -183,13 +195,13 @@ You can limit the CPU threads used by Docling by setting the environment variabl
 
 !!! note
 
-    This section discusses directly invoking a [backend](./concepts/architecture.md),
+    This section discusses directly invoking a [backend](../concepts/architecture.md),
     i.e. using a low-level API. This should only be done when necessary. For most cases,
     using a `DocumentConverter` (high-level API) as discussed in the sections above
     should suffice — and is the recommended way.
 
-By default, Docling will try to identify the document format to apply the appropriate conversion backend (see the list of [supported formats](./supported_formats.md)).
-You can restrict the `DocumentConverter` to a set of allowed document formats, as shown in the [Multi-format conversion](./examples/run_with_formats.py) example.
+By default, Docling will try to identify the document format to apply the appropriate conversion backend (see the list of [supported formats](../supported_formats.md)).
+You can restrict the `DocumentConverter` to a set of allowed document formats, as shown in the [Multi-format conversion](../examples/run_with_formats.py) example.
 Alternatively, you can also use the specific backend that matches your document content. For instance, you can use `HTMLDocumentBackend` for HTML pages:
 
 ```python
@@ -214,9 +226,9 @@ print(dl_doc.export_to_markdown())
 
 ## Chunking
 
-You can chunk a Docling document using a [chunker](concepts/chunking.md), such as a
+You can chunk a Docling document using a [chunker](../concepts/chunking.md), such as a
 `HybridChunker`, as shown below (for more details check out
-[this example](examples/hybrid_chunking.ipynb)):
+[this example](../examples/hybrid_chunking.ipynb)):
 
 ```python
 from docling.document_converter import DocumentConverter

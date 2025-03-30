@@ -5,6 +5,11 @@ from typing import Iterable, Optional, Union
 
 import numpy
 from docling_core.types.doc import BoundingBox, DocItemLabel, TableCell
+from docling_core.types.doc.page import (
+    BoundingRectangle,
+    SegmentedPdfPage,
+    TextCellUnit,
+)
 from docling_ibm_models.tableformer.data_management.tf_predictor import TFPredictor
 from PIL import ImageDraw
 
@@ -95,7 +100,7 @@ class TableStructureModel(BasePageModel):
             repo_id="ds4sd/docling-models",
             force_download=force,
             local_dir=local_dir,
-            revision="v2.1.0",
+            revision="v2.2.0",
         )
 
         return Path(download_path)
@@ -129,7 +134,7 @@ class TableStructureModel(BasePageModel):
             draw.rectangle([(x0, y0), (x1, y1)], outline="red")
 
             for cell in table_element.cluster.cells:
-                x0, y0, x1, y1 = cell.bbox.as_tuple()
+                x0, y0, x1, y1 = cell.rect.to_bounding_box().as_tuple()
                 x0 *= scale_x
                 x1 *= scale_x
                 y0 *= scale_x
@@ -217,17 +222,36 @@ class TableStructureModel(BasePageModel):
 
                     if len(table_bboxes):
                         for table_cluster, tbl_box in in_tables:
-
+                            # Check if word-level cells are available from backend:
+                            sp = page._backend.get_segmented_page()
+                            if sp is not None:
+                                tcells = sp.get_cells_in_bbox(
+                                    cell_unit=TextCellUnit.WORD,
+                                    bbox=table_cluster.bbox,
+                                )
+                                if len(tcells) == 0:
+                                    # In case word-level cells yield empty
+                                    tcells = table_cluster.cells
+                            else:
+                                # Otherwise - we use normal (line/phrase) cells
+                                tcells = table_cluster.cells
                             tokens = []
-                            for c in table_cluster.cells:
+                            for c in tcells:
                                 # Only allow non empty stings (spaces) into the cells of a table
                                 if len(c.text.strip()) > 0:
                                     new_cell = copy.deepcopy(c)
-                                    new_cell.bbox = new_cell.bbox.scaled(
-                                        scale=self.scale
+                                    new_cell.rect = BoundingRectangle.from_bounding_box(
+                                        new_cell.rect.to_bounding_box().scaled(
+                                            scale=self.scale
+                                        )
                                     )
-
-                                    tokens.append(new_cell.model_dump())
+                                    tokens.append(
+                                        {
+                                            "id": new_cell.index,
+                                            "text": new_cell.text,
+                                            "bbox": new_cell.rect.to_bounding_box().model_dump(),
+                                        }
+                                    )
                             page_input["tokens"] = tokens
 
                             tf_output = self.tf_predictor.multi_table_predict(

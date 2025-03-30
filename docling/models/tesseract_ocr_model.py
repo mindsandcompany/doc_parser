@@ -1,11 +1,17 @@
 import logging
-from typing import Iterable
+from pathlib import Path
+from typing import Iterable, Optional, Type
 
 from docling_core.types.doc import BoundingBox, CoordOrigin
+from docling_core.types.doc.page import BoundingRectangle, TextCell
 
-from docling.datamodel.base_models import Cell, OcrCell, Page
+from docling.datamodel.base_models import Page
 from docling.datamodel.document import ConversionResult
-from docling.datamodel.pipeline_options import TesseractOcrOptions
+from docling.datamodel.pipeline_options import (
+    AcceleratorOptions,
+    OcrOptions,
+    TesseractOcrOptions,
+)
 from docling.datamodel.settings import settings
 from docling.models.base_ocr_model import BaseOcrModel
 from docling.utils.ocr_utils import map_tesseract_script
@@ -15,8 +21,19 @@ _log = logging.getLogger(__name__)
 
 
 class TesseractOcrModel(BaseOcrModel):
-    def __init__(self, enabled: bool, options: TesseractOcrOptions):
-        super().__init__(enabled=enabled, options=options)
+    def __init__(
+        self,
+        enabled: bool,
+        artifacts_path: Optional[Path],
+        options: TesseractOcrOptions,
+        accelerator_options: AcceleratorOptions,
+    ):
+        super().__init__(
+            enabled=enabled,
+            artifacts_path=artifacts_path,
+            options=options,
+            accelerator_options=accelerator_options,
+        )
         self.options: TesseractOcrOptions
 
         self.scale = 3  # multiplier for 72 dpi == 216 dpi.
@@ -31,14 +48,14 @@ class TesseractOcrModel(BaseOcrModel):
                 "Note that tesserocr might have to be manually compiled for working with "
                 "your Tesseract installation. The Docling documentation provides examples for it. "
                 "Alternatively, Docling has support for other OCR engines. See the documentation: "
-                "https://ds4sd.github.io/docling/installation/"
+                "https://docling-project.github.io/docling/installation/"
             )
             missing_langs_errmsg = (
                 "tesserocr is not correctly configured. No language models have been detected. "
                 "Please ensure that the TESSDATA_PREFIX envvar points to tesseract languages dir. "
                 "You can find more information how to setup other OCR engines in Docling "
                 "documentation: "
-                "https://ds4sd.github.io/docling/installation/"
+                "https://docling-project.github.io/docling/installation/"
             )
 
             try:
@@ -173,13 +190,17 @@ class TesseractOcrModel(BaseOcrModel):
                             top = (box["y"] + box["h"]) / self.scale
 
                             cells.append(
-                                OcrCell(
-                                    id=ix,
+                                TextCell(
+                                    index=ix,
                                     text=text,
+                                    orig=text,
+                                    from_ocr=True,
                                     confidence=confidence,
-                                    bbox=BoundingBox.from_tuple(
-                                        coord=(left, top, right, bottom),
-                                        origin=CoordOrigin.TOPLEFT,
+                                    rect=BoundingRectangle.from_bounding_box(
+                                        BoundingBox.from_tuple(
+                                            coord=(left, top, right, bottom),
+                                            origin=CoordOrigin.TOPLEFT,
+                                        ),
                                     ),
                                 )
                             )
@@ -195,3 +216,7 @@ class TesseractOcrModel(BaseOcrModel):
                     self.draw_ocr_rects_and_cells(conv_res, page, ocr_rects)
 
                 yield page
+
+    @classmethod
+    def get_options_type(cls) -> Type[OcrOptions]:
+        return TesseractOcrOptions

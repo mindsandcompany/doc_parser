@@ -1,10 +1,9 @@
 import logging
 import os
 import re
-import warnings
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Any, ClassVar, Dict, List, Literal, Optional, Union
 
 from pydantic import (
     AnyUrl,
@@ -13,13 +12,8 @@ from pydantic import (
     Field,
     field_validator,
     model_validator,
-    validator,
 )
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-)
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import deprecated
 
 _log = logging.getLogger(__name__)
@@ -83,6 +77,12 @@ class AcceleratorOptions(BaseSettings):
         return data
 
 
+class BaseOptions(BaseModel):
+    """Base class for options."""
+
+    kind: ClassVar[str]
+
+
 class TableFormerMode(str, Enum):
     """Modes for the TableFormer model."""
 
@@ -99,13 +99,12 @@ class TableStructureOptions(BaseModel):
         #        are merged across table columns.
         # False: Let table structure model define the text cells, ignore PDF cells.
     )
-    mode: TableFormerMode = TableFormerMode.FAST
+    mode: TableFormerMode = TableFormerMode.ACCURATE
 
 
-class OcrOptions(BaseModel):
+class OcrOptions(BaseOptions):
     """OCR options."""
 
-    kind: str
     lang: List[str]
     force_full_page_ocr: bool = False  # If enabled a full page OCR is always applied
     bitmap_area_threshold: float = (
@@ -116,7 +115,7 @@ class OcrOptions(BaseModel):
 class RapidOcrOptions(OcrOptions):
     """Options for the RapidOCR engine."""
 
-    kind: Literal["rapidocr"] = "rapidocr"
+    kind: ClassVar[Literal["rapidocr"]] = "rapidocr"
 
     # English and chinese are the most commly used models and have been tested with RapidOCR.
     lang: List[str] = [
@@ -155,7 +154,7 @@ class RapidOcrOptions(OcrOptions):
 class EasyOcrOptions(OcrOptions):
     """Options for the EasyOCR engine."""
 
-    kind: Literal["easyocr"] = "easyocr"
+    kind: ClassVar[Literal["easyocr"]] = "easyocr"
     lang: List[str] = ["fr", "de", "es", "en"]
 
     use_gpu: Optional[bool] = None
@@ -175,7 +174,7 @@ class EasyOcrOptions(OcrOptions):
 class TesseractCliOcrOptions(OcrOptions):
     """Options for the TesseractCli engine."""
 
-    kind: Literal["tesseract"] = "tesseract"
+    kind: ClassVar[Literal["tesseract"]] = "tesseract"
     lang: List[str] = ["fra", "deu", "spa", "eng"]
     tesseract_cmd: str = "tesseract"
     path: Optional[str] = None
@@ -188,7 +187,7 @@ class TesseractCliOcrOptions(OcrOptions):
 class TesseractOcrOptions(OcrOptions):
     """Options for the Tesseract engine."""
 
-    kind: Literal["tesserocr"] = "tesserocr"
+    kind: ClassVar[Literal["tesserocr"]] = "tesserocr"
     lang: List[str] = ["fra", "deu", "spa", "eng"]
     path: Optional[str] = None
 
@@ -200,7 +199,7 @@ class TesseractOcrOptions(OcrOptions):
 class OcrMacOptions(OcrOptions):
     """Options for the Mac OCR engine."""
 
-    kind: Literal["ocrmac"] = "ocrmac"
+    kind: ClassVar[Literal["ocrmac"]] = "ocrmac"
     lang: List[str] = ["fr-FR", "de-DE", "es-ES", "en-US"]
     recognition: str = "accurate"
     framework: str = "vision"
@@ -210,8 +209,7 @@ class OcrMacOptions(OcrOptions):
     )
 
 
-class PictureDescriptionBaseOptions(BaseModel):
-    kind: str
+class PictureDescriptionBaseOptions(BaseOptions):
     batch_size: int = 8
     scale: float = 2
 
@@ -221,7 +219,7 @@ class PictureDescriptionBaseOptions(BaseModel):
 
 
 class PictureDescriptionApiOptions(PictureDescriptionBaseOptions):
-    kind: Literal["api"] = "api"
+    kind: ClassVar[Literal["api"]] = "api"
 
     url: AnyUrl = AnyUrl("http://localhost:8000/v1/chat/completions")
     headers: Dict[str, str] = {}
@@ -233,7 +231,7 @@ class PictureDescriptionApiOptions(PictureDescriptionBaseOptions):
 
 
 class PictureDescriptionVlmOptions(PictureDescriptionBaseOptions):
-    kind: Literal["vlm"] = "vlm"
+    kind: ClassVar[Literal["vlm"]] = "vlm"
 
     repo_id: str
     prompt: str = "Describe this image in a few sentences."
@@ -265,6 +263,11 @@ class ResponseFormat(str, Enum):
     MARKDOWN = "markdown"
 
 
+class InferenceFramework(str, Enum):
+    MLX = "mlx"
+    TRANSFORMERS = "transformers"
+
+
 class HuggingFaceVlmOptions(BaseVlmOptions):
     kind: Literal["hf_model_options"] = "hf_model_options"
 
@@ -273,6 +276,7 @@ class HuggingFaceVlmOptions(BaseVlmOptions):
     llm_int8_threshold: float = 6.0
     quantized: bool = False
 
+    inference_framework: InferenceFramework
     response_format: ResponseFormat
 
     @property
@@ -280,10 +284,19 @@ class HuggingFaceVlmOptions(BaseVlmOptions):
         return self.repo_id.replace("/", "--")
 
 
+smoldocling_vlm_mlx_conversion_options = HuggingFaceVlmOptions(
+    repo_id="ds4sd/SmolDocling-256M-preview-mlx-bf16",
+    prompt="Convert this page to docling.",
+    response_format=ResponseFormat.DOCTAGS,
+    inference_framework=InferenceFramework.MLX,
+)
+
+
 smoldocling_vlm_conversion_options = HuggingFaceVlmOptions(
     repo_id="ds4sd/SmolDocling-256M-preview",
     prompt="Convert this page to docling.",
     response_format=ResponseFormat.DOCTAGS,
+    inference_framework=InferenceFramework.TRANSFORMERS,
 )
 
 granite_vision_vlm_conversion_options = HuggingFaceVlmOptions(
@@ -291,7 +304,13 @@ granite_vision_vlm_conversion_options = HuggingFaceVlmOptions(
     # prompt="OCR the full page to markdown.",
     prompt="OCR this image.",
     response_format=ResponseFormat.MARKDOWN,
+    inference_framework=InferenceFramework.TRANSFORMERS,
 )
+
+
+class VlmModelType(str, Enum):
+    SMOLDOCLING = "smoldocling"
+    GRANITE_VISION = "granite_vision"
 
 
 # Define an enum for the backend options
@@ -301,9 +320,11 @@ class PdfBackend(str, Enum):
     PYPDFIUM2 = "pypdfium2"
     DLPARSE_V1 = "dlparse_v1"
     DLPARSE_V2 = "dlparse_v2"
+    DLPARSE_V4 = "dlparse_v4"
 
 
 # Define an enum for the ocr engines
+@deprecated("Use ocr_factory.registered_enum")
 class OcrEngine(str, Enum):
     """Enum of valid OCR engines."""
 
@@ -323,16 +344,18 @@ class PipelineOptions(BaseModel):
     document_timeout: Optional[float] = None
     accelerator_options: AcceleratorOptions = AcceleratorOptions()
     enable_remote_services: bool = False
+    allow_external_plugins: bool = False
 
 
 class PaginatedPipelineOptions(PipelineOptions):
+    artifacts_path: Optional[Union[Path, str]] = None
+
     images_scale: float = 1.0
     generate_page_images: bool = False
     generate_picture_images: bool = False
 
 
 class VlmPipelineOptions(PaginatedPipelineOptions):
-    artifacts_path: Optional[Union[Path, str]] = None
 
     generate_page_images: bool = True
     force_backend_text: bool = (
@@ -345,7 +368,6 @@ class VlmPipelineOptions(PaginatedPipelineOptions):
 class PdfPipelineOptions(PaginatedPipelineOptions):
     """Options for the PDF pipeline."""
 
-    artifacts_path: Optional[Union[Path, str]] = None
     do_table_structure: bool = True  # True: perform table structure extraction
     do_ocr: bool = True  # True: perform OCR, replace programmatic PDF text
     do_code_enrichment: bool = False  # True: perform code OCR
@@ -358,17 +380,10 @@ class PdfPipelineOptions(PaginatedPipelineOptions):
     # If True, text from backend will be used instead of generated text
 
     table_structure_options: TableStructureOptions = TableStructureOptions()
-    ocr_options: Union[
-        EasyOcrOptions,
-        TesseractCliOcrOptions,
-        TesseractOcrOptions,
-        OcrMacOptions,
-        RapidOcrOptions,
-    ] = Field(EasyOcrOptions(), discriminator="kind")
-    picture_description_options: Annotated[
-        Union[PictureDescriptionApiOptions, PictureDescriptionVlmOptions],
-        Field(discriminator="kind"),
-    ] = smolvlm_picture_description
+    ocr_options: OcrOptions = EasyOcrOptions()
+    picture_description_options: PictureDescriptionBaseOptions = (
+        smolvlm_picture_description
+    )
 
     images_scale: float = 1.0
     generate_page_images: bool = False
@@ -381,3 +396,10 @@ class PdfPipelineOptions(PaginatedPipelineOptions):
             "before conversion and then use the `TableItem.get_image` function."
         ),
     )
+
+    generate_parsed_pages: bool = False
+
+
+class PdfPipeline(str, Enum):
+    STANDARD = "standard"
+    VLM = "vlm"

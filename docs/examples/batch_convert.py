@@ -7,6 +7,7 @@ from typing import Iterable
 import yaml
 from docling_core.types.doc import ImageRefMode
 
+from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
 from docling.datamodel.base_models import ConversionStatus, InputFormat
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -59,6 +60,18 @@ def export_documents(
                 # Export Docling document format to YAML:
                 with (output_dir / f"{doc_filename}.yaml").open("w") as fp:
                     fp.write(yaml.safe_dump(conv_res.document.export_to_dict()))
+
+                # Export Docling document format to doctags:
+                with (output_dir / f"{doc_filename}.doctags.txt").open("w") as fp:
+                    fp.write(conv_res.document.export_to_document_tokens())
+
+                # Export Docling document format to markdown:
+                with (output_dir / f"{doc_filename}.md").open("w") as fp:
+                    fp.write(conv_res.document.export_to_markdown())
+
+                # Export Docling document format to text:
+                with (output_dir / f"{doc_filename}.txt").open("w") as fp:
+                    fp.write(conv_res.document.export_to_markdown(strict_text=True))
 
             if USE_LEGACY:
                 # Export Deep Search document JSON format:
@@ -131,7 +144,9 @@ def main():
 
     doc_converter = DocumentConverter(
         format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+            InputFormat.PDF: PdfFormatOption(
+                pipeline_options=pipeline_options, backend=DoclingParseV4DocumentBackend
+            )
         }
     )
 
@@ -139,7 +154,7 @@ def main():
 
     conv_results = doc_converter.convert_all(
         input_doc_paths,
-        raises_on_error=True,  # to let conversion run through all and examine results at the end
+        raises_on_error=False,  # to let conversion run through all and examine results at the end
     )
     success_count, partial_success_count, failure_count = export_documents(
         conv_results, output_dir=Path("scratch")

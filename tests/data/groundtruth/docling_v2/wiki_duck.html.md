@@ -1,56 +1,20 @@
-Main menu
-
-Navigation
-
-- Main page
-- Contents
-- Current events
-- Random article
-- About Wikipedia
-- Contact us
-
-Contribute
-
-- Help
-- Learn to edit
-- Community portal
-- Recent changes
-- Upload file
-
-<!-- image -->
-
-<!-- image -->
-
-<!-- image -->
-
-    - Donate
-        - Create account
-        - Log in
-        - Create account
-        - Log in
-
-Pages for logged out editors
-
-        - Contributions
-        - Talk
-
 ## Contents
 
-        - (Top)
-        - 1 Etymology
-        - 2 Taxonomy
-        - 3 Morphology
-        - 4 Distribution and habitat
-        - 5 Behaviour Toggle Behaviour subsection
-            - 5.1 Feeding
-            - 5.2 Breeding
-            - 5.3 Communication
-            - 5.4 Predators
-    - 6 Relationship with humans Toggle Relationship with humans subsection
-        - 6.1 Hunting
-        - 6.2 Domestication
-        - 6.3 Heraldry
-        - 6.4 Cultural references
+- (Top)
+- 1 Etymology
+- 2 Taxonomy
+- 3 Morphology
+- 4 Distribution and habitat
+- 5 Behaviour Toggle Behaviour subsection
+    - 5.1 Feeding
+    - 5.2 Breeding
+    - 5.3 Communication
+    - 5.4 Predators
+- 6 Relationship with humans Toggle Relationship with humans subsection
+    - 6.1 Hunting
+    - 6.2 Domestication
+    - 6.3 Heraldry
+    - 6.4 Cultural references
 - 7 See also
 - 8 Notes Toggle Notes subsection
     - 8.1 Citations
@@ -199,40 +163,40 @@ Pages for logged out editors
 - Article
 - Talk
 
-    - Read
-    - View source
-    - View history
+- Read
+- View source
+- View history
 
 Tools
 
 Actions
 
-    - Read
-    - View source
-    - View history
+- Read
+- View source
+- View history
 
 General
 
-    - What links here
-    - Related changes
-    - Upload file
-    - Special pages
-    - Permanent link
-    - Page information
-    - Cite this page
-    - Get shortened URL
-    - Download QR code
-    - Wikidata item
+- What links here
+- Related changes
+- Upload file
+- Special pages
+- Permanent link
+- Page information
+- Cite this page
+- Get shortened URL
+- Download QR code
+- Wikidata item
 
 Print/export
 
-    - Download as PDF
-    - Printable version
+- Download as PDF
+- Printable version
 
 In other projects
 
-    - Wikimedia Commons
-    - Wikiquote
+- Wikimedia Commons
+- Wikiquote
 
 Appearance
 

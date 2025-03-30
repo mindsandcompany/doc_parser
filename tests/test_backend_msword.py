@@ -11,9 +11,10 @@ from docling.datamodel.document import (
 )
 from docling.document_converter import DocumentConverter
 
+from .test_data_gen_flag import GEN_TEST_DATA
 from .verify_utils import verify_document, verify_export
 
-GENERATE = False
+GENERATE = GEN_TEST_DATA
 
 
 def test_heading_levels():
@@ -90,4 +91,8 @@ def test_e2e_docx_conversions():
 
         if docx_path.name == "word_tables.docx":
             pred_html: str = doc.export_to_html()
-            assert verify_export(pred_html, str(gt_path) + ".html"), "export to html"
+            assert verify_export(
+                pred_text=pred_html,
+                gtfile=str(gt_path) + ".html",
+                generate=GENERATE,
+            ), "export to html"

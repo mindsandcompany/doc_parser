@@ -9,7 +9,8 @@ from typing import Optional, Iterable, Any, List, Dict, Tuple, Iterator, Union
 
 from fastapi import Request
 
-from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
+# from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
+# from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
 from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
@@ -28,6 +29,10 @@ from docling_core.transforms.chunker import (
     DocMeta,
 )
 from docling_core.types import DoclingDocument
+from pandas import DataFrame
+
+from docling_core.types import DoclingDocument as DLDocument
+
 from docling_core.types.doc.document import (
     #DocItem,
     DocumentOrigin,
@@ -706,24 +711,25 @@ class DocumentProcessor:
         pdf_path = file_path.replace('.hwp', '.pdf').replace('.txt', '.pdf').replace('.json', '.pdf')
 
         
-        if kwargs['DEPT_CODE_LIST']:
-            dept_code_list = ast.literal_eval(kwargs['DEPT_CODE_LIST'])
-        else:
-            dept_code_list = []
+        # if kwargs['DEPT_CODE_LIST']:
+        #     dept_code_list = ast.literal_eval(kwargs['DEPT_CODE_LIST'])
+        # else:
+        #     dept_code_list = []
+        dept_code_list = ast.literal_eval(kwargs.get('DEPT_CODE_LIST', '[]'))
 
         global_metadata = dict(
             n_chunk_of_doc=len(chunks),
             n_page=document.num_pages(),
             reg_date=datetime.now().isoformat(timespec='seconds') + 'Z',
-            dept_code=kwargs['DEPT_CODE'],
-            dept_name=kwargs['DEPT_NAME'],
-            prod_dt=kwargs['PROD_DT'],
-            doc_level=kwargs['DOC_LEVEL'],
+            dept_code=kwargs.get('DEPT_CODE_LIST', ''),
+            dept_name=kwargs.get('DEPT_NAME', ''),
+            prod_dt=kwargs.get('PROD_DT', 0),
+            doc_level=kwargs.get('DOC_LEVEL', ''),
             dept_code_list=dept_code_list,
-            doc_no = kwargs['DOC_NO'],
-            doc_ttl = kwargs['DOC_TTL'],
-            objectid = kwargs['OBJECTID'],
-            file_nm = kwargs['FILE_NM']
+            doc_no = kwargs.get('DOC_NO', ''),
+            doc_ttl = kwargs.get('DOC_TTL', ''),
+            objectid = kwargs.get('OBJECTID', ''),
+            file_nm = kwargs.get('FILE_NM', '')
         )
 
         current_page = None

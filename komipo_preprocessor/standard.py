@@ -16,7 +16,8 @@ from fastapi import Request
 from pydantic import BaseModel
 
 #from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
-from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
+# from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
+from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
 #from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.base_models import InputFormat
 #from docling.datamodel.document import ConversionStatus
@@ -83,7 +84,7 @@ except ImportError:
         "`pip install 'docling-core[chunking]'`"
     )
 
-from genos_utils import upload_files
+# from genos_utils import upload_files
 
 os.environ['HF_HOME'] = "/home/mnc/temp/.cache/huggingface"
 ####################################################
@@ -966,7 +967,7 @@ class DocumentProcessor:
             format_options={
                 InputFormat.PDF: PdfFormatOption(
                     pipeline_options=pipe_line_options,
-                    backend=DoclingParseV2DocumentBackend
+                    backend=DoclingParseV4DocumentBackend
                 )
             }
         )
@@ -1081,7 +1082,7 @@ class DocumentProcessor:
             chunk_index_on_page += 1
 
             file_list = self.get_media_files(chunk.meta.doc_items)
-            await upload_files(file_list, request=request)
+            # await upload_files(file_list, request=request)
 
         return vectors
 
@@ -1098,7 +1099,7 @@ class DocumentProcessor:
 
     async def __call__(self, request: Request, file_path: str, **kwargs: dict):
         document: DoclingDocument = self.load_documents(file_path, **kwargs)
-        await assert_cancelled(request)
+        # await assert_cancelled(request)
 
         output_path, output_file = os.path.split(file_path)
         filename, _ = os.path.splitext(output_file)
@@ -1112,7 +1113,7 @@ class DocumentProcessor:
 
         # Extract Chunk from DoclingDocument
         chunks: List[DocChunk] = self.split_documents(document, **kwargs)
-        await assert_cancelled(request)
+        # await assert_cancelled(request)
 
         # vectors: list[dict] = self.compose_vectors(document, chunks, file_path, **kwargs)
         # print(chunks)

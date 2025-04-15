@@ -5,6 +5,8 @@ Adapted from https://github.com/xiilei/dwml/blob/master/dwml/omml.py
 On 23/01/2025
 """
 
+import logging
+
 import lxml.etree as ET
 from pylatexenc.latexencode import UnicodeToLatexEncoder
 
@@ -38,6 +40,8 @@ from docling.backend.docx.latex.latex_dict import (
 )
 
 OMML_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
+
+_log = logging.getLogger(__name__)
 
 
 def load(stream):
@@ -281,8 +285,10 @@ class oMath2Latex(Tag2Method):
                 if FUNC.get(t):
                     latex_chars.append(FUNC[t])
                 else:
-                    raise NotSupport("Not support func %s" % t)
-            else:
+                    _log.warning("Function not supported, will default to text: %s", t)
+                    if isinstance(t, str):
+                        latex_chars.append(t)
+            elif isinstance(t, str):
                 latex_chars.append(t)
         t = BLANK.join(latex_chars)
         return t if FUNC_PLACE in t else t + FUNC_PLACE  # do_func will replace this
@@ -382,8 +388,6 @@ class oMath2Latex(Tag2Method):
 
         out_latex_str = self.u.unicode_to_latex(s)
 
-        # print(s, out_latex_str)
-
         if (
             s.startswith("{") is False
             and out_latex_str.startswith("{")
@@ -392,18 +396,12 @@ class oMath2Latex(Tag2Method):
         ):
             out_latex_str = f" {out_latex_str[1:-1]} "
 
-        # print(s, out_latex_str)
-
         if "ensuremath" in out_latex_str:
             out_latex_str = out_latex_str.replace("\\ensuremath{", " ")
             out_latex_str = out_latex_str.replace("}", " ")
 
-        # print(s, out_latex_str)
-
         if out_latex_str.strip().startswith("\\text"):
             out_latex_str = f" \\text{{{out_latex_str}}} "
-
-        # print(s, out_latex_str)
 
         return out_latex_str
 
@@ -415,10 +413,12 @@ class oMath2Latex(Tag2Method):
         """
         _str = []
         _base_str = []
-        for s in elm.findtext("./{0}t".format(OMML_NS)):
-            out_latex_str = self.process_unicode(s)
-            _str.append(out_latex_str)
-            _base_str.append(s)
+        found_text = elm.findtext("./{0}t".format(OMML_NS))
+        if found_text:
+            for s in found_text:
+                out_latex_str = self.process_unicode(s)
+                _str.append(out_latex_str)
+                _base_str.append(s)
 
         proc_str = escape_latex(BLANK.join(_str))
         base_proc_str = BLANK.join(_base_str)

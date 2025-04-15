@@ -67,6 +67,7 @@ nav:
     - Architecture: concepts/architecture.md
     - Docling Document: concepts/docling_document.md
     - Chunking: concepts/chunking.md
+    - Plugins: concepts/plugins.md
   - Examples:
     - Examples: examples/index.md
     - 🔀 Conversion:
@@ -74,6 +75,8 @@ nav:
       - "Custom conversion": examples/custom_convert.py
       - "Batch conversion": examples/batch_convert.py
       - "Multi-format conversion": examples/run_with_formats.py
+      - "VLM pipeline with SmolDocling": examples/minimal_vlm_pipeline.py
+      - "VLM pipeline with remote model": examples/vlm_pipeline_api_model.py
       - "Figure export": examples/export_figures.py
       - "Table export": examples/export_tables.py
       - "Multimodal export": examples/export_multimodal.py
@@ -90,6 +93,7 @@ nav:
       - examples/rag_haystack.ipynb
       - examples/rag_langchain.ipynb
       - examples/rag_llamaindex.ipynb
+      - examples/visual_grounding.ipynb
     - 🖼️ Picture annotation:
       - "Annotate picture with local VLM": examples/pictures_description.ipynb
       - "Annotate picture with remote VLM": examples/pictures_description_api.py

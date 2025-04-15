@@ -40,6 +40,7 @@ from docling.datamodel.pipeline_options import (
     VlmModelType,
     VlmPipelineOptions,
     granite_vision_vlm_conversion_options,
+    granite_vision_vlm_ollama_conversion_options,
     smoldocling_vlm_conversion_options,
     smoldocling_vlm_mlx_conversion_options,
 )
@@ -60,12 +61,56 @@ err_console = Console(stderr=True)
 ocr_factory_internal = get_ocr_factory(allow_external_plugins=False)
 ocr_engines_enum_internal = ocr_factory_internal.get_enum()
 
+DOCLING_ASCII_ART = r"""
+                             ████ ██████
+                           ███░░██░░░░░██████
+                      ████████░░░░░░░░████████████
+                   ████████░░░░░░░░░░░░░░░░░░████████
+                 ██████░░░░░░░░░░░░░░░░░░░░░░░░░░██████
+              ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░█████
+            ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░█████
+          ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██████
+         ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██████
+        ██████░░░░░░░   ░░░░░░░░░░░░░░░░░░░░░░   ░░░░░░░██████
+       ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██████
+      ██████░░░░░░         ░░░░░░░░░░░░░░░          ░░░░░░██████
+      ███▒██░░░░░   ████     ░░░░░░░░░░░░   ████     ░░░░░██▒███
+     ███▒██░░░░░░  ████      ░░░░░░░░░░░░  ████      ░░░░░██▒████
+     ███▒██░░░░░░  ██     ██ ░░░░░░░░░░░░  ██     ██ ░░░░░██▒▒███
+     ███▒███░░░░░        ██  ░░░░████░░░░        ██  ░░░░░██▒▒███
+    ████▒▒██░░░░░░         ░░░███▒▒▒▒███░░░        ░░░░░░░██▒▒████
+    ████▒▒██░░░░░░░░░░░░░░░░░█▒▒▒▒▒▒▒▒▒▒█░░░░░░░░░░░░░░░░███▒▒████
+    ████▒▒▒██░░░░░░░░░░░░█████  ▒▒▒▒▒▒  ██████░░░░░░░░░░░██▒▒▒████
+     ███▒▒▒▒██░░░░░░░░███▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒███░░░░░░░░██▒▒▒▒███
+     ███▒▒▒▒▒███░░░░░░██▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒██░░░░░░███▒▒▒▒▒███
+     ████▒▒▒▒▒████░░░░░░██████████████████████░░░░░░████▒▒▒▒▒████
+      ███▒▒▒▒▒▒▒▒████░░░░░░░░░░░░░░░░░░░░░░░░░░░████▒▒▒▒▒▒▒▒▒███
+      ████▒▒▒▒▒▒▒▒███░░░░░████████████████████████▒▒▒▒▒▒▒▒▒████
+       ████▒▒▒▒▒▒██░░░░░░█                   █░░░░░██▒▒▒▒▒▒████
+        ████▒▒▒▒█░░░░░░░█   D O C L I N G   █░░░░░░░░██▒▒▒████
+         ████▒▒██░░░░░░█                   █░░░░░░░░░░█▒▒████
+          ██████░░░░░░█   D O C L I N G   █░░░░░░░░░░░██████
+            ████░░░░░█                   █░░░░░░░░░░░░████
+             █████░░█   D O C L I N G   █░░░░░░░░░░░█████
+               █████                   █░░░░░░░░████████
+                 ██   D O C L I N G   █░░░░░░░░█████
+                 █                   █░░░████████
+                █████████████████████████████
+"""
+
+
 app = typer.Typer(
     name="Docling",
     no_args_is_help=True,
     add_completion=False,
     pretty_exceptions_enable=False,
 )
+
+
+def logo_callback(value: bool):
+    if value:
+        print(DOCLING_ASCII_ART)
+        raise typer.Exit()
 
 
 def version_callback(value: bool):
@@ -356,6 +401,12 @@ def convert(
     device: Annotated[
         AcceleratorDevice, typer.Option(..., help="Accelerator device")
     ] = AcceleratorDevice.AUTO,
+    docling_logo: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--logo", callback=logo_callback, is_eager=True, help="Docling logo"
+        ),
+    ] = None,
 ):
     if verbose == 0:
         logging.basicConfig(level=logging.WARNING)
@@ -481,10 +532,16 @@ def convert(
                 backend=backend,  # pdf_backend
             )
         elif pipeline == PdfPipeline.VLM:
-            pipeline_options = VlmPipelineOptions()
+            pipeline_options = VlmPipelineOptions(
+                enable_remote_services=enable_remote_services,
+            )
 
             if vlm_model == VlmModelType.GRANITE_VISION:
                 pipeline_options.vlm_options = granite_vision_vlm_conversion_options
+            elif vlm_model == VlmModelType.GRANITE_VISION_OLLAMA:
+                pipeline_options.vlm_options = (
+                    granite_vision_vlm_ollama_conversion_options
+                )
             elif vlm_model == VlmModelType.SMOLDOCLING:
                 pipeline_options.vlm_options = smoldocling_vlm_conversion_options
                 if sys.platform == "darwin":

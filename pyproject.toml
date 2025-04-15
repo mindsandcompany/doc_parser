@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "docling"
-version = "2.28.4"  # DO NOT EDIT, updated automatically
+version = "2.29.0"  # DO NOT EDIT, updated automatically
 description = "SDK and CLI for parsing PDF, DOCX, HTML, and more, to a unified document representation for powering downstream workflows such as gen AI applications."
 authors = [
   "Christoph Auer <cau@zurich.ibm.com>",
@@ -80,7 +80,7 @@ onnxruntime = [
 ]
 
 transformers = [
-  { markers = "sys_platform != 'darwin' or platform_machine != 'x86_64'", version = "^4.46.0", optional = true },
+  { markers = "sys_platform != 'darwin' or platform_machine != 'x86_64'", version = "^4.49.0", optional = true },
   { markers = "sys_platform == 'darwin' and platform_machine == 'x86_64'", version = "~4.42.0", optional = true },
 ]
 accelerate = [

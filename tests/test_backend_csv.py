@@ -1,5 +1,3 @@
-import json
-import os
 from pathlib import Path
 
 from pytest import warns
@@ -15,22 +13,19 @@ GENERATE = GEN_TEST_DATA
 
 
 def get_csv_paths():
-
     # Define the directory you want to search
-    directory = Path(f"./tests/data/csv/")
+    directory = Path("./tests/data/csv/")
 
     # List all CSV files in the directory and its subdirectories
     return sorted(directory.rglob("*.csv"))
 
 
 def get_csv_path(name: str):
-
     # Return the matching CSV file path
     return Path(f"./tests/data/csv/{name}.csv")
 
 
 def get_converter():
-
     converter = DocumentConverter(allowed_formats=[InputFormat.CSV])
 
     return converter
@@ -55,9 +50,9 @@ def test_e2e_valid_csv_conversions():
         pred_itxt: str = doc._export_to_indented_text(
             max_text_len=70, explicit_tables=False
         )
-        assert verify_export(
-            pred_itxt, str(gt_path) + ".itxt"
-        ), "export to indented-text"
+        assert verify_export(pred_itxt, str(gt_path) + ".itxt"), (
+            "export to indented-text"
+        )
 
         assert verify_document(
             pred_doc=doc,

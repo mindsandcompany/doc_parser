@@ -1,4 +1,4 @@
-from typing import Iterable
+from collections.abc import Iterable
 
 from docling.datamodel.base_models import Page, VlmPrediction
 from docling.datamodel.document import ConversionResult
@@ -10,7 +10,6 @@ from docling.utils.profiling import TimeRecorder
 
 
 class ApiVlmModel(BasePageModel):
-
     def __init__(
         self,
         enabled: bool,

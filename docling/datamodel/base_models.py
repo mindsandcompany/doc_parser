@@ -10,7 +10,9 @@ from docling_core.types.doc import (
     TableCell,
 )
 from docling_core.types.doc.page import SegmentedPdfPage, TextCell
-from docling_core.types.io import (  # DO ΝΟΤ REMOVE; explicitly exposed from this location
+
+# DO NOT REMOVE; explicitly exposed from this location
+from docling_core.types.io import (
     DocumentStream,
 )
 from PIL.Image import Image
@@ -50,6 +52,7 @@ class OutputFormat(str, Enum):
     MARKDOWN = "md"
     JSON = "json"
     HTML = "html"
+    HTML_SPLIT_PAGE = "html_split_page"
     TEXT = "text"
     DOCTAGS = "doctags"
 
@@ -232,9 +235,9 @@ class Page(BaseModel):
         None  # Internal PDF backend. By default it is cleared during assembling.
     )
     _default_image_scale: float = 1.0  # Default image scale for external usage.
-    _image_cache: Dict[float, Image] = (
-        {}
-    )  # Cache of images in different scales. By default it is cleared during assembling.
+    _image_cache: Dict[
+        float, Image
+    ] = {}  # Cache of images in different scales. By default it is cleared during assembling.
 
     def get_image(
         self, scale: float = 1.0, cropbox: Optional[BoundingBox] = None
@@ -242,7 +245,7 @@ class Page(BaseModel):
         if self._backend is None:
             return self._image_cache.get(scale, None)
 
-        if not scale in self._image_cache:
+        if scale not in self._image_cache:
             if cropbox is None:
                 self._image_cache[scale] = self._backend.get_page_image(scale=scale)
             else:

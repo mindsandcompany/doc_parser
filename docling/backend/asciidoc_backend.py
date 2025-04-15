@@ -34,7 +34,7 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
                 text_stream = self.path_or_stream.getvalue().decode("utf-8")
                 self.lines = text_stream.split("\n")
             if isinstance(self.path_or_stream, Path):
-                with open(self.path_or_stream, "r", encoding="utf-8") as f:
+                with open(self.path_or_stream, encoding="utf-8") as f:
                     self.lines = f.readlines()
             self.valid = True
 
@@ -75,13 +75,11 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
 
         return doc
 
-    def _parse(self, doc: DoclingDocument):
+    def _parse(self, doc: DoclingDocument):  # noqa: C901
         """
         Main function that orchestrates the parsing by yielding components:
         title, section headers, text, lists, and tables.
         """
-
-        content = ""
 
         in_list = False
         in_table = False
@@ -95,7 +93,7 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
         # indents: dict[int, Union[DocItem, GroupItem, None]] = {}
         indents: dict[int, Union[GroupItem, None]] = {}
 
-        for i in range(0, 10):
+        for i in range(10):
             parents[i] = None
             indents[i] = None
 
@@ -125,7 +123,6 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
 
             # Lists
             elif self._is_list_item(line):
-
                 _log.debug(f"line: {line}")
                 item = self._parse_list_item(line)
                 _log.debug(f"parsed list-item: {item}")
@@ -147,7 +144,6 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
                     indents[level + 1] = item["indent"]
 
                 elif in_list and item["indent"] < indents[level]:
-
                     # print(item["indent"], " => ", indents[level])
                     while item["indent"] < indents[level]:
                         # print(item["indent"], " => ", indents[level])
@@ -176,7 +172,6 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
             elif in_table and (
                 (not self._is_table_line(line)) or line.strip() == "|==="
             ):  # end of table
-
                 caption = None
                 if len(caption_data) > 0:
                     caption = doc.add_text(
@@ -195,7 +190,6 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
 
             # Picture
             elif self._is_picture(line):
-
                 caption = None
                 if len(caption_data) > 0:
                     caption = doc.add_text(
@@ -250,7 +244,6 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
                 text_data = []
 
             elif len(line.strip()) > 0:  # allow multiline texts
-
                 item = self._parse_text(line)
                 text_data.append(item["text"])
 
@@ -273,14 +266,14 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
 
     def _get_current_level(self, parents):
         for k, v in parents.items():
-            if v == None and k > 0:
+            if v is None and k > 0:
                 return k - 1
 
         return 0
 
     def _get_current_parent(self, parents):
         for k, v in parents.items():
-            if v == None and k > 0:
+            if v is None and k > 0:
                 return parents[k - 1]
 
         return None
@@ -328,7 +321,7 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
                     "marker": marker,
                     "text": text.strip(),
                     "numbered": False,
-                    "indent": 0 if indent == None else len(indent),
+                    "indent": 0 if indent is None else len(indent),
                 }
             else:
                 return {
@@ -336,7 +329,7 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
                     "marker": marker,
                     "text": text.strip(),
                     "numbered": True,
-                    "indent": 0 if indent == None else len(indent),
+                    "indent": 0 if indent is None else len(indent),
                 }
         else:
             # Fallback if no match
@@ -357,7 +350,6 @@ class AsciiDocBackend(DeclarativeDocumentBackend):
         return [cell.strip() for cell in line.split("|") if cell.strip()]
 
     def _populate_table_as_grid(self, table_data):
-
         num_rows = len(table_data)
 
         # Adjust the table data into a grid format

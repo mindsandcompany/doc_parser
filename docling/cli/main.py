@@ -6,14 +6,16 @@ import sys
 import tempfile
 import time
 import warnings
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Annotated, Dict, Iterable, List, Optional, Type
+from typing import Annotated, Dict, List, Optional, Type
 
 import rich.table
 import typer
 from docling_core.types.doc import ImageRefMode
 from docling_core.utils.file import resolve_source_to_path
 from pydantic import TypeAdapter
+from rich.console import Console
 
 from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
 from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
@@ -53,7 +55,6 @@ warnings.filterwarnings(action="ignore", category=UserWarning, module="pydantic|
 warnings.filterwarnings(action="ignore", category=FutureWarning, module="easyocr")
 
 _log = logging.getLogger(__name__)
-from rich.console import Console
 
 console = Console()
 err_console = Console(stderr=True)
@@ -154,12 +155,12 @@ def export_documents(
     output_dir: Path,
     export_json: bool,
     export_html: bool,
+    export_html_split_page: bool,
     export_md: bool,
     export_txt: bool,
     export_doctags: bool,
     image_export_mode: ImageRefMode,
 ):
-
     success_count = 0
     failure_count = 0
 
@@ -181,7 +182,15 @@ def export_documents(
                 fname = output_dir / f"{doc_filename}.html"
                 _log.info(f"writing HTML output to {fname}")
                 conv_res.document.save_as_html(
-                    filename=fname, image_mode=image_export_mode
+                    filename=fname, image_mode=image_export_mode, split_page_view=False
+                )
+
+            # Export HTML format:
+            if export_html_split_page:
+                fname = output_dir / f"{doc_filename}.html"
+                _log.info(f"writing HTML output to {fname}")
+                conv_res.document.save_as_html(
+                    filename=fname, image_mode=image_export_mode, split_page_view=True
                 )
 
             # Export Text format:
@@ -224,7 +233,7 @@ def _split_list(raw: Optional[str]) -> Optional[List[str]]:
 
 
 @app.command(no_args_is_help=True)
-def convert(
+def convert(  # noqa: C901
     input_sources: Annotated[
         List[str],
         typer.Argument(
@@ -280,7 +289,7 @@ def convert(
             ...,
             help=(
                 f"The OCR engine to use. When --allow-external-plugins is *not* set, the available values are: "
-                f"{', '.join((o.value for o in ocr_engines_enum_internal))}. "
+                f"{', '.join(o.value for o in ocr_engines_enum_internal)}. "
                 f"Use the option --show-external-plugins to see the options allowed with external plugins."
             ),
         ),
@@ -421,7 +430,7 @@ def convert(
     settings.debug.visualize_ocr = debug_visualize_ocr
 
     if from_formats is None:
-        from_formats = [e for e in InputFormat]
+        from_formats = list(InputFormat)
 
     parsed_headers: Optional[Dict[str, str]] = None
     if headers is not None:
@@ -472,6 +481,7 @@ def convert(
 
         export_json = OutputFormat.JSON in to_formats
         export_html = OutputFormat.HTML in to_formats
+        export_html_split_page = OutputFormat.HTML_SPLIT_PAGE in to_formats
         export_md = OutputFormat.MARKDOWN in to_formats
         export_txt = OutputFormat.TEXT in to_formats
         export_doctags = OutputFormat.DOCTAGS in to_formats
@@ -585,6 +595,7 @@ def convert(
             output_dir=output,
             export_json=export_json,
             export_html=export_html,
+            export_html_split_page=export_html_split_page,
             export_md=export_md,
             export_txt=export_txt,
             export_doctags=export_doctags,

@@ -158,7 +158,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
     def _get_level(self) -> int:
         """Return the first None index."""
         for k, v in self.parents.items():
-            if k >= 0 and v == None:
+            if k >= 0 and v is None:
                 return k
         return 0
 
@@ -418,7 +418,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             else prev_parent
         )
 
-    def _handle_text_elements(
+    def _handle_text_elements(  # noqa: C901
         self,
         element: BaseOxmlElement,
         docx_obj: DocxDocument,
@@ -812,7 +812,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
                     f" col {col_idx} grid_span {cell.grid_span} grid_cols_before {row.grid_cols_before}"
                 )
                 if cell is None or cell._tc in cell_set:
-                    _log.debug(f"  skipped since repeated content")
+                    _log.debug("  skipped since repeated content")
                     col_idx += cell.grid_span
                     continue
                 else:
@@ -879,7 +879,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
                     image=ImageRef.from_pil(image=pil_image, dpi=72),
                     caption=None,
                 )
-            except (UnidentifiedImageError, OSError) as e:
+            except (UnidentifiedImageError, OSError):
                 _log.warning("Warning: image cannot be loaded by Pillow")
                 doc.add_picture(
                     parent=self.parents[level - 1],

@@ -1,8 +1,9 @@
 import logging
 import random
+from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import pypdfium2 as pdfium
 from docling_core.types.doc import BoundingBox, CoordOrigin
@@ -172,7 +173,6 @@ class DoclingParseV2PageBackend(PdfPageBackend):
     def get_page_image(
         self, scale: float = 1, cropbox: Optional[BoundingBox] = None
     ) -> Image.Image:
-
         page_size = self.get_size()
 
         if not cropbox:

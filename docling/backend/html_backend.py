@@ -55,7 +55,7 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
         self.max_levels = 10
         self.level = 0
         self.parents: dict[int, Optional[Union[DocItem, GroupItem]]] = {}
-        for i in range(0, self.max_levels):
+        for i in range(self.max_levels):
             self.parents[i] = None
 
         try:
@@ -126,7 +126,6 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
         return doc
 
     def walk(self, tag: Tag, doc: DoclingDocument) -> None:
-
         # Iterate over elements in the body of the document
         text: str = ""
         for element in tag.children:
@@ -135,7 +134,7 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
                     self.analyze_tag(cast(Tag, element), doc)
                 except Exception as exc_child:
                     _log.error(
-                        f"Error processing child from tag {tag.name}: {repr(exc_child)}"
+                        f"Error processing child from tag {tag.name}: {exc_child!r}"
                     )
                     raise exc_child
             elif isinstance(element, NavigableString) and not isinstance(
@@ -147,7 +146,7 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
                     item for item in element.next_siblings if isinstance(item, Tag)
                 ]
                 if element.next_sibling is None or any(
-                    [item.name in TAGS_FOR_NODE_ITEMS for item in siblings]
+                    item.name in TAGS_FOR_NODE_ITEMS for item in siblings
                 ):
                     text = text.strip()
                     if text and tag.name in ["div"]:
@@ -222,7 +221,6 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
             )
         else:
             if hlevel > self.level:
-
                 # add invisible group
                 for i in range(self.level + 1, hlevel):
                     self.parents[i] = doc.add_group(
@@ -234,7 +232,6 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
                 self.level = hlevel
 
             elif hlevel < self.level:
-
                 # remove the tail
                 for key in self.parents.keys():
                     if key > hlevel:
@@ -360,7 +357,7 @@ class HTMLDocumentBackend(DeclarativeDocumentBackend):
             marker = ""
             enumerated = False
             if parent_label == GroupLabel.ORDERED_LIST:
-                marker = f"{str(index_in_list)}."
+                marker = f"{index_in_list!s}."
                 enumerated = True
             doc.add_list_item(
                 text=text,

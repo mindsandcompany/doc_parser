@@ -3,8 +3,8 @@
 # It does not run the actual formula understanding model.
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from docling_core.types.doc import DocItemLabel, DoclingDocument, NodeItem, TextItem
 
@@ -49,7 +49,6 @@ class ExampleFormulaUnderstandingEnrichmentModel(BaseItemAndImageEnrichmentModel
 
 # How the pipeline can be extended.
 class ExampleFormulaUnderstandingPipeline(StandardPdfPipeline):
-
     def __init__(self, pipeline_options: ExampleFormulaUnderstandingPipelineOptions):
         super().__init__(pipeline_options)
         self.pipeline_options: ExampleFormulaUnderstandingPipelineOptions
@@ -85,7 +84,7 @@ def main():
             )
         }
     )
-    result = doc_converter.convert(input_doc_path)
+    doc_converter.convert(input_doc_path)
 
 
 if __name__ == "__main__":

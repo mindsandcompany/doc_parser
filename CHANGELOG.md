@@ -1,3 +1,19 @@
+## [v2.30.0](https://github.com/docling-project/docling/releases/tag/v2.30.0) - 2025-04-14
+
+### Feature
+
+* **cli:** Add option for html with split-page mode ([#1355](https://github.com/docling-project/docling/issues/1355)) ([`c0ba88e`](https://github.com/docling-project/docling/commit/c0ba88edf1d9dcef91979be9b674660b34c2d46a))
+* **xlsx:** Create a page for each worksheet in XLSX backend ([#1332](https://github.com/docling-project/docling/issues/1332)) ([`eef2bde`](https://github.com/docling-project/docling/commit/eef2bdea77fa32061e798f538bf2cd95f8d72165))
+* OllamaVlmModel for Granite Vision 3.2 ([#1337](https://github.com/docling-project/docling/issues/1337)) ([`c605edd`](https://github.com/docling-project/docling/commit/c605edd8e91d988f6dca2bdfc67c54d6396fe903))
+
+### Fix
+
+* **deps:** Widen typer upper bound ([#1375](https://github.com/docling-project/docling/issues/1375)) ([`7e40ad3`](https://github.com/docling-project/docling/commit/7e40ad3261147ba70204f7006ccaf9741025e58a))
+* Auto-recognize .xlsx, .docx and .pptx files ([#1340](https://github.com/docling-project/docling/issues/1340)) ([`0de70e7`](https://github.com/docling-project/docling/commit/0de70e799100878b2aa48dfd49858c426f3f1b10))
+* **docx:** Declare image_data variable when handling pictures ([#1359](https://github.com/docling-project/docling/issues/1359)) ([`415b877`](https://github.com/docling-project/docling/commit/415b877984fd89884e97b4740bc553e800055e0e))
+* Implement PictureDescriptionApiOptions.bitmap_area_threshold ([#1248](https://github.com/docling-project/docling/issues/1248)) ([`2503999`](https://github.com/docling-project/docling/commit/250399948de69fe01cd789e328194f38a03598a7))
+* Properly address page in pipeline _assemble_document when page_range is provided ([#1334](https://github.com/docling-project/docling/issues/1334)) ([`6b696b5`](https://github.com/docling-project/docling/commit/6b696b504a03ba49f05237d0e1b23fcced1a538a))
+
 ## [v2.29.0](https://github.com/docling-project/docling/releases/tag/v2.29.0) - 2025-04-10
 
 ### Feature

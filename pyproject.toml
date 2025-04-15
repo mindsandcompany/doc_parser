@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "docling"
-version = "2.29.0"  # DO NOT EDIT, updated automatically
+version = "2.30.0"  # DO NOT EDIT, updated automatically
 description = "SDK and CLI for parsing PDF, DOCX, HTML, and more, to a unified document representation for powering downstream workflows such as gen AI applications."
 authors = [
   "Christoph Auer <cau@zurich.ibm.com>",
@@ -46,7 +46,7 @@ packages = [{ include = "docling" }]
 ######################
 python = "^3.9"
 pydantic = "^2.0.0"
-docling-core = {extras = ["chunking"], version = "^2.24.1"}
+docling-core = {version = "^2.26.0", extras = ["chunking"]}
 docling-ibm-models = "^3.4.0"
 docling-parse = "^4.0.0"
 filetype = "^1.2.0"
@@ -62,7 +62,7 @@ scipy = [
   { version = "^1.6.0", markers = "python_version >= '3.10'" },
   { version = ">=1.6.0,<1.14.0", markers = "python_version < '3.10'" },
 ]
-typer = "^0.12.5"
+typer = ">=0.12.5,<0.16.0"
 python-docx = "^1.1.2"
 python-pptx = "^1.0.2"
 beautifulsoup4 = "^4.12.3"
@@ -110,6 +110,8 @@ ipywidgets = "^8.1.5"
 nbqa = "^1.9.0"
 types-openpyxl = "^3.1.5.20241114"
 types-tqdm = "^4.67.0.20241221"
+coverage = "^7.6.2"
+pytest-cov = "^6.0.0"
 
 [tool.poetry.group.docs.dependencies]
 mkdocs-material = "^9.5.40"
@@ -164,15 +166,82 @@ docling-tools = "docling.cli.tools:app"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.black]
+[tool.ruff]
+target-version = "py39"
 line-length = 88
-target-version = ["py39"]
-include = '\.pyi?$'
+respect-gitignore = true
 
-[tool.isort]
-profile = "black"
-line_length = 88
-py_version = 39
+# extend-exclude = [
+#     "tests",
+# ]
+
+[tool.ruff.format]
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = [
+    # "B",  # flake8-bugbear
+    "C",  # flake8-comprehensions
+    "C9",  # mccabe
+    # "D",  # flake8-docstrings
+    "E",  # pycodestyle errors (default)
+    "F",  # pyflakes (default)
+    "I",  # isort
+    "PD", # pandas-vet
+    "PIE", # pie
+    # "PTH", # pathlib
+    "Q",  # flake8-quotes
+    # "RET", # return
+    "RUF", # Enable all ruff-specific checks
+    # "SIM", # simplify
+    "S307", # eval
+    # "T20",  # (disallow print statements) keep debugging statements out of the codebase
+    "W",  # pycodestyle warnings
+    "ASYNC", # async
+    "UP", # pyupgrade
+]
+
+ignore = [
+    "C408",  # Unnecessary `dict()` call (rewrite as a literal)
+    "E501",  # Line too long, handled by ruff formatter
+    "D107", # "Missing docstring in __init__",
+    "F401",  # imported but unused; consider using `importlib.util.find_spec` to test for "
+    "F811", # "redefinition of the same function"
+    "PL", # Pylint
+    "RUF012", # Mutable Class Attributes
+    "UP006",  # List vs list, etc
+    "UP007", # Option and Union
+    "UP035",  # `typing.Set` is deprecated, use `set` instead"
+]
+
+#extend-select = []
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = [
+    # Allow Pydantic's `@validator` decorator to trigger class method treatment.
+    "pydantic.validator",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401"]
+"tests/*.py" = ["ASYNC"] # Disable ASYNC check for tests
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+# [tool.ruff.lint.isort.sections]
+# "docling" = ["docling_core", "docling_ibm_models", "docling_parse"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+# section-order = [
+#   "future",
+#   "standard-library",
+#   "third-party",
+#   "docling",
+#   "first-party",
+#   "local-folder",
+# ]
 
 [tool.mypy]
 pretty = true
@@ -199,10 +268,6 @@ module = [
   "pylatexenc.*",
 ]
 ignore_missing_imports = true
-
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "E501"]
 
 [tool.semantic_release]
 # for default values check:

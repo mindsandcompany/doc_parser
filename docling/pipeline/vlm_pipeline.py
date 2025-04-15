@@ -1,5 +1,4 @@
 import logging
-import warnings
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional, Union, cast
@@ -32,7 +31,6 @@ _log = logging.getLogger(__name__)
 
 
 class VlmPipeline(PaginatedPipeline):
-
     def __init__(self, pipeline_options: VlmPipelineOptions):
         super().__init__(pipeline_options)
         self.keep_backend = True
@@ -114,7 +112,6 @@ class VlmPipeline(PaginatedPipeline):
 
     def _assemble_document(self, conv_res: ConversionResult) -> ConversionResult:
         with TimeRecorder(conv_res, "doc_assemble", scope=ProfilingScope.DOCUMENT):
-
             if (
                 self.pipeline_options.vlm_options.response_format
                 == ResponseFormat.DOCTAGS

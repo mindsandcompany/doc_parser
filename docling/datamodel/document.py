@@ -14,6 +14,7 @@ from typing import (
     Set,
     Type,
     Union,
+    Any,
 )
 
 import filetype
@@ -205,6 +206,7 @@ class ConversionResult(BaseModel):
     confidence: ConfidenceReport = Field(default_factory=ConfidenceReport)
 
     document: DoclingDocument = _EMPTY_DOCLING_DOC
+    metadata: Optional[Dict[str, Any]] = None  # 추출된 메타데이터
 
     @property
     @deprecated("Use document instead.")

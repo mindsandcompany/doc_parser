@@ -22,6 +22,8 @@ from docling.backend.msword_backend import MsWordDocumentBackend
 from docling.backend.noop_backend import NoOpBackend
 from docling.backend.xml.jats_backend import JatsDocumentBackend
 from docling.backend.xml.uspto_backend import PatentUsptoDocumentBackend
+# 한글 추가
+from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
 from docling.datamodel.base_models import (
     ConversionStatus,
     DoclingComponentType,
@@ -42,7 +44,6 @@ from docling.datamodel.settings import (
     settings,
 )
 from docling.exceptions import ConversionError
-from docling.pipeline.asr_pipeline import AsrPipeline
 from docling.pipeline.base_pipeline import BasePipeline
 from docling.pipeline.simple_pipeline import SimplePipeline
 from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
@@ -119,6 +120,11 @@ class PdfFormatOption(FormatOption):
     pipeline_cls: Type = StandardPdfPipeline
     backend: Type[AbstractDocumentBackend] = DoclingParseV4DocumentBackend
 
+# 한글추가
+class HwpxFormatOption(FormatOption):
+    pipeline_cls: Type = SimplePipeline
+    backend: Type[AbstractDocumentBackend] = HwpxDocumentBackend
+
 
 class AudioFormatOption(FormatOption):
     pipeline_cls: Type = AsrPipeline
@@ -164,6 +170,10 @@ def _get_default_option(format: InputFormat) -> FormatOption:
             pipeline_cls=SimplePipeline, backend=DoclingJSONBackend
         ),
         InputFormat.AUDIO: FormatOption(pipeline_cls=AsrPipeline, backend=NoOpBackend),
+        # 한글 파일 추가
+        InputFormat.XML_HWPX: FormatOption(
+            pipeline_cls=SimplePipeline, backend=HwpxDocumentBackend
+        ),
     }
     if (options := format_to_default_options.get(format)) is not None:
         return options

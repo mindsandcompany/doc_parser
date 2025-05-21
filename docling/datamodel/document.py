@@ -1,13 +1,13 @@
 import csv
 import logging
 import re
+from collections.abc import Iterable
 from enum import Enum
 from io import BytesIO
 from pathlib import Path, PurePath
 from typing import (
     TYPE_CHECKING,
     Dict,
-    Iterable,
     List,
     Literal,
     Optional,
@@ -17,6 +17,8 @@ from typing import (
 )
 
 import filetype
+
+# DO NOT REMOVE; explicitly exposed from this location
 from docling_core.types.doc import (
     DocItem,
     DocItemLabel,
@@ -35,14 +37,14 @@ from docling_core.types.legacy_doc.base import (
     PageReference,
     Prov,
     Ref,
+    Table as DsSchemaTable,
+    TableCell,
 )
-from docling_core.types.legacy_doc.base import Table as DsSchemaTable
-from docling_core.types.legacy_doc.base import TableCell
 from docling_core.types.legacy_doc.document import (
     CCSDocumentDescription as DsDocumentDescription,
+    CCSFileInfoObject as DsFileInfoObject,
+    ExportedCCSDocument as DsDocument,
 )
-from docling_core.types.legacy_doc.document import CCSFileInfoObject as DsFileInfoObject
-from docling_core.types.legacy_doc.document import ExportedCCSDocument as DsDocument
 from docling_core.utils.file import resolve_source_to_stream
 from docling_core.utils.legacy import docling_document_to_legacy
 from pydantic import BaseModel
@@ -65,7 +67,7 @@ from docling.datamodel.base_models import (
 )
 from docling.datamodel.settings import DocumentLimits
 from docling.utils.profiling import ProfilingItem
-from docling.utils.utils import create_file_hash, create_hash
+from docling.utils.utils import create_file_hash
 
 if TYPE_CHECKING:
     from docling.document_converter import FormatOption
@@ -134,9 +136,9 @@ class InputDocument(BaseModel):
                     self._init_doc(backend, path_or_stream)
 
             elif isinstance(path_or_stream, BytesIO):
-                assert (
-                    filename is not None
-                ), "Can't construct InputDocument from stream without providing filename arg."
+                assert filename is not None, (
+                    "Can't construct InputDocument from stream without providing filename arg."
+                )
                 self.file = PurePath(filename)
                 self.filesize = path_or_stream.getbuffer().nbytes
 
@@ -228,7 +230,6 @@ class _DummyBackend(AbstractDocumentBackend):
 
 
 class _DocumentConversionInput(BaseModel):
-
     path_or_stream_iterator: Iterable[Union[Path, str, DocumentStream]]
     headers: Optional[Dict[str, str]] = None
     limits: Optional[DocumentLimits] = DocumentLimits()
@@ -283,6 +284,13 @@ class _DocumentConversionInput(BaseModel):
             if mime is None:  # must guess from
                 with obj.open("rb") as f:
                     content = f.read(1024)  # Read first 1KB
+            if mime is not None and mime.lower() == "application/zip":
+                if obj.suffixes[-1].lower() == ".xlsx":
+                    mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                elif obj.suffixes[-1].lower() == ".docx":
+                    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                elif obj.suffixes[-1].lower() == ".pptx":
+                    mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
         elif isinstance(obj, DocumentStream):
             content = obj.stream.read(8192)
@@ -294,7 +302,15 @@ class _DocumentConversionInput(BaseModel):
                     if ("." in obj.name and not obj.name.startswith("."))
                     else ""
                 )
-                mime = _DocumentConversionInput._mime_from_extension(ext)
+                mime = _DocumentConversionInput._mime_from_extension(ext.lower())
+            if mime is not None and mime.lower() == "application/zip":
+                objname = obj.name.lower()
+                if objname.endswith(".xlsx"):
+                    mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                elif objname.endswith(".docx"):
+                    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                elif objname.endswith(".pptx"):
+                    mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
         mime = mime or _DocumentConversionInput._detect_html_xhtml(content)
         mime = mime or _DocumentConversionInput._detect_csv(content)
@@ -360,6 +376,13 @@ class _DocumentConversionInput(BaseModel):
             mime = FormatToMimeType[InputFormat.JSON_DOCLING][0]
         elif ext in FormatToExtensions[InputFormat.PDF]:
             mime = FormatToMimeType[InputFormat.PDF][0]
+        elif ext in FormatToExtensions[InputFormat.DOCX]:
+            mime = FormatToMimeType[InputFormat.DOCX][0]
+        elif ext in FormatToExtensions[InputFormat.PPTX]:
+            mime = FormatToMimeType[InputFormat.PPTX][0]
+        elif ext in FormatToExtensions[InputFormat.XLSX]:
+            mime = FormatToMimeType[InputFormat.XLSX][0]
+
         return mime
 
     @staticmethod

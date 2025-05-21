@@ -13,14 +13,14 @@ def chunkify(iterator, chunk_size):
     if isinstance(iterator, List):
         iterator = iter(iterator)
     for first in iterator:  # Take the first element from the iterator
-        yield [first] + list(islice(iterator, chunk_size - 1))
+        yield [first, *list(islice(iterator, chunk_size - 1))]
 
 
 def create_file_hash(path_or_stream: Union[BytesIO, Path]) -> str:
     """Create a stable page_hash of the path_or_stream of a file"""
 
     block_size = 65536
-    hasher = hashlib.sha256()
+    hasher = hashlib.sha256(usedforsecurity=False)
 
     def _hash_buf(binary_stream):
         buf = binary_stream.read(block_size)  # read and page_hash in chunks
@@ -38,7 +38,7 @@ def create_file_hash(path_or_stream: Union[BytesIO, Path]) -> str:
 
 
 def create_hash(string: str):
-    hasher = hashlib.sha256()
+    hasher = hashlib.sha256(usedforsecurity=False)
     hasher.update(string.encode("utf-8"))
 
     return hasher.hexdigest()

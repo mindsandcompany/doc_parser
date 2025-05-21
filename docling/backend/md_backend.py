@@ -83,7 +83,7 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
                 # otherwise they represent emphasis (bold or italic)
                 self.markdown = self._shorten_underscore_sequences(text_stream)
             if isinstance(self.path_or_stream, Path):
-                with open(self.path_or_stream, "r", encoding="utf-8") as f:
+                with open(self.path_or_stream, encoding="utf-8") as f:
                     md_content = f.read()
                     # remove invalid sequences
                     # very long sequences of underscores will lead to unnecessary long processing times.
@@ -168,7 +168,7 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
             )
         self.inline_texts = []
 
-    def _iterate_elements(
+    def _iterate_elements(  # noqa: C901
         self,
         element: marko.element.Element,
         depth: int,
@@ -176,7 +176,6 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
         visited: Set[marko.element.Element],
         parent_item: Optional[NodeItem] = None,
     ):
-
         if element in visited:
             return
 
@@ -236,7 +235,7 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
             if has_non_empty_list_items:
                 label = GroupLabel.ORDERED_LIST if element.ordered else GroupLabel.LIST
                 parent_item = doc.add_group(
-                    label=label, name=f"list", parent=parent_item
+                    label=label, name="list", parent=parent_item
                 )
 
         elif (
@@ -320,7 +319,7 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
             self._html_blocks += 1
             self._process_inline_text(parent_item, doc)
             self._close_table(doc)
-            _log.debug("HTML Block: {}".format(element))
+            _log.debug(f"HTML Block: {element}")
             if (
                 len(element.body) > 0
             ):  # If Marko doesn't return any content for HTML block, skip it
@@ -332,7 +331,7 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
         else:
             if not isinstance(element, str):
                 self._close_table(doc)
-                _log.debug("Some other element: {}".format(element))
+                _log.debug(f"Some other element: {element}")
 
         processed_block_types = (
             marko.block.Heading,
@@ -398,7 +397,6 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
 
             # if HTML blocks were detected, export to HTML and delegate to HTML backend
             if self._html_blocks > 0:
-
                 # export to HTML
                 html_backend_cls = HTMLDocumentBackend
                 html_str = doc.export_to_html()
@@ -411,7 +409,7 @@ class MarkdownDocumentBackend(DeclarativeDocumentBackend):
                         )
                     return _txt
 
-                # restore original HTML by removing previouly added markers
+                # restore original HTML by removing previously added markers
                 for regex in [
                     rf"<pre>\s*<code>\s*{_START_MARKER}",
                     rf"{_STOP_MARKER}\s*</code>\s*</pre>",

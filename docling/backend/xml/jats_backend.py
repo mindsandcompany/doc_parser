@@ -91,7 +91,7 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
         super().__init__(in_doc, path_or_stream)
         self.path_or_stream = path_or_stream
 
-        # Initialize the root of the document hiearchy
+        # Initialize the root of the document hierarchy
         self.root: Optional[NodeItem] = None
 
         self.valid = False
@@ -102,13 +102,13 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
 
             doc_info: etree.DocInfo = self.tree.docinfo
             if doc_info.system_url and any(
-                [kwd in doc_info.system_url for kwd in JATS_DTD_URL]
+                kwd in doc_info.system_url for kwd in JATS_DTD_URL
             ):
                 self.valid = True
                 return
             for ent in doc_info.internalDTD.iterentities():
                 if ent.system_url and any(
-                    [kwd in ent.system_url for kwd in JATS_DTD_URL]
+                    kwd in ent.system_url for kwd in JATS_DTD_URL
                 ):
                     self.valid = True
                     return
@@ -232,10 +232,9 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
                 # TODO: once superscript is supported, add label with formatting
                 aff = aff.removeprefix(f"{label[0].text}, ")
             affiliation_names.append(aff)
-        affiliation_ids_names = {
-            id: name
-            for id, name in zip(meta.xpath(".//aff[@id]/@id"), affiliation_names)
-        }
+        affiliation_ids_names = dict(
+            zip(meta.xpath(".//aff[@id]/@id"), affiliation_names)
+        )
 
         # Get author names and affiliation names
         for author_node in meta.xpath(
@@ -300,7 +299,6 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
     def _add_abstract(
         self, doc: DoclingDocument, xml_components: XMLComponents
     ) -> None:
-
         for abstract in xml_components["abstract"]:
             text: str = abstract["content"]
             title: str = abstract["label"] or DEFAULT_HEADER_ABSTRACT
@@ -349,7 +347,7 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
 
         return
 
-    def _parse_element_citation(self, node: etree._Element) -> str:
+    def _parse_element_citation(self, node: etree._Element) -> str:  # noqa: C901
         citation: Citation = {
             "author_names": "",
             "title": "",
@@ -440,7 +438,7 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
             citation["page"] = node.xpath("fpage")[0].text.replace("\n", " ").strip()
             if len(node.xpath("lpage")) > 0:
                 citation["page"] += (
-                    "–" + node.xpath("lpage")[0].text.replace("\n", " ").strip()
+                    "–" + node.xpath("lpage")[0].text.replace("\n", " ").strip()  # noqa: RUF001
                 )
 
         # Flatten the citation to string
@@ -595,9 +593,8 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
 
         try:
             self._add_table(doc, parent, table)
-        except Exception as e:
-            _log.warning(f"Skipping unsupported table in {str(self.file)}")
-            pass
+        except Exception:
+            _log.warning(f"Skipping unsupported table in {self.file!s}")
 
         return
 
@@ -609,7 +606,7 @@ class JatsDocumentBackend(DeclarativeDocumentBackend):
         )
         return
 
-    def _walk_linear(
+    def _walk_linear(  # noqa: C901
         self, doc: DoclingDocument, parent: NodeItem, node: etree._Element
     ) -> str:
         skip_tags = ["term"]

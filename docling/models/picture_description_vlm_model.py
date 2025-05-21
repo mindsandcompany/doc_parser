@@ -1,5 +1,6 @@
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional, Type, Union
+from typing import Optional, Type, Union
 
 from PIL import Image
 
@@ -13,7 +14,6 @@ from docling.utils.accelerator_utils import decide_device
 
 
 class PictureDescriptionVlmModel(PictureDescriptionBaseModel):
-
     @classmethod
     def get_options_type(cls) -> Type[PictureDescriptionBaseOptions]:
         return PictureDescriptionVlmOptions
@@ -36,7 +36,6 @@ class PictureDescriptionVlmModel(PictureDescriptionBaseModel):
         self.options: PictureDescriptionVlmOptions
 
         if self.enabled:
-
             if artifacts_path is None:
                 artifacts_path = self.download_models(repo_id=self.options.repo_id)
             else:
@@ -58,7 +57,10 @@ class PictureDescriptionVlmModel(PictureDescriptionBaseModel):
                 artifacts_path,
                 torch_dtype=torch.bfloat16,
                 _attn_implementation=(
-                    "flash_attention_2" if self.device.startswith("cuda") else "eager"
+                    "flash_attention_2"
+                    if self.device.startswith("cuda")
+                    and accelerator_options.cuda_use_flash_attention2
+                    else "eager"
                 ),
             ).to(self.device)
 

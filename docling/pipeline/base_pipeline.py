@@ -3,9 +3,10 @@ import logging
 import time
 import traceback
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Iterable, List
+from collections.abc import Iterable
+from typing import Any, Callable, List
 
-from docling_core.types.doc import DoclingDocument, NodeItem
+from docling_core.types.doc import NodeItem
 
 from docling.backend.abstract_backend import AbstractDocumentBackend
 from docling.backend.pdf_backend import PdfDocumentBackend
@@ -64,7 +65,6 @@ class BasePipeline(ABC):
         return conv_res
 
     def _enrich_document(self, conv_res: ConversionResult) -> ConversionResult:
-
         def _prepare_elements(
             conv_res: ConversionResult, model: GenericEnrichmentModel[Any]
         ) -> Iterable[NodeItem]:
@@ -113,7 +113,6 @@ class BasePipeline(ABC):
 
 
 class PaginatedPipeline(BasePipeline):  # TODO this is a bad name.
-
     def __init__(self, pipeline_options: PipelineOptions):
         super().__init__(pipeline_options)
         self.keep_backend = False
@@ -127,7 +126,6 @@ class PaginatedPipeline(BasePipeline):  # TODO this is a bad name.
         yield from page_batch
 
     def _build_document(self, conv_res: ConversionResult) -> ConversionResult:
-
         if not isinstance(conv_res.input._backend, PdfDocumentBackend):
             raise RuntimeError(
                 f"The selected backend {type(conv_res.input._backend).__name__} for {conv_res.input.file} is not a PDF backend. "
@@ -139,8 +137,7 @@ class PaginatedPipeline(BasePipeline):  # TODO this is a bad name.
 
         total_elapsed_time = 0.0
         with TimeRecorder(conv_res, "doc_build", scope=ProfilingScope.DOCUMENT):
-
-            for i in range(0, conv_res.input.page_count):
+            for i in range(conv_res.input.page_count):
                 start_page, end_page = conv_res.input.limits.page_range
                 if (start_page - 1) <= i <= (end_page - 1):
                     conv_res.pages.append(Page(page_no=i))
@@ -161,7 +158,6 @@ class PaginatedPipeline(BasePipeline):  # TODO this is a bad name.
                     pipeline_pages = self._apply_on_pages(conv_res, init_pages)
 
                     for p in pipeline_pages:  # Must exhaust!
-
                         # Cleanup cached images
                         if not self.keep_images:
                             p._image_cache = {}

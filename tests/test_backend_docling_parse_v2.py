@@ -31,7 +31,7 @@ def test_text_cell_counts():
 
     doc_backend = _get_backend(pdf_doc)
 
-    for page_index in range(0, doc_backend.page_count()):
+    for page_index in range(doc_backend.page_count()):
         last_cell_count = None
         for i in range(10):
             page_backend: DoclingParseV2PageBackend = doc_backend.load_page(0)
@@ -41,9 +41,9 @@ def test_text_cell_counts():
                 last_cell_count = len(cells)
 
             if len(cells) != last_cell_count:
-                assert (
-                    False
-                ), "Loading page multiple times yielded non-identical text cell counts"
+                assert False, (
+                    "Loading page multiple times yielded non-identical text cell counts"
+                )
             last_cell_count = len(cells)
 
 
@@ -65,7 +65,7 @@ def test_crop_page_image(test_doc_path):
     page_backend: DoclingParseV2PageBackend = doc_backend.load_page(0)
 
     # Crop out "Figure 1" from the DocLayNet paper
-    im = page_backend.get_page_image(
+    page_backend.get_page_image(
         scale=2, cropbox=BoundingBox(l=317, t=246, r=574, b=527)
     )
     # im.show()

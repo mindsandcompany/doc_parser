@@ -109,27 +109,27 @@ def test_patent_groundtruth(patents, groundtruth):
         md_name = path.stem + ".md"
         if md_name in gt_names:
             pred_md = doc.export_to_markdown()
-            assert (
-                pred_md == gt_names[md_name]
-            ), f"Markdown file mismatch against groundtruth {md_name}"
+            assert pred_md == gt_names[md_name], (
+                f"Markdown file mismatch against groundtruth {md_name}"
+            )
         json_path = path.with_suffix(".json")
         if json_path.stem in gt_names:
-            assert verify_document(
-                doc, str(json_path), GENERATE
-            ), f"JSON file mismatch against groundtruth {json_path}"
+            assert verify_document(doc, str(json_path), GENERATE), (
+                f"JSON file mismatch against groundtruth {json_path}"
+            )
         itxt_name = path.stem + ".itxt"
         if itxt_name in gt_names:
             pred_itxt = doc._export_to_indented_text()
-            assert (
-                pred_itxt == gt_names[itxt_name]
-            ), f"Indented text file mismatch against groundtruth {itxt_name}"
+            assert pred_itxt == gt_names[itxt_name], (
+                f"Indented text file mismatch against groundtruth {itxt_name}"
+            )
 
 
 def test_tables(tables):
     """Test the table parser."""
     # CHECK table in file tables_20180000016.xml
     file_name = "tables_ipa20180000016.xml"
-    file_table = [item[1] for item in tables if item[0].name == file_name][0]
+    file_table = next(item[1] for item in tables if item[0].name == file_name)
     assert file_table.num_rows == 13
     assert file_table.num_cols == 10
     assert len(file_table.table_cells) == 130
@@ -140,7 +140,7 @@ def test_patent_uspto_ice(patents):
 
     # CHECK application doc number 20200022300
     file_name = "ipa20200022300.xml"
-    doc = [item[1] for item in patents if item[0].name == file_name][0]
+    doc = next(item[1] for item in patents if item[0].name == file_name)
     if GENERATE:
         _generate_groundtruth(doc, Path(file_name).stem)
 
@@ -278,7 +278,7 @@ def test_patent_uspto_ice(patents):
 
     # CHECK application doc number 20180000016 for HTML entities, level 2 headings, tables
     file_name = "ipa20180000016.xml"
-    doc = [item[1] for item in patents if item[0].name == file_name][0]
+    doc = next(item[1] for item in patents if item[0].name == file_name)
     if GENERATE:
         _generate_groundtruth(doc, Path(file_name).stem)
 
@@ -348,7 +348,7 @@ def test_patent_uspto_ice(patents):
 
     # CHECK application doc number 20110039701 for complex long tables
     file_name = "ipa20110039701.xml"
-    doc = [item[1] for item in patents if item[0].name == file_name][0]
+    doc = next(item[1] for item in patents if item[0].name == file_name)
     assert doc.name == file_name
     assert len(doc.tables) == 17
 
@@ -358,7 +358,7 @@ def test_patent_uspto_grant_v2(patents):
 
     # CHECK application doc number 06442728
     file_name = "pg06442728.xml"
-    doc = [item[1] for item in patents if item[0].name == file_name][0]
+    doc = next(item[1] for item in patents if item[0].name == file_name)
     if GENERATE:
         _generate_groundtruth(doc, Path(file_name).stem)
 
@@ -376,12 +376,12 @@ def test_patent_uspto_grant_v2(patents):
     assert isinstance(texts[2], TextItem)
     assert texts[2].text == (
         "An interleaver receives incoming data frames of size N. The interleaver "
-        "indexes the elements of the frame with an N₁×N₂ index array. The interleaver "
+        "indexes the elements of the frame with an N₁×N₂ index array. The interleaver "  # noqa: RUF001
         "then effectively rearranges (permutes) the data by permuting the rows of the "
-        "index array. The interleaver employs the equation I(j,k)=I(j,αjk+βj)modP) to "
+        "index array. The interleaver employs the equation I(j,k)=I(j,αjk+βj)modP) to "  # noqa: RUF001
         "permute the columns (indexed by k) of each row (indexed by j). P is at least "
         "equal to N₂, βj is a constant which may be different for each row, and each "
-        "αj is a relative prime number relative to P. After permuting, the "
+        "αj is a relative prime number relative to P. After permuting, the "  # noqa: RUF001
         "interleaver outputs the data in a different order than received (e.g., "
         "receives sequentially row by row, outputs sequentially each column by column)."
     )
@@ -402,7 +402,7 @@ def test_patent_uspto_app_v1(patents):
 
     # CHECK application doc number 20010031492
     file_name = "pa20010031492.xml"
-    doc = [item[1] for item in patents if item[0].name == file_name][0]
+    doc = next(item[1] for item in patents if item[0].name == file_name)
     if GENERATE:
         _generate_groundtruth(doc, Path(file_name).stem)
 
@@ -432,7 +432,7 @@ def test_patent_uspto_grant_aps(patents):
 
     # CHECK application doc number 057006474
     file_name = "pftaps057006474.txt"
-    doc = [item[1] for item in patents if item[0].name == file_name][0]
+    doc = next(item[1] for item in patents if item[0].name == file_name)
     if GENERATE:
         _generate_groundtruth(doc, Path(file_name).stem)
 

@@ -3,7 +3,6 @@ from pathlib import Path
 from docling_core.types.doc import CodeItem, TextItem
 from docling_core.types.doc.labels import CodeLanguageLabel, DocItemLabel
 
-from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -12,7 +11,6 @@ from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
 
 
 def get_converter():
-
     pipeline_options = PdfPipelineOptions()
     pipeline_options.generate_page_images = True
 

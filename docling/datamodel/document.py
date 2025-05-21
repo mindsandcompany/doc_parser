@@ -302,7 +302,15 @@ class _DocumentConversionInput(BaseModel):
                     if ("." in obj.name and not obj.name.startswith("."))
                     else ""
                 )
-                mime = _DocumentConversionInput._mime_from_extension(ext)
+                mime = _DocumentConversionInput._mime_from_extension(ext.lower())
+            if mime is not None and mime.lower() == "application/zip":
+                objname = obj.name.lower()
+                if objname.endswith(".xlsx"):
+                    mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                elif objname.endswith(".docx"):
+                    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                elif objname.endswith(".pptx"):
+                    mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
         mime = mime or _DocumentConversionInput._detect_html_xhtml(content)
         mime = mime or _DocumentConversionInput._detect_csv(content)
@@ -368,6 +376,13 @@ class _DocumentConversionInput(BaseModel):
             mime = FormatToMimeType[InputFormat.JSON_DOCLING][0]
         elif ext in FormatToExtensions[InputFormat.PDF]:
             mime = FormatToMimeType[InputFormat.PDF][0]
+        elif ext in FormatToExtensions[InputFormat.DOCX]:
+            mime = FormatToMimeType[InputFormat.DOCX][0]
+        elif ext in FormatToExtensions[InputFormat.PPTX]:
+            mime = FormatToMimeType[InputFormat.PPTX][0]
+        elif ext in FormatToExtensions[InputFormat.XLSX]:
+            mime = FormatToMimeType[InputFormat.XLSX][0]
+
         return mime
 
     @staticmethod

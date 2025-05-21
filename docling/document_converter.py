@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import math
 import sys
 import time
 from collections.abc import Iterable, Iterator
@@ -21,6 +22,8 @@ from docling.backend.mspowerpoint_backend import MsPowerpointDocumentBackend
 from docling.backend.msword_backend import MsWordDocumentBackend
 from docling.backend.xml.jats_backend import JatsDocumentBackend
 from docling.backend.xml.uspto_backend import PatentUsptoDocumentBackend
+# 한글 추가 
+from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
 from docling.datamodel.base_models import (
     ConversionStatus,
     DoclingComponentType,
@@ -47,6 +50,10 @@ from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
 from docling.utils.utils import chunkify
 
 _log = logging.getLogger(__name__)
+
+# document_converter.py 맨 위에 추가
+import docling.datamodel.document as D
+print(">>> docling.datamodel.document loaded from:", D.__file__)
 
 
 class FormatOption(BaseModel):
@@ -117,6 +124,11 @@ class PdfFormatOption(FormatOption):
     pipeline_cls: Type = StandardPdfPipeline
     backend: Type[AbstractDocumentBackend] = DoclingParseV4DocumentBackend
 
+# 한글추가
+class HwpxFormatOption(FormatOption):
+    pipeline_cls: Type = SimplePipeline
+    backend: Type[AbstractDocumentBackend] = HwpxDocumentBackend
+
 
 def _get_default_option(format: InputFormat) -> FormatOption:
     format_to_default_options = {
@@ -156,6 +168,10 @@ def _get_default_option(format: InputFormat) -> FormatOption:
         InputFormat.JSON_DOCLING: FormatOption(
             pipeline_cls=SimplePipeline, backend=DoclingJSONBackend
         ),
+        # 한글 파일 추가
+        InputFormat.XML_HWPX: FormatOption(
+            pipeline_cls=SimplePipeline, backend=HwpxDocumentBackend
+        ),
     }
     if (options := format_to_default_options.get(format)) is not None:
         return options
@@ -189,6 +205,7 @@ class DocumentConverter:
     def _get_pipeline_options_hash(self, pipeline_options: PipelineOptions) -> str:
         """Generate a hash of pipeline options to use as part of the cache key."""
         options_str = str(pipeline_options.model_dump())
+        # return hashlib.md5(options_str.encode("utf-8")).hexdigest()
         return hashlib.md5(
             options_str.encode("utf-8"), usedforsecurity=False
         ).hexdigest()
@@ -256,7 +273,7 @@ class DocumentConverter:
 
         if not had_result and raises_on_error:
             raise ConversionError(
-                "Conversion failed because the provided file has no recognizable format or it wasn't in the list of allowed formats."
+                f"Conversion failed because the provided file has no recognizable format or it wasn't in the list of allowed formats."
             )
 
     def _convert(
@@ -268,7 +285,7 @@ class DocumentConverter:
             conv_input.docs(self.format_to_options),
             settings.perf.doc_batch_size,  # pass format_options
         ):
-            _log.info("Going to convert document batch...")
+            _log.info(f"Going to convert document batch...")
 
             # parallel processing only within input_batch
             # with ThreadPoolExecutor(

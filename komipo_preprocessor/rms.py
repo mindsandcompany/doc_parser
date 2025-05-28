@@ -488,6 +488,8 @@ class GenOSVectorMeta(BaseModel):
     reg_date: str = None
     bboxes: str = None
     doc_items: list = None
+    chunk_bboxes: list = None
+    media_files: list = None
     # args: dict = None
     dept_code: str = None
     dept_name: str = None
@@ -498,8 +500,6 @@ class GenOSVectorMeta(BaseModel):
     doc_ttl: str = None
     objectid: str = None
     file_nm: str = None
-    chunk_bboxes: list = None
-
 
 class GenOSVectorMetaBuilder:
     def __init__(self):
@@ -587,22 +587,22 @@ class GenOSVectorMetaBuilder:
                 page_no = prov.page_no
                 bbox = prov.bbox
                 bbox_data = {'l': bbox.l / size.width,
-                't': bbox.t / size.height,
-                'r': bbox.r / size.width,
-                'b': bbox.b / size.height,
-                'coord_origin': bbox.coord_origin.value}
+                             't': bbox.t / size.height,
+                             'r': bbox.r / size.width,
+                             'b': bbox.b / size.height,
+                             'coord_origin': bbox.coord_origin.value}
                 self.chunk_bboxes.append({'page': page_no, 'bbox': bbox_data, 'type': type_, 'ref': label})
         return self
 
-    # def set_media_files(self, doc_items: list) -> "GenOSVectorMetaBuilder":
-    #     temp_list = []
-    #     for item in doc_items:
-    #         if instance(item, PictureItem):
-    #             path = str(item, PictureItem)
-    #             name = path.rsplit("/", 1)[-1]
-    #             temp_list.append({'name': name, 'type': 'image', 'ref': item.self_ref})
-    #     self.media_files = temp_list
-    #     return self
+    def set_media_files(self, doc_items: list) -> "GenOSVectorMetaBuilder":
+        temp_list = []
+        for item in doc_items:
+            if isinstance(item, PictureItem):
+                path = str(item.image.uri)
+                name = path.rsplit("/", 1)[-1]
+                temp_list.append({'name': name, 'type': 'image', 'ref': item.self_ref})
+        self.media_files = temp_list
+        return self
 
     def build(self) -> GenOSVectorMeta:
         """설정된 데이터를 사용해 최종적으로 GenOSVectorMeta 객체 생성"""
@@ -629,7 +629,8 @@ class GenOSVectorMetaBuilder:
             doc_ttl = self.doc_ttl,
             objectid = self.objectid,
             file_nm = self.file_nm,
-            chunk_bboxes = self.chunk_bboxes
+            chunk_bboxes = self.chunk_bboxes,
+            media_files = self.media_files
         )
 
 class DocumentProcessor:
@@ -735,7 +736,6 @@ class DocumentProcessor:
         current_page = None
         chunk_index_on_page = 0
         vectors = []
-
         for chunk_idx, chunk in enumerate(chunks):
             ## NOTE: chunk가 두 페이지에 걸쳐 있는 경우 첫번째 아이템을 사용
             ## NOTE: chunk가 두 페이지에 걸쳐서 있는 경우 bounding box 처리를 어떻게 해야하는 지...
@@ -743,6 +743,7 @@ class DocumentProcessor:
             ## NOTE: 임시로 페이지 넘어가는 경우 chunk를 분할해서 처리
             chunk_page = chunk.meta.doc_items[0].prov[0].page_no
             content = self.safe_join(chunk.meta.headings) + chunk.text
+
             vector = (GenOSVectorMetaBuilder()
                       .set_text(content)
                       .set_page_info(chunk_page, chunk_index_on_page, self.page_chunk_counts[chunk_page])
@@ -775,6 +776,7 @@ class DocumentProcessor:
         # else:
         #     raise GenosServiceException(1, f"Cancelled")
         return vectors
+
 
 class GenosServiceException(Exception):
     # GenOS 와의 의존성 부분 제거를 위해 추가

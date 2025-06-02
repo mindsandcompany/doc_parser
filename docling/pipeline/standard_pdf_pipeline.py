@@ -9,6 +9,7 @@ import re
 import json
 
 from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem
+from docling_core.types.doc.document import GraphData, GraphCell, GraphCellLabel
 
 from docling.backend.abstract_backend import AbstractDocumentBackend
 from docling.backend.pdf_backend import PdfDocumentBackend
@@ -249,7 +250,7 @@ class StandardPdfPipeline(PaginatedPipeline):
                             cropped_im, dpi=int(72 * scale)
                         )
 
-            # 메타데이터 추출 (마지막에 추가)
+            # 메타데이터 추출 및 key_value_items에 추가
             if self.pipeline_options.data_enrichment and conv_res.document:
                 temp_content = ""
                 total_pages = len(conv_res.document.pages)
@@ -258,6 +259,38 @@ class StandardPdfPipeline(PaginatedPipeline):
                 metadata = self.extract_document_metadata(temp_content)
                 if metadata:
                     _log.info(f"추출된 메타데이터: {json.dumps(metadata, ensure_ascii=False, indent=2)}")
+                    
+                    # KeyValueItem 생성을 위한 GraphData 구성
+                    graph_cells = []
+                    cell_id = 0
+                    
+                    # 메타데이터 딕셔너리를 그대로 key-value로 변환
+                    for key, value in metadata.items():
+                        graph_cells.append(GraphCell(
+                            label=GraphCellLabel.KEY,
+                            cell_id=cell_id,
+                            text=key,
+                            orig=key
+                        ))
+                        cell_id += 1
+                        
+                        graph_cells.append(GraphCell(
+                            label=GraphCellLabel.VALUE,
+                            cell_id=cell_id,
+                            text=json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value),
+                            orig=json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+                        ))
+                        cell_id += 1
+                    
+                    # GraphData 생성
+                    graph_data = GraphData(cells=graph_cells, links=[])
+                    
+                    # KeyValueItem을 문서에 추가
+                    conv_res.document.add_key_values(
+                        graph=graph_data,
+                        prov=None,
+                        parent=None
+                    )
 
         return conv_res
 
@@ -269,7 +302,7 @@ class StandardPdfPipeline(PaginatedPipeline):
     def is_backend_supported(cls, backend: AbstractDocumentBackend):
         return isinstance(backend, PdfDocumentBackend)
 
-    def extract_document_metadata(self, document_content, model="google/gemma-3-27b-it:free", seed=3):
+    def extract_document_metadata(self, document_content, model="google/gemma-3-12b-it", seed=3):
         """
         문서 내용에서 작성일과 작성자 정보를 추출하는 함수
         
@@ -285,7 +318,7 @@ class StandardPdfPipeline(PaginatedPipeline):
             return None
         
         # API 키 직접 설정
-        api_key = "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"
+        api_key = "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"
         
         # OpenAI 클라이언트 초기화
         client = OpenAI(base_url="https://openrouter.ai/api/v1", 
@@ -350,7 +383,6 @@ class StandardPdfPipeline(PaginatedPipeline):
             if match:
                 try:
                     metadata = json.loads(match.group(1))
-                    print(metadata)
                     return metadata
                 except:
                     return {"작성일": None, "작성자": []}

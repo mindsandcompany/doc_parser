@@ -200,7 +200,6 @@ class ConversionResult(BaseModel):
     pages: List[Page] = []
     assembled: AssembledUnit = AssembledUnit()
     document: DoclingDocument = _EMPTY_DOCLING_DOC
-    metadata: Optional[Dict[str, Any]] = None  # 추출된 메타데이터
 
     timings: Dict[str, ProfilingItem] = {}
 

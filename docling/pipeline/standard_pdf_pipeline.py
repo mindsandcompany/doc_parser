@@ -249,6 +249,16 @@ class StandardPdfPipeline(PaginatedPipeline):
                             cropped_im, dpi=int(72 * scale)
                         )
 
+            # 메타데이터 추출 (마지막에 추가)
+            if self.pipeline_options.data_enrichment and conv_res.document:
+                temp_content = ""
+                total_pages = len(conv_res.document.pages)
+                for page in range(1, min(3, total_pages+1)):
+                    temp_content += conv_res.document.export_to_markdown(page_no=page)
+                metadata = self.extract_document_metadata(temp_content)
+                if metadata:
+                    _log.info(f"추출된 메타데이터: {json.dumps(metadata, ensure_ascii=False, indent=2)}")
+
         return conv_res
 
     @classmethod
@@ -275,7 +285,7 @@ class StandardPdfPipeline(PaginatedPipeline):
             return None
         
         # API 키 직접 설정
-        api_key = "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"
+        api_key = "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"
         
         # OpenAI 클라이언트 초기화
         client = OpenAI(base_url="https://openrouter.ai/api/v1", 
@@ -353,19 +363,3 @@ class StandardPdfPipeline(PaginatedPipeline):
             _log.error(f"메타데이터 추출 중 오류 발생: {str(e)}")
             return {"작성일": None, "작성자": []}
 
-    def _enrich_document(self, conv_res: ConversionResult) -> ConversionResult:
-        
-        # data_enrichment가 활성화된 경우에만 메타데이터 추출
-        if self.pipeline_options.data_enrichment and conv_res.document:
-            temp_content = ""
-            # 페이지 수 확인
-            total_pages = len(conv_res.document.pages)
-            # 최대 2페이지까지만 처리 (페이지가 부족하면 있는 만큼만)
-            for page in range(1, min(3, total_pages+1)):
-                print("page", page)
-                temp_content += conv_res.document.export_to_markdown(page_no=page)
-            metadata = self.extract_document_metadata(temp_content)
-            if metadata:
-                # 추출된 메타데이터를 결과 객체에 저장
-                conv_res.metadata = metadata
-        return conv_res

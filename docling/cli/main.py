@@ -210,13 +210,6 @@ def export_documents(
                 _log.info(f"writing Doc Tags output to {fname}")
                 conv_res.document.save_as_document_tokens(filename=fname)
 
-            # Export Metadata
-            if data_enrichment and hasattr(conv_res, 'metadata') and conv_res.metadata:
-                metadata_fname = output_dir / f"{doc_filename}_metadata.json"
-                _log.info(f"writing metadata to {metadata_fname}")
-                with open(metadata_fname, 'w', encoding='utf-8') as f:
-                    json.dump(conv_res.metadata, f, ensure_ascii=False, indent=2)
-
         else:
             _log.warning(f"Document {conv_res.input.file} failed to convert.")
             failure_count += 1

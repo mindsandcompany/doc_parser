@@ -269,7 +269,7 @@ class StandardPdfPipeline(PaginatedPipeline):
     def is_backend_supported(cls, backend: AbstractDocumentBackend):
         return isinstance(backend, PdfDocumentBackend)
 
-    def extract_document_metadata(self, document_content, model="google/gemma-3-12b-it:free", seed=3):
+    def extract_document_metadata(self, document_content, model="google/gemma-3-27b-it:free", seed=3):
         """
         문서 내용에서 작성일과 작성자 정보를 추출하는 함수
         
@@ -285,7 +285,7 @@ class StandardPdfPipeline(PaginatedPipeline):
             return None
         
         # API 키 직접 설정
-        api_key = "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"
+        api_key = "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"
         
         # OpenAI 클라이언트 초기화
         client = OpenAI(base_url="https://openrouter.ai/api/v1", 
@@ -350,6 +350,7 @@ class StandardPdfPipeline(PaginatedPipeline):
             if match:
                 try:
                     metadata = json.loads(match.group(1))
+                    print(metadata)
                     return metadata
                 except:
                     return {"작성일": None, "작성자": []}

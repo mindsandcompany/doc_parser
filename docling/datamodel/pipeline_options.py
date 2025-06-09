@@ -402,6 +402,7 @@ class PdfPipelineOptions(PaginatedPipelineOptions):
     do_picture_classification: bool = False  # True: classify pictures in documents
     do_picture_description: bool = False  # True: run describe pictures in documents
     data_enrichment: bool = False  # True: extract metadata from document content
+    do_toc_enrichment: bool = False  # True: extract TOC and apply section headers
     force_backend_text: bool = (
         False  # (To be used with vlms, or other generative models)
     )

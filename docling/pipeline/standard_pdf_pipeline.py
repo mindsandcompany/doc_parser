@@ -7,8 +7,9 @@ from typing import Optional, cast
 from openai import OpenAI
 import re
 import json
+import difflib
 
-from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem
+from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem, TextItem, DocItemLabel, SectionHeaderItem
 from docling_core.types.doc.document import GraphData, GraphCell, GraphCellLabel
 
 from docling.backend.abstract_backend import AbstractDocumentBackend
@@ -205,6 +206,10 @@ class StandardPdfPipeline(PaginatedPipeline):
 
             conv_res.document = self.glm_model(conv_res)
 
+            # TOC 추출 및 적용
+            if self.pipeline_options.do_toc_enrichment and conv_res.document:
+                self._apply_toc_enrichment(conv_res)
+
             # Generate page images in the output
             if self.pipeline_options.generate_page_images:
                 for page in conv_res.pages:
@@ -294,6 +299,228 @@ class StandardPdfPipeline(PaginatedPipeline):
 
         return conv_res
 
+    def _apply_toc_enrichment(self, conv_res: ConversionResult):
+        """TOC 추출 및 SectionHeader 적용"""
+        try:
+            _log.info("TOC 추출 시작...")
+            
+            # 모든 SectionHeaderItem을 TextItem으로 변환
+            self._convert_section_headers_to_text(conv_res.document)
+            
+            # 원시 텍스트 추출
+            raw_text = self._extract_raw_text_for_toc(conv_res.document)
+            
+            # AI로 목차 생성
+            toc_content = self._generate_toc_with_ai(raw_text)
+            
+            # 목차를 기반으로 SectionHeader 적용
+            matched_count = self._apply_toc_to_document(conv_res.document, toc_content)
+            
+            _log.info(f"TOC 추출 완료 - {matched_count}개 섹션 헤더 생성")
+            
+        except Exception as e:
+            _log.error(f"TOC 추출 중 오류 발생: {str(e)}")
+
+    def _convert_section_headers_to_text(self, document):
+        """문서의 모든 SectionHeaderItem을 TextItem으로 변환"""
+        new_texts = []
+        
+        for item in document.texts:
+            if isinstance(item, SectionHeaderItem):
+                new_item = TextItem(
+                    self_ref=item.self_ref,
+                    parent=item.parent,
+                    children=item.children,
+                    content_layer=item.content_layer,
+                    label=DocItemLabel.TEXT,
+                    prov=item.prov,
+                    orig=item.orig,
+                    text=item.text,
+                    formatting=item.formatting,
+                    hyperlink=getattr(item, 'hyperlink', None)
+                )
+                new_texts.append(new_item)
+            else:
+                new_texts.append(item)
+        
+        document.texts = new_texts
+
+    def _extract_raw_text_for_toc(self, document):
+        """문서에서 원시 텍스트 추출"""
+        raw_texts = ""
+        for text in document.texts:
+            cleaned_text = re.sub(r'\s+', ' ', text.text.strip())
+            raw_texts += cleaned_text + "\n"
+        return raw_texts
+
+    def _generate_toc_with_ai(self, raw_text: str) -> str:
+        """AI 모델을 사용해 목차 생성 (data_enrichment와 같은 모델 사용)"""
+        # data_enrichment와 같은 API 키와 모델 사용
+        api_key = "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"
+        
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
+        
+        messages = [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "You are a professional assistant trained to generate structured, hierarchical tables of contents "
+                            "from Korean policy or research documents. Your job is to extract section titles and subtitles, "
+                            "and organize them using Arabic numerals (e.g., 1, 1.1, 1.2). "
+                            "Do not include page numbers. "
+                            "Do not add explanations or comments. Only output a clean list of the table of contents using information from the document."
+                        )
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "다음은 PDF 문서에서 추출한 텍스트입니다. 이 문서의 구조에 맞게 목차를 생성해주세요. "
+                            "불필요한 설명 없이 순번과 제목만 출력해 주세요. 페이지 번호는 생략하고, 계층 구조는 숫자로 표현해 주세요.\n\n"
+                            "문서 텍스트:\n\n"
+                            f"{raw_text}"
+                        )
+                    }
+                ]
+            }
+        ]
+        
+        try:
+            completion = client.chat.completions.create(
+                model="google/gemma-3-27b-it:free",  # data_enrichment와 다른 모델이지만 같은 API 사용
+                messages=messages,
+                temperature=0.0,
+                top_p=0,
+                seed=33
+            )
+            
+            return completion.choices[0].message.content
+            
+        except Exception as e:
+            _log.error(f"TOC 생성 중 오류 발생: {str(e)}")
+            return ""
+
+    def _parse_toc_content(self, toc_content: str):
+        """목차 내용을 파싱해서 구조화된 데이터로 변환"""
+        toc_items = []
+        lines = toc_content.split('\n')
+        
+        for line in lines:
+            cleaned_line = line.strip()
+            if not cleaned_line:
+                continue
+            
+            # 숫자 패턴들 (레벨별 매칭)
+            patterns = [
+                r'^(\d+\.\d+\.\d+\.\d+)\.\s*(.+)$',   # 1.1.1.1. 제목 (4단계)
+                r'^(\d+\.\d+\.\d+)\.\s*(.+)$',        # 1.1.1. 제목 (3단계)
+                r'^(\d+\.\d+)\.\s*(.+)$',              # 1.1. 제목 (2단계)
+                r'^(\d+)\.\s*(.+)$',                    # 1. 제목 (1단계)
+            ]
+            
+            matched = False
+            for pattern in patterns:
+                match = re.match(pattern, cleaned_line)
+                if match:
+                    number_part = match.group(1)
+                    title_part = match.group(2).strip()
+                    level = number_part.count('.') + 1
+                    
+                    toc_items.append({
+                        'number': number_part,
+                        'title': title_part,
+                        'level': level,
+                        'full_text': cleaned_line
+                    })
+                    matched = True
+                    break
+            
+            if not matched and cleaned_line:
+                # 패턴에 맞지 않는 줄은 레벨 1로 처리
+                toc_items.append({
+                    'number': '',
+                    'title': cleaned_line,
+                    'level': 1,
+                    'full_text': cleaned_line
+                })
+        
+        return toc_items
+
+    def _apply_toc_to_document(self, document, toc_content: str, threshold: float = 0.7):
+        """생성된 목차를 기반으로 문서에 SectionHeader 적용"""
+        # 목차 파싱
+        toc_items = self._parse_toc_content(toc_content)
+        
+        converted_indices = set()
+        
+        # 텍스트 아이템들 준비
+        text_items = [
+            (i, item.text.strip()) 
+            for i, item in enumerate(document.texts)
+            if (isinstance(item, TextItem) and 
+                item.label == DocItemLabel.TEXT and 
+                len(item.text.strip()) >= 2)
+        ]
+        
+        matched_count = 0
+        
+        # 각 목차 항목을 문서의 텍스트와 매칭
+        for toc_item in toc_items:
+            toc_clean = toc_item['title']
+            target_level = toc_item['level']
+            
+            if len(toc_clean) < 2:
+                continue
+            
+            # difflib을 사용한 유사 텍스트 찾기
+            text_only = [text for _, text in text_items]
+            close_matches = difflib.get_close_matches(
+                toc_clean, text_only, n=3, cutoff=0.3
+            )
+            
+            if close_matches:
+                best_match_text = close_matches[0]
+                best_match_idx = next(
+                    (idx for idx, text in text_items if text == best_match_text), 
+                    None
+                )
+                
+                if best_match_idx is not None and best_match_idx not in converted_indices:
+                    similarity = difflib.SequenceMatcher(
+                        None, toc_clean.lower(), best_match_text.lower()
+                    ).ratio()
+                    
+                    if similarity >= threshold:
+                        # TextItem을 SectionHeaderItem으로 변환
+                        original_item = document.texts[best_match_idx]
+                        section_header = SectionHeaderItem(
+                            self_ref=original_item.self_ref,
+                            parent=original_item.parent,
+                            children=original_item.children,
+                            content_layer=original_item.content_layer,
+                            prov=original_item.prov,
+                            orig=original_item.orig,
+                            text=original_item.text,
+                            formatting=original_item.formatting,
+                            hyperlink=getattr(original_item, 'hyperlink', None),
+                            level=target_level
+                        )
+                        document.texts[best_match_idx] = section_header
+                        converted_indices.add(best_match_idx)
+                        matched_count += 1
+        
+        return matched_count
+
     @classmethod
     def get_default_options(cls) -> PdfPipelineOptions:
         return PdfPipelineOptions()
@@ -318,7 +545,7 @@ class StandardPdfPipeline(PaginatedPipeline):
             return None
         
         # API 키 직접 설정
-        api_key = "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"
+        api_key = "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"
         
         # OpenAI 클라이언트 초기화
         client = OpenAI(base_url="https://openrouter.ai/api/v1", 

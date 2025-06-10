@@ -1,12 +1,7 @@
-import copy
-import random
 from pathlib import Path
 from typing import Dict, List
 
 from docling_core.types.doc import (
-    BoundingBox,
-    CoordOrigin,
-    DocItem,
     DocItemLabel,
     DoclingDocument,
     DocumentOrigin,
@@ -17,13 +12,10 @@ from docling_core.types.doc import (
     TableData,
 )
 from docling_core.types.doc.document import ContentLayer
-from docling_core.types.legacy_doc.base import Ref
-from docling_core.types.legacy_doc.document import BaseText
 from docling_ibm_models.reading_order.reading_order_rb import (
     PageElement as ReadingOrderPageElement,
+    ReadingOrderPredictor,
 )
-from docling_ibm_models.reading_order.reading_order_rb import ReadingOrderPredictor
-from PIL import ImageDraw
 from pydantic import BaseModel, ConfigDict
 
 from docling.datamodel.base_models import (
@@ -35,7 +27,6 @@ from docling.datamodel.base_models import (
     TextElement,
 )
 from docling.datamodel.document import ConversionResult
-from docling.datamodel.settings import settings
 from docling.utils.profiling import ProfilingScope, TimeRecorder
 
 
@@ -53,12 +44,10 @@ class ReadingOrderModel:
     def _assembled_to_readingorder_elements(
         self, conv_res: ConversionResult
     ) -> List[ReadingOrderPageElement]:
-
         elements: List[ReadingOrderPageElement] = []
         page_no_to_pages = {p.page_no: p for p in conv_res.pages}
 
         for element in conv_res.assembled.elements:
-
             page_height = page_no_to_pages[element.page_no].size.height  # type: ignore
             bbox = element.cluster.bbox.to_bottom_left_origin(page_height)
             text = element.text or ""
@@ -84,7 +73,6 @@ class ReadingOrderModel:
     def _add_child_elements(
         self, element: BasePageElement, doc_item: NodeItem, doc: DoclingDocument
     ):
-
         child: Cluster
         for child in element.cluster.children:
             c_label = child.label
@@ -110,7 +98,7 @@ class ReadingOrderModel:
             else:
                 doc.add_text(parent=doc_item, label=c_label, text=c_text, prov=c_prov)
 
-    def _readingorder_elements_to_docling_doc(
+    def _readingorder_elements_to_docling_doc(  # noqa: C901
         self,
         conv_res: ConversionResult,
         ro_elements: List[ReadingOrderPageElement],
@@ -118,7 +106,6 @@ class ReadingOrderModel:
         el_to_footnotes_mapping: Dict[int, List[int]],
         el_merges_mapping: Dict[int, List[int]],
     ) -> DoclingDocument:
-
         id_to_elem = {
             RefItem(cref=f"#/{elem.page_no}/{elem.cluster.id}").cref: elem
             for elem in conv_res.assembled.elements
@@ -192,7 +179,6 @@ class ReadingOrderModel:
 
                             code_item.footnotes.append(new_footnote_item.get_ref())
                 else:
-
                     new_item, current_list = self._handle_text_element(
                         element, out_doc, current_list, page_height
                     )
@@ -206,7 +192,6 @@ class ReadingOrderModel:
                             )
 
             elif isinstance(element, Table):
-
                 tbl_data = TableData(
                     num_rows=element.num_rows,
                     num_cols=element.num_cols,
@@ -342,12 +327,12 @@ class ReadingOrderModel:
         return new_item, current_list
 
     def _merge_elements(self, element, merged_elem, new_item, page_height):
-        assert isinstance(
-            merged_elem, type(element)
-        ), "Merged element must be of same type as element."
-        assert (
-            merged_elem.label == new_item.label
-        ), "Labels of merged elements must match."
+        assert isinstance(merged_elem, type(element)), (
+            "Merged element must be of same type as element."
+        )
+        assert merged_elem.label == new_item.label, (
+            "Labels of merged elements must match."
+        )
         prov = ProvenanceItem(
             page_no=element.page_no + 1,
             charspan=(
@@ -361,7 +346,7 @@ class ReadingOrderModel:
         new_item.prov.append(prov)
 
     def __call__(self, conv_res: ConversionResult) -> DoclingDocument:
-        with TimeRecorder(conv_res, "glm", scope=ProfilingScope.DOCUMENT):
+        with TimeRecorder(conv_res, "reading_order", scope=ProfilingScope.DOCUMENT):
             page_elements = self._assembled_to_readingorder_elements(conv_res)
 
             # Apply reading order

@@ -1,25 +1,22 @@
 import logging
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Optional
 
 from docling.datamodel.base_models import Page, VlmPrediction
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import (
-    AcceleratorDevice,
     AcceleratorOptions,
     HuggingFaceVlmOptions,
 )
-from docling.datamodel.settings import settings
 from docling.models.base_model import BasePageModel
-from docling.utils.accelerator_utils import decide_device
 from docling.utils.profiling import TimeRecorder
 
 _log = logging.getLogger(__name__)
 
 
 class HuggingFaceMlxModel(BasePageModel):
-
     def __init__(
         self,
         enabled: bool,
@@ -32,7 +29,6 @@ class HuggingFaceMlxModel(BasePageModel):
         self.vlm_options = vlm_options
 
         if self.enabled:
-
             try:
                 from mlx_vlm import generate, load  # type: ignore
                 from mlx_vlm.prompt_utils import apply_chat_template  # type: ignore
@@ -124,6 +120,8 @@ class HuggingFaceMlxModel(BasePageModel):
 
                     generation_time = time.time() - start_time
                     page_tags = output
+
+                    _log.debug(f"Generation time {generation_time:.2f} seconds.")
 
                     # inference_time = time.time() - start_time
                     # tokens_per_second = num_tokens / generation_time

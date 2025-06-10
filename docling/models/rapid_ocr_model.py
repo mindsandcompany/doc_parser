@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional, Type
+from typing import Optional, Type
 
 import numpy
 from docling_core.types.doc import BoundingBox, CoordOrigin
@@ -74,13 +75,11 @@ class RapidOcrModel(BaseOcrModel):
     def __call__(
         self, conv_res: ConversionResult, page_batch: Iterable[Page]
     ) -> Iterable[Page]:
-
         if not self.enabled:
             yield from page_batch
             return
 
         for page in page_batch:
-
             assert page._backend is not None
             if not page._backend.is_valid():
                 yield page

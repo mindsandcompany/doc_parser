@@ -1,8 +1,9 @@
 import logging
 import random
+from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
@@ -29,7 +30,7 @@ class PyPdfiumPageBackend(PdfPageBackend):
         self.valid = True  # No better way to tell from pypdfium.
         try:
             self._ppage: pdfium.PdfPage = pdfium_doc[page_no]
-        except PdfiumError as e:
+        except PdfiumError:
             _log.info(
                 f"An exception occurred when loading page {page_no} of document {document_hash}.",
                 exc_info=True,
@@ -174,13 +175,18 @@ class PyPdfiumPageBackend(PdfPageBackend):
                 if len(group) == 1:
                     return group[0]
 
-                merged_text = "".join(cell.text for cell in group)
                 merged_bbox = BoundingBox(
                     l=min(cell.rect.to_bounding_box().l for cell in group),
                     t=min(cell.rect.to_bounding_box().t for cell in group),
                     r=max(cell.rect.to_bounding_box().r for cell in group),
                     b=max(cell.rect.to_bounding_box().b for cell in group),
                 )
+
+                assert self._ppage is not None
+                self.text_page = self._ppage.get_textpage()
+                bbox = merged_bbox.to_bottom_left_origin(page_size.height)
+                merged_text = self.text_page.get_text_bounded(*bbox.as_tuple())
+
                 return TextCell(
                     index=group[0].index,
                     text=merged_text,
@@ -225,7 +231,6 @@ class PyPdfiumPageBackend(PdfPageBackend):
     def get_page_image(
         self, scale: float = 1, cropbox: Optional[BoundingBox] = None
     ) -> Image.Image:
-
         page_size = self.get_size()
 
         if not cropbox:

@@ -1,13 +1,11 @@
 import logging
 import sys
 import warnings
-from pathlib import Path
-from typing import Optional, cast
-
-from openai import OpenAI
-import re
 import json
+import re
 import difflib
+from pathlib import Path
+from typing import Optional, cast, Dict, Any
 
 from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem, TextItem, DocItemLabel, SectionHeaderItem
 from docling_core.types.doc.document import GraphData, GraphCell, GraphCellLabel
@@ -16,7 +14,7 @@ from docling.backend.abstract_backend import AbstractDocumentBackend
 from docling.backend.pdf_backend import PdfDocumentBackend
 from docling.datamodel.base_models import AssembledUnit, Page
 from docling.datamodel.document import ConversionResult
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.pipeline_options import PdfPipelineOptions, DataEnrichmentOptions
 from docling.datamodel.settings import settings
 from docling.models.base_ocr_model import BaseOcrModel
 from docling.models.code_formula_model import CodeFormulaModel, CodeFormulaModelOptions
@@ -37,6 +35,7 @@ from docling.models.table_structure_model import TableStructureModel
 from docling.pipeline.base_pipeline import PaginatedPipeline
 from docling.utils.model_downloader import download_models
 from docling.utils.profiling import ProfilingScope, TimeRecorder
+from docling.prompts import PromptManager
 
 _log = logging.getLogger(__name__)
 
@@ -137,6 +136,108 @@ class StandardPdfPipeline(PaginatedPipeline):
         ):
             self.keep_backend = True
 
+        # 프롬프트 매니저 초기화 (카테고리별 사용자 정의 프롬프트 및 API 설정 지원)
+        custom_prompts = self._build_custom_prompts()
+        custom_api_configs = self._build_custom_api_configs()
+        self.prompt_manager = PromptManager(
+            custom_prompts=custom_prompts,
+            custom_api_configs=custom_api_configs
+        )
+
+    def _build_custom_prompts(self) -> Dict[str, Any]:
+        """사용자 정의 프롬프트 딕셔너리 구성"""
+        custom_prompts = {}
+        
+        enrichment_options = self.pipeline_options.data_enrichment_options
+        
+        # TOC 관련 사용자 정의 프롬프트
+        if enrichment_options.toc_system_prompt or enrichment_options.toc_user_prompt:
+            if "toc_extraction" not in custom_prompts:
+                custom_prompts["toc_extraction"] = {}
+            if "korean_document" not in custom_prompts["toc_extraction"]:
+                custom_prompts["toc_extraction"]["korean_document"] = {}
+            
+            if enrichment_options.toc_system_prompt:
+                custom_prompts["toc_extraction"]["korean_document"]["system"] = enrichment_options.toc_system_prompt
+            
+            if enrichment_options.toc_user_prompt:
+                custom_prompts["toc_extraction"]["korean_document"]["user"] = enrichment_options.toc_user_prompt
+        
+        # 메타데이터 관련 사용자 정의 프롬프트
+        if enrichment_options.metadata_system_prompt or enrichment_options.metadata_user_prompt:
+            if "metadata_extraction" not in custom_prompts:
+                custom_prompts["metadata_extraction"] = {}
+            if "korean_financial" not in custom_prompts["metadata_extraction"]:
+                custom_prompts["metadata_extraction"]["korean_financial"] = {}
+            
+            if enrichment_options.metadata_system_prompt:
+                custom_prompts["metadata_extraction"]["korean_financial"]["system"] = enrichment_options.metadata_system_prompt
+            
+            if enrichment_options.metadata_user_prompt:
+                custom_prompts["metadata_extraction"]["korean_financial"]["user"] = enrichment_options.metadata_user_prompt
+        
+        return custom_prompts
+    
+    def _build_custom_api_configs(self) -> Dict[str, Dict[str, Any]]:
+        """카테고리별 사용자 정의 API 설정 딕셔너리 구성"""
+        custom_api_configs = {}
+        
+        enrichment_options = self.pipeline_options.data_enrichment_options
+        
+        # TOC API 설정
+        if (enrichment_options.toc_api_provider or 
+            enrichment_options.toc_api_key or 
+            enrichment_options.toc_api_base_url or 
+            enrichment_options.toc_model):
+            
+            toc_config = {}
+            toc_config["provider"] = enrichment_options.toc_api_provider or "openrouter"
+            toc_config["api_base_url"] = enrichment_options.toc_api_base_url or "https://openrouter.ai/api/v1"
+            toc_config["model"] = enrichment_options.toc_model or "google/gemma-3-27b-it:free"
+            
+            if enrichment_options.toc_api_key:
+                toc_config["api_key"] = enrichment_options.toc_api_key
+            
+            # TOC 선택적 파라미터들
+            if enrichment_options.toc_temperature is not None:
+                toc_config["temperature"] = enrichment_options.toc_temperature
+            if enrichment_options.toc_top_p is not None:
+                toc_config["top_p"] = enrichment_options.toc_top_p
+            if enrichment_options.toc_seed is not None:
+                toc_config["seed"] = enrichment_options.toc_seed
+            if enrichment_options.toc_max_tokens is not None:
+                toc_config["max_tokens"] = enrichment_options.toc_max_tokens
+            
+            custom_api_configs["toc_extraction"] = toc_config
+        
+        # Metadata API 설정
+        if (enrichment_options.metadata_api_provider or 
+            enrichment_options.metadata_api_key or 
+            enrichment_options.metadata_api_base_url or 
+            enrichment_options.metadata_model):
+            
+            metadata_config = {}
+            metadata_config["provider"] = enrichment_options.metadata_api_provider or "openrouter"
+            metadata_config["api_base_url"] = enrichment_options.metadata_api_base_url or "https://openrouter.ai/api/v1"
+            metadata_config["model"] = enrichment_options.metadata_model or "google/gemma-3-27b-it:free"
+            
+            if enrichment_options.metadata_api_key:
+                metadata_config["api_key"] = enrichment_options.metadata_api_key
+            
+            # Metadata 선택적 파라미터들
+            if enrichment_options.metadata_temperature is not None:
+                metadata_config["temperature"] = enrichment_options.metadata_temperature
+            if enrichment_options.metadata_top_p is not None:
+                metadata_config["top_p"] = enrichment_options.metadata_top_p
+            if enrichment_options.metadata_seed is not None:
+                metadata_config["seed"] = enrichment_options.metadata_seed
+            if enrichment_options.metadata_max_tokens is not None:
+                metadata_config["max_tokens"] = enrichment_options.metadata_max_tokens
+            
+            custom_api_configs["metadata_extraction"] = metadata_config
+        
+        return custom_api_configs
+
     @staticmethod
     def download_models_hf(
         local_dir: Optional[Path] = None, force: bool = False
@@ -206,8 +307,8 @@ class StandardPdfPipeline(PaginatedPipeline):
 
             conv_res.document = self.glm_model(conv_res)
 
-            # TOC 추출 및 적용
-            if self.pipeline_options.do_toc_enrichment and conv_res.document:
+            # TOC 추출 및 적용 (data_enrichment_options 사용)
+            if self.pipeline_options.data_enrichment_options.do_toc_enrichment and conv_res.document:
                 self._apply_toc_enrichment(conv_res)
 
             # Generate page images in the output
@@ -255,8 +356,8 @@ class StandardPdfPipeline(PaginatedPipeline):
                             cropped_im, dpi=int(72 * scale)
                         )
 
-            # 메타데이터 추출 및 key_value_items에 추가
-            if self.pipeline_options.data_enrichment and conv_res.document:
+            # 메타데이터 추출 및 key_value_items에 추가 (data_enrichment_options 사용)
+            if self.pipeline_options.data_enrichment_options.extract_metadata and conv_res.document:
                 temp_content = ""
                 total_pages = len(conv_res.document.pages)
                 for page in range(1, min(3, total_pages+1)):
@@ -310,13 +411,26 @@ class StandardPdfPipeline(PaginatedPipeline):
             # 원시 텍스트 추출
             raw_text = self._extract_raw_text_for_toc(conv_res.document)
             
-            # AI로 목차 생성
-            toc_content = self._generate_toc_with_ai(raw_text)
+            # 사용자 정의 프롬프트 가져오기
+            enrichment_options = self.pipeline_options.data_enrichment_options
+            custom_system = enrichment_options.toc_system_prompt
+            custom_user = enrichment_options.toc_user_prompt
             
-            # 목차를 기반으로 SectionHeader 적용
-            matched_count = self._apply_toc_to_document(conv_res.document, toc_content)
+            # AI로 목차 생성 (프롬프트 매니저 사용)
+            toc_content = self.prompt_manager.call_ai_model(
+                category="toc_extraction",
+                prompt_type="korean_document",
+                custom_system=custom_system,
+                custom_user=custom_user,
+                raw_text=raw_text
+            )
             
-            _log.info(f"TOC 추출 완료 - {matched_count}개 섹션 헤더 생성")
+            if toc_content:
+                # 목차를 기반으로 SectionHeader 적용
+                matched_count = self._apply_toc_to_document(conv_res.document, toc_content)
+                _log.info(f"TOC 추출 완료 - {matched_count}개 섹션 헤더 생성")
+            else:
+                _log.warning("TOC 생성 실패")
             
         except Exception as e:
             _log.error(f"TOC 추출 중 오류 발생: {str(e)}")
@@ -352,63 +466,6 @@ class StandardPdfPipeline(PaginatedPipeline):
             cleaned_text = re.sub(r'\s+', ' ', text.text.strip())
             raw_texts += cleaned_text + "\n"
         return raw_texts
-
-    def _generate_toc_with_ai(self, raw_text: str) -> str:
-        """AI 모델을 사용해 목차 생성 (data_enrichment와 같은 모델 사용)"""
-        # data_enrichment와 같은 API 키와 모델 사용
-        api_key = "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"
-        
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
-        )
-        
-        messages = [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "You are a professional assistant trained to generate structured, hierarchical tables of contents "
-                            "from Korean policy or research documents. Your job is to extract section titles and subtitles, "
-                            "and organize them using Arabic numerals (e.g., 1, 1.1, 1.2). "
-                            "Do not include page numbers. "
-                            "Do not add explanations or comments. Only output a clean list of the table of contents using information from the document."
-                        )
-                    }
-                ]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "다음은 PDF 문서에서 추출한 텍스트입니다. 이 문서의 구조에 맞게 목차를 생성해주세요. "
-                            "불필요한 설명 없이 순번과 제목만 출력해 주세요. 페이지 번호는 생략하고, 계층 구조는 숫자로 표현해 주세요.\n\n"
-                            "문서 텍스트:\n\n"
-                            f"{raw_text}"
-                        )
-                    }
-                ]
-            }
-        ]
-        
-        try:
-            completion = client.chat.completions.create(
-                model="google/gemma-3-27b-it:free",  # data_enrichment와 다른 모델이지만 같은 API 사용
-                messages=messages,
-                temperature=0.0,
-                top_p=0,
-                seed=33
-            )
-            
-            return completion.choices[0].message.content
-            
-        except Exception as e:
-            _log.error(f"TOC 생성 중 오류 발생: {str(e)}")
-            return ""
 
     def _parse_toc_content(self, toc_content: str):
         """목차 내용을 파싱해서 구조화된 데이터로 변환"""
@@ -521,87 +578,38 @@ class StandardPdfPipeline(PaginatedPipeline):
         
         return matched_count
 
-    @classmethod
-    def get_default_options(cls) -> PdfPipelineOptions:
-        return PdfPipelineOptions()
-
-    @classmethod
-    def is_backend_supported(cls, backend: AbstractDocumentBackend):
-        return isinstance(backend, PdfDocumentBackend)
-
-    def extract_document_metadata(self, document_content, model="google/gemma-3-12b-it", seed=3):
+    def extract_document_metadata(self, document_content, model=None, seed=None):
         """
-        문서 내용에서 작성일과 작성자 정보를 추출하는 함수
+        문서 내용에서 작성일과 작성자 정보를 추출하는 함수 (프롬프트 매니저 사용)
         
         Args:
             document_content (str): 문서 내용
-            model (str): 사용할 모델 이름
-            seed (int): 재현성을 위한 시드값
+            model (str, optional): 사용할 모델 이름 (프롬프트 설정에서 가져옴)
+            seed (int, optional): 재현성을 위한 시드값 (프롬프트 설정에서 가져옴)
             
         Returns:
             dict: 추출된 메타데이터 딕셔너리 (작성일, 작성자 정보)
         """
-        if not self.pipeline_options.data_enrichment:
+        if not self.pipeline_options.data_enrichment_options.extract_metadata:
             return None
         
-        # API 키 직접 설정
-        api_key = "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"
-        
-        # OpenAI 클라이언트 초기화
-        client = OpenAI(base_url="https://openrouter.ai/api/v1", 
-                        api_key=api_key)
-        
-        # 프롬프트 구성
-        messages = [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "You are a professional document extraction assistant. "
-                            "Your job is to carefully extract metadata from semi-structured or unstructured Korean financial documents. "
-                            "Always follow the requested output format exactly."
-                        )
-                    }
-                ]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "다음은 한국어로 작성된 금융 보고서 문서의 일부입니다. 이 문서에서 아래 정보를 정확히 추출해주세요:\n\n"
-                            "1. 최초 작성일 (날짜가 여러 개 있으면 '보고자료' 또는 '회의자료'에 가까운 날짜 사용)\n"
-                            "2. 작성자 이름과 소속 또는 직책 (예: 채권시장팀 조용범 과장)\n"
-                            "3. 작성자 전화번호 (내선번호 포함 시 함께 출력)\n\n"
-                            "문서:\n"
-                            "---\n"
-                            f"{document_content}\n"
-                            "---\n\n"
-                            "출력 형식은 반드시 아래와 같이 맞춰주세요 (JSON 형식):\n\n"
-                            "{\n"
-                            '  "작성일": "YYYY-MM-DD",\n'
-                            '  "작성자": [\n'
-                            '    {"이름": "조용범", "소속": "채권시장팀", "직책": "과장", "전화": "4751"},\n'
-                            '    {"이름": "임인혁", "소속": "주식시장팀", "직책": "과장", "전화": "4672"}\n'
-                            "  ]\n"
-                            "}"
-                        )
-                    }
-                ]
-            }
-        ]
         try:
-            # API 요청
-            completion = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                seed=seed
+            # 사용자 정의 프롬프트 가져오기
+            enrichment_options = self.pipeline_options.data_enrichment_options
+            custom_system = enrichment_options.metadata_system_prompt
+            custom_user = enrichment_options.metadata_user_prompt
+            
+            # 프롬프트 매니저를 사용하여 AI 모델 호출
+            response = self.prompt_manager.call_ai_model(
+                category="metadata_extraction",
+                prompt_type="korean_financial",
+                custom_system=custom_system,
+                custom_user=custom_user,
+                document_content=document_content
             )
-            # 응답에서 JSON 추출
-            response = completion.choices[0].message.content
+            
+            if not response:
+                return {"작성일": None, "작성자": []}
             
             # JSON 찾기
             json_pattern = r'```json\s*([\s\S]*?)\s*```'
@@ -619,7 +627,15 @@ class StandardPdfPipeline(PaginatedPipeline):
                     return json.loads(response)
                 except:
                     return {"작성일": None, "작성자": []}
+                    
         except Exception as e:
             _log.error(f"메타데이터 추출 중 오류 발생: {str(e)}")
             return {"작성일": None, "작성자": []}
 
+    @classmethod
+    def get_default_options(cls) -> PdfPipelineOptions:
+        return PdfPipelineOptions()
+
+    @classmethod
+    def is_backend_supported(cls, backend: AbstractDocumentBackend):
+        return isinstance(backend, PdfDocumentBackend)

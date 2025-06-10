@@ -1,8 +1,9 @@
 import logging
 import warnings
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Optional, Type
+from typing import List, Optional, Type
 
 import numpy
 from docling_core.types.doc import BoundingBox, CoordOrigin
@@ -58,12 +59,10 @@ class EasyOcrModel(BaseOcrModel):
                 device = decide_device(accelerator_options.device)
                 # Enable easyocr GPU if running on CUDA, MPS
                 use_gpu = any(
-                    [
-                        device.startswith(x)
-                        for x in [
-                            AcceleratorDevice.CUDA.value,
-                            AcceleratorDevice.MPS.value,
-                        ]
+                    device.startswith(x)
+                    for x in [
+                        AcceleratorDevice.CUDA.value,
+                        AcceleratorDevice.MPS.value,
                     ]
                 )
             else:
@@ -98,8 +97,10 @@ class EasyOcrModel(BaseOcrModel):
         progress: bool = False,
     ) -> Path:
         # Models are located in https://github.com/JaidedAI/EasyOCR/blob/master/easyocr/config.py
-        from easyocr.config import detection_models as det_models_dict
-        from easyocr.config import recognition_models as rec_models_dict
+        from easyocr.config import (
+            detection_models as det_models_dict,
+            recognition_models as rec_models_dict,
+        )
 
         if local_dir is None:
             local_dir = settings.cache_dir / "models" / EasyOcrModel._model_repo_folder
@@ -126,13 +127,11 @@ class EasyOcrModel(BaseOcrModel):
     def __call__(
         self, conv_res: ConversionResult, page_batch: Iterable[Page]
     ) -> Iterable[Page]:
-
         if not self.enabled:
             yield from page_batch
             return
 
         for page in page_batch:
-
             assert page._backend is not None
             if not page._backend.is_valid():
                 yield page

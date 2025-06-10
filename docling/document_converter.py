@@ -25,6 +25,7 @@ from docling.backend.xml.uspto_backend import PatentUsptoDocumentBackend
 # 한글 추가
 from docling.backend.hwp_backend import HwpDocumentBackend
 from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
+from docling.backend.json.bok_json_backend import BOKJsonDocumentBackend
 from docling.datamodel.base_models import (
     ConversionStatus,
     DoclingComponentType,
@@ -135,6 +136,11 @@ class HwpxFormatOption(FormatOption):
     pipeline_cls: Type = SimplePipeline
     backend: Type[AbstractDocumentBackend] = HwpxDocumentBackend
 
+# 한국은행
+class BOKJsonFormatOption(FormatOption):
+    pipeline_cls: Type = SimplePipeline
+    backend: Type[AbstractDocumentBackend] = BOKJsonDocumentBackend
+
 
 class AudioFormatOption(FormatOption):
     pipeline_cls: Type = AsrPipeline
@@ -186,6 +192,10 @@ def _get_default_option(format: InputFormat) -> FormatOption:
         ),
         InputFormat.XML_HWPX: FormatOption(
             pipeline_cls=SimplePipeline, backend=HwpxDocumentBackend
+        ),
+        # 한국은행
+        InputFormat.JSON_DOCLING: FormatOption(
+            pipeline_cls=SimplePipeline, backend=BOKJsonDocumentBackend
         ),
     }
     if (options := format_to_default_options.get(format)) is not None:

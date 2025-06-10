@@ -23,6 +23,7 @@ from docling.backend.msword_backend import MsWordDocumentBackend
 from docling.backend.xml.jats_backend import JatsDocumentBackend
 from docling.backend.xml.uspto_backend import PatentUsptoDocumentBackend
 # 한글 추가 
+from docling.backend.hwp_backend import HwpDocumentBackend
 from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
 from docling.datamodel.base_models import (
     ConversionStatus,
@@ -125,6 +126,11 @@ class PdfFormatOption(FormatOption):
     backend: Type[AbstractDocumentBackend] = DoclingParseV4DocumentBackend
 
 # 한글추가
+class HwpFormatOption(FormatOption):
+    pipeline_cls: Type = SimplePipeline
+    backend: Type[AbstractDocumentBackend] = HwpDocumentBackend
+
+
 class HwpxFormatOption(FormatOption):
     pipeline_cls: Type = SimplePipeline
     backend: Type[AbstractDocumentBackend] = HwpxDocumentBackend
@@ -169,6 +175,9 @@ def _get_default_option(format: InputFormat) -> FormatOption:
             pipeline_cls=SimplePipeline, backend=DoclingJSONBackend
         ),
         # 한글 파일 추가
+        InputFormat.HWP: FormatOption(
+            pipeline_cls=SimplePipeline, backend=HwpDocumentBackend
+        ),
         InputFormat.XML_HWPX: FormatOption(
             pipeline_cls=SimplePipeline, backend=HwpxDocumentBackend
         ),

@@ -59,6 +59,7 @@ class InputFormat(str, Enum):
     JSON_DOCLING = "json_docling"
     AUDIO = "audio"
     # 한글 파일 추가
+    HWP = "hwp"
     XML_HWPX  = "xml_hwpx"
 
 
@@ -86,6 +87,7 @@ FormatToExtensions: Dict[InputFormat, List[str]] = {
     InputFormat.JSON_DOCLING: ["json"],
     InputFormat.AUDIO: ["wav", "mp3"],
     # 한글 파일 추가
+    InputFormat.HWP: ["hwp"],
     InputFormat.XML_HWPX: ["hwpx"]
 }
 
@@ -120,12 +122,17 @@ FormatToMimeType: Dict[InputFormat, List[str]] = {
     InputFormat.JSON_DOCLING: ["application/json"],
     InputFormat.AUDIO: ["audio/x-wav", "audio/mpeg", "audio/wav", "audio/mp3"],
     # 한글 파일 추가
-        # 한글 파일 추가
+    InputFormat.HWP: [
+        "application/vnd.hancom.hwp",  # 공식 HWP MIME 타입
+        "application/hwp",
+        'application/haansofthwp',
+        'application/x-hwp'
+    ],
     InputFormat.XML_HWPX: [
-    "application/vnd.hancom.hwpml",  # 공식 MIME 타입
-    "application/zip",  # HWPX가 ZIP 기반이므로 추가
-    "application/vnd.hancom.hwpx",
-    'application/hwp+zip' # 공식 답변에서 찾음 https://forum.developer.hancom.com/t/hwp-hwpx-mime-type-whitelist/1641/2
+        "application/vnd.hancom.hwpml",  # 공식 MIME 타입
+        "application/zip",  # HWPX가 ZIP 기반이므로 추가
+        "application/vnd.hancom.hwpx",
+        'application/hwp+zip' # https://forum.developer.hancom.com/t/hwp-hwpx-mime-type-whitelist/1641/2
     ],
 }
 

@@ -315,6 +315,8 @@ class _DocumentConversionInput(BaseModel):
                     mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 elif objname.endswith(".pptx"):
                     mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                elif objname.endswith(".hwpx"):
+                    mime = "application/vnd.hancom.hwpx"
 
         mime = mime or _DocumentConversionInput._detect_html_xhtml(content)
         mime = mime or _DocumentConversionInput._detect_csv(content)
@@ -339,6 +341,16 @@ class _DocumentConversionInput(BaseModel):
         """Guess the input format of a document by checking part of its content."""
         input_format: Optional[InputFormat] = None
 
+        # HWP/HWPX 파일은 바이너리이므로 UTF-8 디코딩 시도하지 않음
+        if any(fmt in formats for fmt in [InputFormat.HWP, InputFormat.XML_HWPX]):
+            return formats[0] if formats else None
+
+        try:
+            content_str = content.decode("utf-8")
+        except UnicodeDecodeError:
+            # 바이너리 파일이거나 다른 인코딩인 경우, 첫 번째 포맷 반환
+            return formats[0] if formats else None
+
         if mime == "application/xml":
             content_str = content.decode("utf-8")
             match_doctype = re.search(r"<!DOCTYPE [^>]+>", content_str)
@@ -362,7 +374,6 @@ class _DocumentConversionInput(BaseModel):
                     input_format = InputFormat.XML_JATS
 
         elif mime == "text/plain":
-            content_str = content.decode("utf-8")
             if InputFormat.XML_USPTO in formats and content_str.startswith("PATN\r\n"):
                 input_format = InputFormat.XML_USPTO
 
@@ -389,6 +400,10 @@ class _DocumentConversionInput(BaseModel):
             mime = FormatToMimeType[InputFormat.PPTX][0]
         elif ext in FormatToExtensions[InputFormat.XLSX]:
             mime = FormatToMimeType[InputFormat.XLSX][0]
+        elif ext in FormatToExtensions[InputFormat.HWP]:
+            mime = FormatToMimeType[InputFormat.HWP][0]
+        elif ext in FormatToExtensions[InputFormat.XML_HWPX]:
+            mime = FormatToMimeType[InputFormat.XML_HWPX][0]
 
         return mime
 

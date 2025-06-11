@@ -70,7 +70,7 @@ from docling.datamodel.base_models import (
 from docling.datamodel.settings import DocumentLimits
 from docling.utils.profiling import ProfilingItem
 from docling.utils.utils import create_file_hash
-from docling.backend.hwp_backend import HwpConversionError
+from docling.exceptions import HwpConversionError
 
 if TYPE_CHECKING:
     from docling.document_converter import FormatOption

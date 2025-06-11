@@ -23,9 +23,10 @@ from docling.backend.msword_backend import MsWordDocumentBackend
 from docling.backend.xml.jats_backend import JatsDocumentBackend
 from docling.backend.xml.uspto_backend import PatentUsptoDocumentBackend
 # 한글 추가 
-from docling.backend.hwp_backend import HwpDocumentBackend, HwpConversionError
+from docling.backend.hwp_backend import HwpDocumentBackend
 from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
 from docling.backend.json.bok_json_backend import BOKJsonDocumentBackend
+from docling.exceptions import HwpConversionError
 from docling.datamodel.base_models import (
     ConversionStatus,
     DoclingComponentType,

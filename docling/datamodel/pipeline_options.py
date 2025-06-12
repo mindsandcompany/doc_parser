@@ -384,8 +384,6 @@ class PaginatedPipelineOptions(PipelineOptions):
 class DataEnrichmentOptions(BaseModel):
     """Data enrichment options for metadata extraction and other enrichment features."""
     
-    enabled: bool = False  # True: enable data enrichment features
-    
     # TOC enrichment options
     do_toc_enrichment: bool = False
     toc_system_prompt: Optional[str] = None

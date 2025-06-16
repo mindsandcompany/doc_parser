@@ -17,9 +17,9 @@
     },
     "toc_extraction": {
       "korean_document": {
-        "system": "You are a professional assistant trained to generate structured, hierarchical tables of contents from Korean policy or research documents. Your job is to extract section titles and subtitles, and organize them using Arabic numerals (e.g., 1, 1.1, 1.2). Do not include page numbers. Do not add explanations or comments. Only output a clean list of the table of contents using information from the document.",
-        "user": "다음은 PDF 문서에서 추출한 텍스트입니다. 이 문서의 구조에 맞게 목차를 생성해주세요. 불필요한 설명 없이 순번과 제목만 출력해 주세요. 페이지 번호는 생략하고, 계층 구조는 숫자로 표현해 주세요.\n\n문서 텍스트:\n\n{raw_text}",
-        "description": "한국 문서에서 계층적 목차를 추출하는 프롬프트",
+        "system": "You are a professional assistant trained to generate structured, hierarchical tables of contents from Korean policy or research documents. Your job is to extract the document title and section titles/subtitles, and organize them using Arabic numerals (e.g., 1, 1.1, 1.2). Do not include page numbers. Do not add explanations or comments. Only output a clean list starting with the document title followed by the table of contents using information from the document.",
+        "user": "다음은 PDF 문서에서 추출한 텍스트입니다. 이 문서의 제목과 구조에 맞게 목차를 생성해주세요.\n\n출력 형식:\n1. 첫 번째 줄에 'TITLE: [문서제목]' 형태로 문서 제목을 출력\n2. 그 다음 줄부터 계층적 목차를 출력 (순번과 제목만, 페이지 번호 생략)\n3. 계층 구조는 숫자로 표현 (1, 1.1, 1.1.1 등)\n\n예시:\nTITLE: 2024년 채권시장 동향 분석 보고서\n1. 개요\n1.1. 연구 목적\n1.2. 연구 범위\n2. 시장 현황\n2.1. 국내 채권시장\n2.2. 해외 채권시장\n\n문서 텍스트:\n\n{raw_text}",
+        "description": "한국 문서에서 문서 제목과 계층적 목차를 추출하는 프롬프트",
         "model": "google/gemma-3-27b-it:free",
         "seed": 33,
         "temperature": 0.0,
@@ -27,9 +27,9 @@
         "api_provider": "openrouter"
       },
       "general_document": {
-        "system": "You are a professional assistant trained to generate structured, hierarchical tables of contents from documents. Your job is to extract section titles and subtitles, and organize them using Arabic numerals (e.g., 1, 1.1, 1.2). Do not include page numbers. Do not add explanations or comments. Only output a clean list of the table of contents using information from the document.",
-        "user": "다음은 PDF 문서에서 추출한 텍스트입니다. 이 문서의 구조에 맞게 목차를 생성해주세요. 불필요한 설명 없이 순번과 제목만 출력해 주세요. 페이지 번호는 생략하고, 계층 구조는 숫자로 표현해 주세요.\n\n문서 텍스트:\n\n{raw_text}",
-        "description": "일반 문서에서 계층적 목차를 추출하는 프롬프트",
+        "system": "You are a professional assistant trained to generate structured, hierarchical tables of contents from documents. Your job is to extract the document title and section titles/subtitles, and organize them using Arabic numerals (e.g., 1, 1.1, 1.2). Do not include page numbers. Do not add explanations or comments. Only output a clean list starting with the document title followed by the table of contents using information from the document.",
+        "user": "다음은 PDF 문서에서 추출한 텍스트입니다. 이 문서의 제목과 구조에 맞게 목차를 생성해주세요.\n\n출력 형식:\n1. 첫 번째 줄에 'TITLE: [문서제목]' 형태로 문서 제목을 출력\n2. 그 다음 줄부터 계층적 목차를 출력 (순번과 제목만, 페이지 번호 생략)\n3. 계층 구조는 숫자로 표현 (1, 1.1, 1.1.1 등)\n\n예시:\nTITLE: 2024년 채권시장 동향 분석 보고서\n1. 개요\n1.1. 연구 목적\n1.2. 연구 범위\n2. 시장 현황\n2.1. 국내 채권시장\n2.2. 해외 채권시장\n\n문서 텍스트:\n\n{raw_text}",
+        "description": "일반 문서에서 문서 제목과 계층적 목차를 추출하는 프롬프트",
         "model": "google/gemma-3-27b-it:free",
         "seed": 33,
         "temperature": 0.0,

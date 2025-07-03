@@ -10,20 +10,15 @@ from typing import Optional, Iterable, Any, List, Dict, Tuple
 
 from fastapi import Request
 
-# docling imports
-
 from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
+from docling.backend.hwp_backend import HwpDocumentBackend
+from docling.backend.pymupdf_backend import PyMuPDFDocumentBackend
 from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
-from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.base_models import InputFormat
 from docling.pipeline.simple_pipeline import SimplePipeline
-# from docling.datamodel.document import ConversionStatus
 from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
     AcceleratorOptions,
-    # EasyOcrOptions,
-    # OcrEngine,
-    # PdfBackend,
     PdfPipelineOptions,
     TableFormerMode,
     TesseractOcrOptions,
@@ -33,11 +28,9 @@ from docling.datamodel.pipeline_options import (
 from docling.document_converter import (
     DocumentConverter,
     PdfFormatOption,
-    HwpxFormatOption, 
+    HwpxFormatOption,
     FormatOption
 )
-from docling.datamodel.pipeline_options import DataEnrichmentOptions
-from docling.utils.document_enrichment import enrich_document
 from docling.datamodel.document import ConversionResult
 from docling_core.transforms.chunker import (
     BaseChunk,
@@ -48,7 +41,7 @@ from docling_core.transforms.chunker import (
 from docling_core.types import DoclingDocument
 
 from pandas import DataFrame
-import asyncio
+
 from docling_core.types import DoclingDocument as DLDocument
 from docling_core.types.doc.document import (
     DocumentOrigin,
@@ -72,7 +65,10 @@ from docling_core.types.doc import (
 from collections import Counter
 import re
 import json
+import fitz
 import warnings
+import logging
+import asyncio
 from typing import Iterable, Iterator, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, PositiveInt, TypeAdapter, model_validator
@@ -87,7 +83,7 @@ except ImportError:
         "`pip install 'docling-core[chunking]'`"
     )
 
-# from genos_utils import upload_files
+from genos_utils import upload_files
 
 # ============================================
 #
@@ -96,7 +92,6 @@ except ImportError:
 #
 
 """Chunker implementation leveraging the document structure."""
-
 class HierarchicalChunker(BaseChunker):
     """문서 구조와 헤더 계층을 유지하면서 아이템을 순차적으로 처리하는 청커"""
 
@@ -670,6 +665,7 @@ class HybridChunker(BaseChunker):
         
         return iter(final_chunks)
     
+
 class GenOSVectorMeta(BaseModel):
     class Config:
         extra = 'allow'
@@ -687,8 +683,6 @@ class GenOSVectorMeta(BaseModel):
     reg_date: str = None
     chunk_bboxes: str = None
     media_files: str = None
-    title: str = None
-    created_date:int = None
 
 
 class GenOSVectorMetaBuilder:
@@ -707,8 +701,6 @@ class GenOSVectorMetaBuilder:
         self.reg_date: Optional[str] = None
         self.chunk_bboxes: Optional[str] = None
         self.media_files: Optional[str] = None
-        self.title: Optional[str] = None
-        self.created_date: Optional[int] = None
 
     def set_text(self, text: str) -> "GenOSVectorMetaBuilder":
         """텍스트와 관련된 데이터를 설정"""
@@ -722,7 +714,7 @@ class GenOSVectorMetaBuilder:
             self, i_page: int, i_chunk_on_page: int, n_chunk_of_page: int
     ) -> "GenOSVectorMetaBuilder":
         """페이지 정보 설정"""
-        self.i_page = i_page - 1
+        self.i_page = i_page
         self.i_chunk_on_page = i_chunk_on_page
         self.n_chunk_of_page = n_chunk_of_page
         return self
@@ -783,8 +775,6 @@ class GenOSVectorMetaBuilder:
             reg_date=self.reg_date,
             chunk_bboxes=self.chunk_bboxes,
             media_files=self.media_files,
-            title=self.title,
-            created_date=self.created_date,
         )
 
 
@@ -795,72 +785,53 @@ class DocumentProcessor:
         initialize Document Converter
         '''
         self.page_chunk_counts = defaultdict(int)
-        device = AcceleratorDevice.AUTO
-        num_threads = 8
-        accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device)
-        
-        # PDF 파이프라인 옵션 설정
-        self.pipe_line_options = PdfPipelineOptions()
-        self.pipe_line_options.generate_page_images = True
-        self.pipe_line_options.generate_picture_images = True
-        self.pipe_line_options.do_ocr = False
-        # self.pipe_line_options.ocr_options.lang = ["ko", 'en']
-        # self.pipe_line_options.ocr_options.model_storage_directory = "./.EasyOCR/model"
-        # self.pipe_line_options.ocr_options.force_full_page_ocr = True
-        # ocr_options = TesseractOcrOptions()
-        # ocr_options.lang = ['kor', 'kor_vert', 'eng', 'jpn', 'jpn_vert']
-        # ocr_options.path = './.tesseract/tessdata'
-        # self.pipe_line_options.ocr_options = ocr_options
-        self.pipe_line_options.artifacts_path = Path("/nfs-root/models/223/760")  # Path("/nfs-root/aiModel/.cache/huggingface/hub/models--ds4sd--docling-models/snapshots/4659a7d29247f9f7a94102e1f313dad8e8c8f2f6/")
-        self.pipe_line_options.do_table_structure = True
-        self.pipe_line_options.images_scale = 2
-        self.pipe_line_options.table_structure_options.do_cell_matching = True
-        self.pipe_line_options.table_structure_options.mode = TableFormerMode.ACCURATE
-        self.pipe_line_options.accelerator_options = accelerator_options
-
-        # Simple 파이프라인 옵션을 인스턴스 변수로 저장
+        # device = AcceleratorDevice.AUTO
+        # num_threads = 8
+        # accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device)
+        pipe_line_options = PdfPipelineOptions()
+        # pipe_line_options.generate_page_images = True
+        # pipe_line_options.generate_picture_images = True
+        # pipe_line_options.do_ocr = False
+        # # pipe_line_options.ocr_options.lang = ["ko", 'en']
+        # # pipe_line_options.ocr_options.model_storage_directory = "./.EasyOCR/model"
+        # # pipe_line_options.ocr_options.force_full_page_ocr = True
+        # # ocr_options = TesseractOcrOptions()
+        # # ocr_options.lang = ['kor', 'kor_vert', 'eng', 'jpn', 'jpn_vert']
+        # # ocr_options.path = './.tesseract/tessdata'
+        # # pipe_line_options.ocr_options = ocr_options
+        # pipe_line_options.artifacts_path = Path("/nfs-root/aiModel/.cache/huggingface/hub/models--ds4sd--docling-models/snapshots/4659a7d29247f9f7a94102e1f313dad8e8c8f2f6/")
+        # pipe_line_options.do_table_structure = True
+        # pipe_line_options.images_scale = 2
+        # pipe_line_options.table_structure_options.do_cell_matching = True
+        # pipe_line_options.table_structure_options.mode = TableFormerMode.ACCURATE
+        # pipe_line_options.accelerator_options = accelerator_options
         self.simple_pipeline_options = PipelineOptions()
         self.simple_pipeline_options.save_images = False
 
-        # 기본 컨버터들 생성
-        self._create_converters()
-
-    def _create_converters(self):
-        """컨버터들을 생성하는 헬퍼 메서드"""
         # HWP와 HWPX 모두 지원하는 통합 컨버터
         self.converter = DocumentConverter(
                 format_options={
-                    InputFormat.XML_HWPX: HwpxFormatOption(
-                        pipeline_options=self.simple_pipeline_options,
+                    InputFormat.HWP: FormatOption(
+                        pipeline_cls=SimplePipeline, backend=HwpDocumentBackend
                     ),
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=self.pipe_line_options, 
-                        backend=DoclingParseV4DocumentBackend
+                    InputFormat.XML_HWPX: HwpxFormatOption(
+                        pipeline_options=self.simple_pipeline_options
+                    ),
+                    InputFormat.PDF: FormatOption(
+                    pipeline_cls=SimplePipeline, 
+                    backend=PyMuPDFDocumentBackend
                     ),
                 }
             )
-        self.second_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.pipe_line_options,
-                    backend=PyPdfiumDocumentBackend
-                ),
-            },
-        )
-
+        
     def load_documents_with_docling(self, file_path: str, **kwargs: dict) -> DoclingDocument:
-        # kwargs에서 save_images 값을 가져와서 옵션 업데이트
         save_images = kwargs.get('save_images', False)
         
-        # save_images 옵션이 현재 설정과 다르면 컨버터 재생성
         if self.simple_pipeline_options.save_images != save_images:
             self.simple_pipeline_options.save_images = save_images
             self._create_converters()
-        
-        try:
-            conv_result: ConversionResult = self.converter.convert(file_path, raises_on_error=True)
-        except Exception as e:
-            conv_result: ConversionResult = self.second_converter.convert(file_path, raises_on_error=True)
+            
+        conv_result: ConversionResult = self.converter.convert(file_path, raises_on_error=True)
         return conv_result.document
     
     def load_documents(self, file_path: str, **kwargs) -> DoclingDocument:
@@ -868,10 +839,9 @@ class DocumentProcessor:
     
     def split_documents(self, documents: DoclingDocument, **kwargs: dict) -> List[DocChunk]:
         chunker: HybridChunker = HybridChunker(
-              max_tokens=2000,
-              merge_peers=True
-            )
-
+          max_tokens=2000,
+          merge_peers=True
+          )
         chunks: List[DocChunk] = list(chunker.chunk(dl_doc=documents, **kwargs))
         for chunk in chunks:
             self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
@@ -881,106 +851,13 @@ class DocumentProcessor:
         if not isinstance(iterable, (list, tuple, set)):
             return ''
         return ''.join(map(str, iterable)) + '\n'
-        
-    def parse_created_date(self, date_text: str) -> Optional[int]:
-        """
-        작성일 텍스트를 파싱하여 YYYYMMDD 형식의 정수로 변환
-        
-        Args:
-            date_text: 작성일 텍스트 (YYYY-MM 또는 YYYY-MM-DD 형식)
-            
-        Returns:
-            YYYYMMDD 형식의 정수, 파싱 실패시 None
-        """
-        if not date_text or not isinstance(date_text, str) or date_text == "None":
-            return 0
-            
-        # 공백 제거 및 정리
-        date_text = date_text.strip()
-        
-        # YYYY-MM-DD 형식 매칭
-        match_full = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', date_text)
-        if match_full:
-            year, month, day = match_full.groups()
-            try:
-                # 유효한 날짜인지 검증
-                datetime(int(year), int(month), int(day))
-                return int(f"{year}{month.zfill(2)}{day.zfill(2)}")
-            except ValueError:
-                pass
-        
-        # YYYY-MM 형식 매칭 (일자는 01로 설정)
-        match_month = re.match(r'^(\d{4})-(\d{1,2})$', date_text)
-        if match_month:
-            year, month = match_month.groups()
-            try:
-                # 유효한 월인지 검증
-                datetime(int(year), int(month), 1)
-                return int(f"{year}{month.zfill(2)}01")
-            except ValueError:
-                pass
-        
-        # YYYY 형식 매칭 (월일은 0101로 설정)
-        match_year = re.match(r'^(\d{4})$', date_text)
-        if match_year:
-            year = match_year.group(1)
-            try:
-                datetime(int(year), 1, 1)
-                return int(f"{year}0101")
-            except ValueError:
-                pass
-        
-        return 0
-    def enrichment(self, document: DoclingDocument, **kwargs: dict) -> DoclingDocument:
-        # enrichment 옵션 설정
-        enrichment_options = DataEnrichmentOptions(
-            do_toc_enrichment=True,
-            extract_metadata=True,
-            toc_api_provider="custom",
-            toc_api_base_url="http://llmops-gateway-api-service:8080/serving/364/799/v1/chat/completions",
-            metadata_api_base_url="http://llmops-gateway-api-service:8080/serving/364/799/v1/chat/completions",
-            toc_api_key="a2ffe48f40ab4cf9a0699deac1c0cb76",
-            metadata_api_key="a2ffe48f40ab4cf9a0699deac1c0cb76",
-            toc_model="/model/snapshots/9eb2daaa8597bf192a8b0e73f848f3a102794df5",
-            metadata_model="/model/snapshots/9eb2daaa8597bf192a8b0e73f848f3a102794df5",
-            toc_temperature=0.0,
-            toc_top_p=0,
-            toc_seed=33,
-            toc_max_tokens=1000
-        )
-
-        # 새로운 enriched result 받기
-        document = enrich_document(document, enrichment_options)
-        return document
-        
+    
     async def compose_vectors(self, document: DoclingDocument, chunks: List[DocChunk], file_path: str, request: Request, **kwargs: dict) -> \
                 list[dict]:
-            title = ""
-            created_date = 0
-            try:
-                if (document.key_value_items and 
-                    len(document.key_value_items) > 0 and 
-                    hasattr(document.key_value_items[0], 'graph') and
-                    hasattr(document.key_value_items[0].graph, 'cells') and
-                    len(document.key_value_items[0].graph.cells) > 1):
-                    
-                    # 작성일 추출 (cells[1])
-                    date_text = document.key_value_items[0].graph.cells[1].text
-                    created_date = self.parse_created_date(date_text)
-            except (AttributeError, IndexError) as e:
-                pass
-            
-            for item, _ in document.iterate_items():
-              if hasattr(item, 'label'):
-                  if item.label == DocItemLabel.TITLE:
-                      title = item.text.strip() if item.text else ""
-                      break 
             global_metadata = dict(
                 n_chunk_of_doc=len(chunks),
                 n_page=document.num_pages(),
                 reg_date=datetime.now().isoformat(timespec='seconds') + 'Z',
-                created_date=created_date,
-                title=title
             )
 
             current_page = None
@@ -990,7 +867,7 @@ class DocumentProcessor:
             for chunk_idx, chunk in enumerate(chunks):
                 chunk_page = chunk.meta.doc_items[0].prov[0].page_no
                 content = self.safe_join(chunk.meta.headings) + chunk.text
-                
+
                 if chunk_page != current_page:
                     current_page = chunk_page
                     chunk_index_on_page = 0
@@ -1005,7 +882,6 @@ class DocumentProcessor:
                         ).build()
                 vectors.append(vector)
 
-
                 chunk_index_on_page += 1
                 file_list = self.get_media_files(chunk.meta.doc_items)
                 upload_tasks.append(asyncio.create_task(
@@ -1016,7 +892,6 @@ class DocumentProcessor:
                 await asyncio.gather(*upload_tasks)
 
             return vectors
-    
     
     def get_media_files(self, doc_items: list):
         temp_list = []
@@ -1037,14 +912,10 @@ class DocumentProcessor:
             reference_path = None
         else:
             reference_path = artifacts_dir.parent
-        
-        document = document._with_pictures_refs(image_dir=artifacts_dir, reference_path=reference_path)
-        
-        document = self.enrichment(document, **kwargs)
 
-        # Extract Chunk from DoclingDocument
+        document = document._with_pictures_refs(image_dir=artifacts_dir, reference_path=reference_path)
+
         chunks: list[DocChunk] = self.split_documents(document, **kwargs)
-        # await assert_cancelled(request)
 
         vectors = []
         if len(chunks) >= 1:

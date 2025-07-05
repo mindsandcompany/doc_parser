@@ -4,66 +4,50 @@ assignees:
   - yspaik
   - JaeseungYang
 projects: mindsandcompany/3
-type: bug
+labels: bug
 body:
-  - type: input
-    id: project
+  - type: markdown
     attributes:
-      label: 프로젝트
-      description: 해당 버그가 발생한 프로젝트를 입력해주세요
-      placeholder: ex. 고객사 이름 / 테스트 클러스터 / 배포 클러스터 등
-    validations:
-      required: true
+      value: |
+        ### 프로젝트
+        해당 버그가 발생한 프로젝트를 입력해주세요
+        ex. 고객사 이름 / 테스트 클러스터 / 배포 클러스터 등
 
-  - type: input
-    id: user
+  - type: markdown
     attributes:
-      label: 사용자
-      description: 버그가 발생했을 당시 로그인 한 사용자 정보를 입력해주세요
-      placeholder: ex. administrator / 관리자
-    validations:
-      required: true
+      value: |
+        ### 사용자
+        버그가 발생했을 당시 로그인 한 사용자 정보를 입력해주세요
+        ex. administrator / 관리자
 
-  - type: input
-    id: symptom
+  - type: markdown
     attributes:
-      label: 버그의 증상
-      description: 발생한 증상을 써주세요. (ex. 일부 데이터가 누락되거나 글자가 깨지는 현상)
-      placeholder:
-    validations:
-      required: true
+      value: |
+        ### 버그의 증상
+        발생한 증상을 써주세요.
+        ex. 일부 데이터가 누락되거나 글자가 깨지는 현상
 
   - type: select
-    id: occurrence
     attributes:
       label: 버그의 증상 발생 빈도
       description: 재현 step 대로 진행하면 항상 발생, 간헐적으로 발생
       options:
         - label: 항상 발생
-        - value: always
+          value: always
         - label: 간헐적
-        - value: intermittent
-    validations:
-      required: true
+          value: intermittent
 
   - type: input
-    id: release_version
     attributes:
       label: 적용된 버전 혹은 실험한 위치
       placeholder: GenOS 운영계, 중부발전 클러스터, 한국은행 클러스터, 로컬
-    validations:
-      required: false
 
   - type: input
-    id: preprocessing_input_file
     attributes:
       label: 전처리 입력 파일
       placeholder: 예) data/input_file.csv
-    validations:
-      required: false
 
   - type: textarea
-    id: regeneration
     attributes:
       label: 증상을 확인할 수 있는 step
       description: 버그에 대한 상세한 설명을 입력해주세요
@@ -76,6 +60,4 @@ body:
         - 에러 메시지가 보이도록 캡쳐
         - 화면상에 보이는게 없으면 생략해도 됨
 
-          (Optional) 개발자 도구의 Network 탭과 Console이 보이는 상태에서 해당 행동를 하고 캡쳐해주시면 더 좋습니다 :)
-    validations:
-      required: true
+        (Optional) 개발자 도구의 Network 탭과 Console이 보이는 상태에서 해당 행동을 하고 캡쳐해주시면 더 좋습니다 :)

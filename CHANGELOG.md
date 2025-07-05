@@ -1,3 +1,30 @@
+## [v2.40.0](https://github.com/docling-project/docling/releases/tag/v2.40.0) - 2025-07-04
+
+### Feature
+
+* Introduce LayoutOptions to control layout postprocessing behaviour ([#1870](https://github.com/docling-project/docling/issues/1870)) ([`ec6cf6f`](https://github.com/docling-project/docling/commit/ec6cf6f7e8050db30c14f0625d6d5c6bbfeb6aeb))
+* Integrate ListItemMarkerProcessor into document assembly ([#1825](https://github.com/docling-project/docling/issues/1825)) ([`56a0e10`](https://github.com/docling-project/docling/commit/56a0e104f76c5ba30ac0fcd247be61f911b560c1))
+
+### Fix
+
+* Secure torch model inits with global locks ([#1884](https://github.com/docling-project/docling/issues/1884)) ([`598c9c5`](https://github.com/docling-project/docling/commit/598c9c53d401de6aac89b7c51bccd57160dace1e))
+* Ensure that TesseractOcrModel does not crash in case OSD is not installed ([#1866](https://github.com/docling-project/docling/issues/1866)) ([`ae39a94`](https://github.com/docling-project/docling/commit/ae39a9411a09b2165ac745af358dea644f868e26))
+
+### Performance
+
+* **msexcel:** _find_table_bounds use iter_rows/iter_cols instead of Worksheet.cell ([#1875](https://github.com/docling-project/docling/issues/1875)) ([`13865c0`](https://github.com/docling-project/docling/commit/13865c06f5c564b9e57f3dbb60d26e60c75258b6))
+* Move expensive imports closer to usage ([#1863](https://github.com/docling-project/docling/issues/1863)) ([`3089cf2`](https://github.com/docling-project/docling/commit/3089cf2d26918eed4007398a528f53971c19f839))
+
+## [v2.39.0](https://github.com/docling-project/docling/releases/tag/v2.39.0) - 2025-06-27
+
+### Feature
+
+* Leverage new list modeling, capture default markers ([#1856](https://github.com/docling-project/docling/issues/1856)) ([`0533da1`](https://github.com/docling-project/docling/commit/0533da1923598e4a2d6392283f6de0f9c7002b01))
+
+### Fix
+
+* **markdown:** Make parsing of rich table cells valid ([#1821](https://github.com/docling-project/docling/issues/1821)) ([`e79e4f0`](https://github.com/docling-project/docling/commit/e79e4f0ab6c5b8276316e423b14c9821165049f2))
+
 ## [v2.38.1](https://github.com/docling-project/docling/releases/tag/v2.38.1) - 2025-06-25
 
 ### Fix

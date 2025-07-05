@@ -16,8 +16,17 @@ Create your feature branch: `git checkout -b feature/AmazingFeature`.
 
 # *Whole heading is italic*
 
+- **First**: Lorem ipsum.
+- **Second**: Dolor `sit` amet.
+
 Some *`formatted_code`*
 
 ## *Partially formatted* heading to_escape `not_to_escape`
 
 [$$E=mc^2$$](https://en.wikipedia.org/wiki/Albert_Einstein)
+
+## Table Heading
+
+| **Bold Heading** | *Italic Heading* |
+|------------------|------------------|
+| data a           | data b           |

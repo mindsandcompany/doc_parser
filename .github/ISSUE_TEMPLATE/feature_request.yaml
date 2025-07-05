@@ -1,0 +1,34 @@
+name: Feature Request
+description: 새로운 기능이나 개선을 건의합니다
+assignees: dkswldls100
+projects: mindsandcompany/3
+type: feature
+body:
+  - type: input
+    id: project
+    attributes:
+      label: 프로젝트
+      description: 해당 이슈가 발생한 프로젝트를 입력해주세요
+      placeholder: ex. 고객사 이름 / 자체 건의면 미입력
+    validations:
+      required: false
+  
+  - type: input
+    id: url
+    attributes:
+      label: 대상 페이지
+      description: 대상 페이지의 주소를 입력해주세요
+      placeholder: ex. https://genos.mnc.ai:3443/data/dataset/detail/77
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 상세 설명
+      description: 건의사항에 대한 구체적인 설명을 작성해주세요
+      placeholder: |
+        ex. 현재는 데이터셋을 삭제할 때 경고 메시지 없이 바로 삭제됩니다.
+            데이터셋 삭제 시 경고 메시지를 표시되면 좋겠습니다.
+    validations:
+      required: true

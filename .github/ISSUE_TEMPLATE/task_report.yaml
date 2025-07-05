@@ -1,0 +1,30 @@
+name: Task
+description: 수행이 필요한 작업을 등록합니다
+projects: mindsandcompany/3
+type: task
+body:
+  - type: input
+    id: project
+    attributes:
+      label: 프로젝트
+      description: 해당 이슈가 발생한 프로젝트를 입력해주세요
+      placeholder: ex. 고객사 이름 / 자체 건의는 미입력
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 상세 설명
+      description: 작업에 대한 구체적인 설명을 작성해주세요
+      value: |
+        ## Background
+        - 
+
+        ## To Do
+        - 
+
+        ## See Also
+        - 
+    validations:
+      required: true

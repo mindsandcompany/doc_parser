@@ -923,7 +923,7 @@ class DocumentProcessor:
         # document에 text가 있는 item이 있는지 체크
         has_text_items = False
         for item, _ in document.iterate_items():
-            if isinstance(item, (TextItem, TableItem, ListItem, CodeItem, SectionHeaderItem)) and item.text and item.text.strip():
+            if isinstance(item, (TextItem, TableItem, ListItem, CodeItem, SectionHeaderItem)):
                 has_text_items = True
                 break
         

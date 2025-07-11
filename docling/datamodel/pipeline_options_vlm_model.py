@@ -1,6 +1,7 @@
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
+from docling_core.types.doc.page import SegmentedPage
 from pydantic import AnyUrl, BaseModel
 from typing_extensions import deprecated
 
@@ -9,9 +10,10 @@ from docling.datamodel.accelerator_options import AcceleratorDevice
 
 class BaseVlmOptions(BaseModel):
     kind: str
-    prompt: str
+    prompt: Union[str, Callable[[Optional[SegmentedPage]], str]]
     scale: float = 2.0
     max_size: Optional[int] = None
+    temperature: float = 0.0
 
 
 class ResponseFormat(str, Enum):
@@ -29,6 +31,12 @@ class TransformersModelType(str, Enum):
     AUTOMODEL = "automodel"
     AUTOMODEL_VISION2SEQ = "automodel-vision2seq"
     AUTOMODEL_CAUSALLM = "automodel-causallm"
+    AUTOMODEL_IMAGETEXTTOTEXT = "automodel-imagetexttotext"
+
+
+class TransformersPromptStyle(str, Enum):
+    CHAT = "chat"
+    RAW = "raw"
 
 
 class InlineVlmOptions(BaseVlmOptions):
@@ -42,6 +50,7 @@ class InlineVlmOptions(BaseVlmOptions):
 
     inference_framework: InferenceFramework
     transformers_model_type: TransformersModelType = TransformersModelType.AUTOMODEL
+    transformers_prompt_style: TransformersPromptStyle = TransformersPromptStyle.CHAT
     response_format: ResponseFormat
 
     torch_dtype: Optional[str] = None
@@ -51,7 +60,6 @@ class InlineVlmOptions(BaseVlmOptions):
         AcceleratorDevice.MPS,
     ]
 
-    temperature: float = 0.0
     stop_strings: List[str] = []
     extra_generation_config: Dict[str, Any] = {}
 

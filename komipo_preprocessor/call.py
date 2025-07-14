@@ -1,13 +1,17 @@
 import os
 import json
 import asyncio
+import time
+
 from rms import DocumentProcessor as RmsProcessor
 from standard import DocumentProcessor as StandardProcessor
+from TEST import DocumentProcessor as TestProcessor
 from fastapi import Request
 
 # DocumentProcessor 인스턴스 생성
 rms_processor = RmsProcessor()
 standard_processor = StandardProcessor()
+test_processor = TestProcessor()
 mock_request = Request(scope={"type": "http"})  # Mock Request 생성
 
 
@@ -23,6 +27,10 @@ async def process_document(file_path, type):
         vectors = await rms_processor(mock_request, file_path)
     elif type == 'standard':
         vectors = await standard_processor(mock_request, file_path)
+    elif type == 'test':
+        start = time.time()
+        vectors = await test_processor(mock_request, file_path)
+        print(f"{file_path} - Time: {time.time() - start}")
 
     return vectors
 
@@ -89,18 +97,19 @@ async def process_all_pdfs_in_directory(directory_path, output_directory, type):
 # 메인 실행부
 if __name__ == "__main__":
     # PDF 파일이 위치한 디렉터리
-    input_directory = "D:\workspace\mnc\doc_parser\komipo_preprocessor\doc_rms"
+    # input_directory = "D:\workspace\mnc\doc_parser\komipo_preprocessor\doc_rms"
 
     # JSON 결과를 저장할 디렉터리
-    output_directory = "D:\workspace\mnc\doc_parser\komipo_preprocessor\doc_rms"
+    # output_directory = "D:\workspace\mnc\doc_parser\komipo_preprocessor\doc_rms"
 
     # 비동기 실행
-    asyncio.run(process_all_pdfs_in_directory(input_directory, output_directory, 'rms'))
+    # asyncio.run(process_all_pdfs_in_directory(input_directory, output_directory, 'rms'))
+    # asyncio.run(process_all_pdfs_in_directory(input_directory, output_directory, 'test'))
 
-    input_directory = "D:\workspace\mnc\doc_parser\komipo_preprocessor\standard"
+    input_directory = "/Users/namseunghyun/workspace/doc_parser/komipo_preprocessor/samples"
 
     # JSON 결과를 저장할 디렉터리
-    output_directory = "D:\workspace\mnc\doc_parser\komipo_preprocessor\standard"
+    output_directory = "/Users/namseunghyun/workspace/doc_parser/komipo_preprocessor/samples"
 
     # 비동기 실행
-    asyncio.run(process_all_pdfs_in_directory(input_directory, output_directory, 'standard'))
+    asyncio.run(process_all_pdfs_in_directory(input_directory, output_directory, 'test'))

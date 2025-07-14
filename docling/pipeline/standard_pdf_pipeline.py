@@ -3,20 +3,15 @@ import warnings
 from pathlib import Path
 from typing import Optional, cast
 
-from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem
 import numpy as np
 from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem
-from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem, TextItem, DocItemLabel, SectionHeaderItem
-from docling_core.types.doc.document import GraphData, GraphCell, GraphCellLabel
 
 from docling.backend.abstract_backend import AbstractDocumentBackend
 from docling.backend.pdf_backend import PdfDocumentBackend
 from docling.datamodel.base_models import AssembledUnit, Page
 from docling.datamodel.document import ConversionResult
-from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.datamodel.layout_model_specs import LayoutModelConfig
 from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.datamodel.pipeline_options import PdfPipelineOptions, DataEnrichmentOptions
 from docling.datamodel.settings import settings
 from docling.models.base_ocr_model import BaseOcrModel
 from docling.models.code_formula_model import CodeFormulaModel, CodeFormulaModelOptions
@@ -254,6 +249,36 @@ class StandardPdfPipeline(PaginatedPipeline):
                             element.image = ImageRef.from_pil(
                                 cropped_im, dpi=int(72 * scale)
                             )
+
+            # Aggregate confidence values for document:
+            if len(conv_res.pages) > 0:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=RuntimeWarning,
+                        message="Mean of empty slice|All-NaN slice encountered",
+                    )
+                    conv_res.confidence.layout_score = float(
+                        np.nanmean(
+                            [c.layout_score for c in conv_res.confidence.pages.values()]
+                        )
+                    )
+                    conv_res.confidence.parse_score = float(
+                        np.nanquantile(
+                            [c.parse_score for c in conv_res.confidence.pages.values()],
+                            q=0.1,  # parse score should relate to worst 10% of pages.
+                        )
+                    )
+                    conv_res.confidence.table_score = float(
+                        np.nanmean(
+                            [c.table_score for c in conv_res.confidence.pages.values()]
+                        )
+                    )
+                    conv_res.confidence.ocr_score = float(
+                        np.nanmean(
+                            [c.ocr_score for c in conv_res.confidence.pages.values()]
+                        )
+                    )
 
         return conv_res
 

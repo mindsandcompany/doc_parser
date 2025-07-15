@@ -192,6 +192,17 @@ def _get_default_option(format: InputFormat) -> FormatOption:
             pipeline_cls=SimplePipeline, backend=DoclingJSONBackend
         ),
         InputFormat.AUDIO: FormatOption(pipeline_cls=AsrPipeline, backend=NoOpBackend),
+        # 한글 파일 추가
+        InputFormat.HWP: FormatOption(
+            pipeline_cls=SimplePipeline, backend=HwpDocumentBackend
+        ),
+        InputFormat.XML_HWPX: FormatOption(
+            pipeline_cls=SimplePipeline, backend=HwpxDocumentBackend
+        ),
+        # 한국은행
+        InputFormat.JSON_DOCLING: FormatOption(
+            pipeline_cls=SimplePipeline, backend=BOKJsonDocumentBackend
+        ),
     }
     if (options := format_to_default_options.get(format)) is not None:
         return options

@@ -300,6 +300,8 @@ class _DocumentConversionInput(BaseModel):
                     mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 elif obj.suffixes[-1].lower() == ".pptx":
                     mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                elif obj.suffixes[-1].lower() == ".hwpx":
+                    mime = "application/vnd.hancom.hwpx"
 
         elif isinstance(obj, DocumentStream):
             content = obj.stream.read(8192)

@@ -1,6 +1,6 @@
 {
   "schema_name": "DoclingDocument",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "name": "wiki_duck",
   "origin": {
     "mimetype": "text/html",
@@ -1309,7 +1309,7 @@
       ],
       "content_layer": "body",
       "name": "ordered list",
-      "label": "ordered_list"
+      "label": "list"
     },
     {
       "self_ref": "#/groups/40",
@@ -1653,7 +1653,7 @@
       "orig": "Main page",
       "text": "Main page",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/3",
@@ -1667,7 +1667,7 @@
       "orig": "Contents",
       "text": "Contents",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/4",
@@ -1681,7 +1681,7 @@
       "orig": "Current events",
       "text": "Current events",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/5",
@@ -1695,7 +1695,7 @@
       "orig": "Random article",
       "text": "Random article",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/6",
@@ -1709,7 +1709,7 @@
       "orig": "About Wikipedia",
       "text": "About Wikipedia",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/7",
@@ -1723,7 +1723,7 @@
       "orig": "Contact us",
       "text": "Contact us",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/8",
@@ -1749,7 +1749,7 @@
       "orig": "Help",
       "text": "Help",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/10",
@@ -1763,7 +1763,7 @@
       "orig": "Learn to edit",
       "text": "Learn to edit",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/11",
@@ -1777,7 +1777,7 @@
       "orig": "Community portal",
       "text": "Community portal",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/12",
@@ -1791,7 +1791,7 @@
       "orig": "Recent changes",
       "text": "Recent changes",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/13",
@@ -1805,7 +1805,7 @@
       "orig": "Upload file",
       "text": "Upload file",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/14",
@@ -1819,7 +1819,7 @@
       "orig": "Donate",
       "text": "Donate",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/15",
@@ -1833,7 +1833,7 @@
       "orig": "Create account",
       "text": "Create account",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/16",
@@ -1847,7 +1847,7 @@
       "orig": "Log in",
       "text": "Log in",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/17",
@@ -1861,7 +1861,7 @@
       "orig": "Create account",
       "text": "Create account",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/18",
@@ -1875,7 +1875,7 @@
       "orig": "Log in",
       "text": "Log in",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/19",
@@ -1901,7 +1901,7 @@
       "orig": "Contributions",
       "text": "Contributions",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/21",
@@ -1915,7 +1915,7 @@
       "orig": "Talk",
       "text": "Talk",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/22",
@@ -1946,7 +1946,7 @@
       "orig": "(Top)",
       "text": "(Top)",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/24",
@@ -1964,7 +1964,7 @@
       "orig": "1 Etymology",
       "text": "1 Etymology",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/25",
@@ -1982,7 +1982,7 @@
       "orig": "2 Taxonomy",
       "text": "2 Taxonomy",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/26",
@@ -2000,7 +2000,7 @@
       "orig": "3 Morphology",
       "text": "3 Morphology",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/27",
@@ -2018,7 +2018,7 @@
       "orig": "4 Distribution and habitat",
       "text": "4 Distribution and habitat",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/28",
@@ -2036,7 +2036,7 @@
       "orig": "5 Behaviour Toggle Behaviour subsection",
       "text": "5 Behaviour Toggle Behaviour subsection",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/29",
@@ -2054,7 +2054,7 @@
       "orig": "5.1 Feeding",
       "text": "5.1 Feeding",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/30",
@@ -2072,7 +2072,7 @@
       "orig": "5.2 Breeding",
       "text": "5.2 Breeding",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/31",
@@ -2090,7 +2090,7 @@
       "orig": "5.3 Communication",
       "text": "5.3 Communication",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/32",
@@ -2108,7 +2108,7 @@
       "orig": "5.4 Predators",
       "text": "5.4 Predators",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/33",
@@ -2126,7 +2126,7 @@
       "orig": "6 Relationship with humans Toggle Relationship with humans subsection",
       "text": "6 Relationship with humans Toggle Relationship with humans subsection",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/34",
@@ -2144,7 +2144,7 @@
       "orig": "6.1 Hunting",
       "text": "6.1 Hunting",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/35",
@@ -2162,7 +2162,7 @@
       "orig": "6.2 Domestication",
       "text": "6.2 Domestication",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/36",
@@ -2180,7 +2180,7 @@
       "orig": "6.3 Heraldry",
       "text": "6.3 Heraldry",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/37",
@@ -2198,7 +2198,7 @@
       "orig": "6.4 Cultural references",
       "text": "6.4 Cultural references",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/38",
@@ -2216,7 +2216,7 @@
       "orig": "7 See also",
       "text": "7 See also",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/39",
@@ -2234,7 +2234,7 @@
       "orig": "8 Notes Toggle Notes subsection",
       "text": "8 Notes Toggle Notes subsection",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/40",
@@ -2252,7 +2252,7 @@
       "orig": "8.1 Citations",
       "text": "8.1 Citations",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/41",
@@ -2270,7 +2270,7 @@
       "orig": "8.2 Sources",
       "text": "8.2 Sources",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/42",
@@ -2288,7 +2288,7 @@
       "orig": "9 External links",
       "text": "9 External links",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/43",
@@ -2405,10 +2405,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Ac\u00e8h",
-      "text": "Ac\u00e8h",
+      "orig": "Acèh",
+      "text": "Acèh",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/45",
@@ -2422,7 +2422,7 @@
       "orig": "Afrikaans",
       "text": "Afrikaans",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/46",
@@ -2436,7 +2436,7 @@
       "orig": "Alemannisch",
       "text": "Alemannisch",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/47",
@@ -2447,10 +2447,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u12a0\u121b\u122d\u129b",
-      "text": "\u12a0\u121b\u122d\u129b",
+      "orig": "አማርኛ",
+      "text": "አማርኛ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/48",
@@ -2461,10 +2461,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u00c6nglisc",
-      "text": "\u00c6nglisc",
+      "orig": "Ænglisc",
+      "text": "Ænglisc",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/49",
@@ -2475,10 +2475,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629",
-      "text": "\u0627\u0644\u0639\u0631\u0628\u064a\u0629",
+      "orig": "العربية",
+      "text": "العربية",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/50",
@@ -2489,10 +2489,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Aragon\u00e9s",
-      "text": "Aragon\u00e9s",
+      "orig": "Aragonés",
+      "text": "Aragonés",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/51",
@@ -2503,10 +2503,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0710\u072a\u0721\u071d\u0710",
-      "text": "\u0710\u072a\u0721\u071d\u0710",
+      "orig": "ܐܪܡܝܐ",
+      "text": "ܐܪܡܝܐ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/52",
@@ -2517,10 +2517,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Arm\u00e3neashti",
-      "text": "Arm\u00e3neashti",
+      "orig": "Armãneashti",
+      "text": "Armãneashti",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/53",
@@ -2534,7 +2534,7 @@
       "orig": "Asturianu",
       "text": "Asturianu",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/54",
@@ -2548,7 +2548,7 @@
       "orig": "Atikamekw",
       "text": "Atikamekw",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/55",
@@ -2559,10 +2559,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0410\u0432\u0430\u0440",
-      "text": "\u0410\u0432\u0430\u0440",
+      "orig": "Авар",
+      "text": "Авар",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/56",
@@ -2576,7 +2576,7 @@
       "orig": "Aymar aru",
       "text": "Aymar aru",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/57",
@@ -2587,10 +2587,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u062a\u06c6\u0631\u06a9\u062c\u0647",
-      "text": "\u062a\u06c6\u0631\u06a9\u062c\u0647",
+      "orig": "تۆرکجه",
+      "text": "تۆرکجه",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/58",
@@ -2604,7 +2604,7 @@
       "orig": "Basa Bali",
       "text": "Basa Bali",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/59",
@@ -2615,10 +2615,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u09ac\u09be\u0982\u09b2\u09be",
-      "text": "\u09ac\u09be\u0982\u09b2\u09be",
+      "orig": "বাংলা",
+      "text": "বাংলা",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/60",
@@ -2629,10 +2629,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u95a9\u5357\u8a9e / B\u00e2n-l\u00e2m-g\u00fa",
-      "text": "\u95a9\u5357\u8a9e / B\u00e2n-l\u00e2m-g\u00fa",
+      "orig": "閩南語 / Bân-lâm-gú",
+      "text": "閩南語 / Bân-lâm-gú",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/61",
@@ -2643,10 +2643,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0411\u0435\u043b\u0430\u0440\u0443\u0441\u043a\u0430\u044f",
-      "text": "\u0411\u0435\u043b\u0430\u0440\u0443\u0441\u043a\u0430\u044f",
+      "orig": "Беларуская",
+      "text": "Беларуская",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/62",
@@ -2657,10 +2657,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0411\u0435\u043b\u0430\u0440\u0443\u0441\u043a\u0430\u044f (\u0442\u0430\u0440\u0430\u0448\u043a\u0435\u0432\u0456\u0446\u0430)",
-      "text": "\u0411\u0435\u043b\u0430\u0440\u0443\u0441\u043a\u0430\u044f (\u0442\u0430\u0440\u0430\u0448\u043a\u0435\u0432\u0456\u0446\u0430)",
+      "orig": "Беларуская (тарашкевіца)",
+      "text": "Беларуская (тарашкевіца)",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/63",
@@ -2674,7 +2674,7 @@
       "orig": "Bikol Central",
       "text": "Bikol Central",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/64",
@@ -2685,10 +2685,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0411\u044a\u043b\u0433\u0430\u0440\u0441\u043a\u0438",
-      "text": "\u0411\u044a\u043b\u0433\u0430\u0440\u0441\u043a\u0438",
+      "orig": "Български",
+      "text": "Български",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/65",
@@ -2702,7 +2702,7 @@
       "orig": "Brezhoneg",
       "text": "Brezhoneg",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/66",
@@ -2713,10 +2713,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0411\u0443\u0440\u044f\u0430\u0434",
-      "text": "\u0411\u0443\u0440\u044f\u0430\u0434",
+      "orig": "Буряад",
+      "text": "Буряад",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/67",
@@ -2727,10 +2727,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Catal\u00e0",
-      "text": "Catal\u00e0",
+      "orig": "Català",
+      "text": "Català",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/68",
@@ -2741,10 +2741,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0427\u04d1\u0432\u0430\u0448\u043b\u0430",
-      "text": "\u0427\u04d1\u0432\u0430\u0448\u043b\u0430",
+      "orig": "Чӑвашла",
+      "text": "Чӑвашла",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/69",
@@ -2755,10 +2755,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u010ce\u0161tina",
-      "text": "\u010ce\u0161tina",
+      "orig": "Čeština",
+      "text": "Čeština",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/70",
@@ -2772,7 +2772,7 @@
       "orig": "ChiShona",
       "text": "ChiShona",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/71",
@@ -2786,7 +2786,7 @@
       "orig": "Cymraeg",
       "text": "Cymraeg",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/72",
@@ -2800,7 +2800,7 @@
       "orig": "Dagbanli",
       "text": "Dagbanli",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/73",
@@ -2814,7 +2814,7 @@
       "orig": "Dansk",
       "text": "Dansk",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/74",
@@ -2828,7 +2828,7 @@
       "orig": "Deitsch",
       "text": "Deitsch",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/75",
@@ -2842,7 +2842,7 @@
       "orig": "Deutsch",
       "text": "Deutsch",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/76",
@@ -2853,10 +2853,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0921\u094b\u091f\u0947\u0932\u0940",
-      "text": "\u0921\u094b\u091f\u0947\u0932\u0940",
+      "orig": "डोटेली",
+      "text": "डोटेली",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/77",
@@ -2867,10 +2867,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac",
-      "text": "\u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac",
+      "orig": "Ελληνικά",
+      "text": "Ελληνικά",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/78",
@@ -2881,10 +2881,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Emili\u00e0n e rumagn\u00f2l",
-      "text": "Emili\u00e0n e rumagn\u00f2l",
+      "orig": "Emiliàn e rumagnòl",
+      "text": "Emiliàn e rumagnòl",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/79",
@@ -2895,10 +2895,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Espa\u00f1ol",
-      "text": "Espa\u00f1ol",
+      "orig": "Español",
+      "text": "Español",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/80",
@@ -2912,7 +2912,7 @@
       "orig": "Esperanto",
       "text": "Esperanto",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/81",
@@ -2926,7 +2926,7 @@
       "orig": "Euskara",
       "text": "Euskara",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/82",
@@ -2937,10 +2937,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0641\u0627\u0631\u0633\u06cc",
-      "text": "\u0641\u0627\u0631\u0633\u06cc",
+      "orig": "فارسی",
+      "text": "فارسی",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/83",
@@ -2951,10 +2951,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Fran\u00e7ais",
-      "text": "Fran\u00e7ais",
+      "orig": "Français",
+      "text": "Français",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/84",
@@ -2968,7 +2968,7 @@
       "orig": "Gaeilge",
       "text": "Gaeilge",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/85",
@@ -2982,7 +2982,7 @@
       "orig": "Galego",
       "text": "Galego",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/86",
@@ -2993,10 +2993,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0413\u04c0\u0430\u043b\u0433\u04c0\u0430\u0439",
-      "text": "\u0413\u04c0\u0430\u043b\u0433\u04c0\u0430\u0439",
+      "orig": "ГӀалгӀай",
+      "text": "ГӀалгӀай",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/87",
@@ -3007,10 +3007,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u8d1b\u8a9e",
-      "text": "\u8d1b\u8a9e",
+      "orig": "贛語",
+      "text": "贛語",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/88",
@@ -3021,10 +3021,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u06af\u06cc\u0644\u06a9\u06cc",
-      "text": "\u06af\u06cc\u0644\u06a9\u06cc",
+      "orig": "گیلکی",
+      "text": "گیلکی",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/89",
@@ -3035,10 +3035,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\ud800\udf32\ud800\udf3f\ud800\udf44\ud800\udf39\ud800\udf43\ud800\udf3a",
-      "text": "\ud800\udf32\ud800\udf3f\ud800\udf44\ud800\udf39\ud800\udf43\ud800\udf3a",
+      "orig": "𐌲𐌿𐍄𐌹𐍃𐌺",
+      "text": "𐌲𐌿𐍄𐌹𐍃𐌺",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/90",
@@ -3049,10 +3049,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0917\u094b\u0902\u092f\u091a\u0940 \u0915\u094b\u0902\u0915\u0923\u0940 / G\u00f5ychi Konknni",
-      "text": "\u0917\u094b\u0902\u092f\u091a\u0940 \u0915\u094b\u0902\u0915\u0923\u0940 / G\u00f5ychi Konknni",
+      "orig": "गोंयची कोंकणी / Gõychi Konknni",
+      "text": "गोंयची कोंकणी / Gõychi Konknni",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/91",
@@ -3063,10 +3063,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u5ba2\u5bb6\u8a9e / Hak-k\u00e2-ng\u00ee",
-      "text": "\u5ba2\u5bb6\u8a9e / Hak-k\u00e2-ng\u00ee",
+      "orig": "客家語 / Hak-kâ-ngî",
+      "text": "客家語 / Hak-kâ-ngî",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/92",
@@ -3077,10 +3077,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\ud55c\uad6d\uc5b4",
-      "text": "\ud55c\uad6d\uc5b4",
+      "orig": "한국어",
+      "text": "한국어",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/93",
@@ -3094,7 +3094,7 @@
       "orig": "Hausa",
       "text": "Hausa",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/94",
@@ -3105,10 +3105,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0540\u0561\u0575\u0565\u0580\u0565\u0576",
-      "text": "\u0540\u0561\u0575\u0565\u0580\u0565\u0576",
+      "orig": "Հայերեն",
+      "text": "Հայերեն",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/95",
@@ -3119,10 +3119,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0939\u093f\u0928\u094d\u0926\u0940",
-      "text": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "orig": "हिन्दी",
+      "text": "हिन्दी",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/96",
@@ -3136,7 +3136,7 @@
       "orig": "Hrvatski",
       "text": "Hrvatski",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/97",
@@ -3150,7 +3150,7 @@
       "orig": "Ido",
       "text": "Ido",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/98",
@@ -3164,7 +3164,7 @@
       "orig": "Bahasa Indonesia",
       "text": "Bahasa Indonesia",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/99",
@@ -3175,10 +3175,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "I\u00f1upiatun",
-      "text": "I\u00f1upiatun",
+      "orig": "Iñupiatun",
+      "text": "Iñupiatun",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/100",
@@ -3189,10 +3189,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u00cdslenska",
-      "text": "\u00cdslenska",
+      "orig": "Íslenska",
+      "text": "Íslenska",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/101",
@@ -3206,7 +3206,7 @@
       "orig": "Italiano",
       "text": "Italiano",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/102",
@@ -3217,10 +3217,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u05e2\u05d1\u05e8\u05d9\u05ea",
-      "text": "\u05e2\u05d1\u05e8\u05d9\u05ea",
+      "orig": "עברית",
+      "text": "עברית",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/103",
@@ -3234,7 +3234,7 @@
       "orig": "Jawa",
       "text": "Jawa",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/104",
@@ -3245,10 +3245,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0c95\u0ca8\u0ccd\u0ca8\u0ca1",
-      "text": "\u0c95\u0ca8\u0ccd\u0ca8\u0ca1",
+      "orig": "ಕನ್ನಡ",
+      "text": "ಕನ್ನಡ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/105",
@@ -3262,7 +3262,7 @@
       "orig": "Kapampangan",
       "text": "Kapampangan",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/106",
@@ -3273,10 +3273,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u10e5\u10d0\u10e0\u10d7\u10e3\u10da\u10d8",
-      "text": "\u10e5\u10d0\u10e0\u10d7\u10e3\u10da\u10d8",
+      "orig": "ქართული",
+      "text": "ქართული",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/107",
@@ -3287,10 +3287,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0915\u0949\u0936\u0941\u0930 / \u06a9\u0672\u0634\u064f\u0631",
-      "text": "\u0915\u0949\u0936\u0941\u0930 / \u06a9\u0672\u0634\u064f\u0631",
+      "orig": "कॉशुर / کٲشُر",
+      "text": "कॉशुर / کٲشُر",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/108",
@@ -3301,10 +3301,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u049a\u0430\u0437\u0430\u049b\u0448\u0430",
-      "text": "\u049a\u0430\u0437\u0430\u049b\u0448\u0430",
+      "orig": "Қазақша",
+      "text": "Қазақша",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/109",
@@ -3318,7 +3318,7 @@
       "orig": "Ikirundi",
       "text": "Ikirundi",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/110",
@@ -3332,7 +3332,7 @@
       "orig": "Kongo",
       "text": "Kongo",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/111",
@@ -3343,10 +3343,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Krey\u00f2l ayisyen",
-      "text": "Krey\u00f2l ayisyen",
+      "orig": "Kreyòl ayisyen",
+      "text": "Kreyòl ayisyen",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/112",
@@ -3357,10 +3357,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u041a\u044b\u0440\u044b\u043a \u043c\u0430\u0440\u044b",
-      "text": "\u041a\u044b\u0440\u044b\u043a \u043c\u0430\u0440\u044b",
+      "orig": "Кырык мары",
+      "text": "Кырык мары",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/113",
@@ -3371,10 +3371,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0ea5\u0eb2\u0ea7",
-      "text": "\u0ea5\u0eb2\u0ea7",
+      "orig": "ລາວ",
+      "text": "ລາວ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/114",
@@ -3388,7 +3388,7 @@
       "orig": "Latina",
       "text": "Latina",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/115",
@@ -3399,10 +3399,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Latvie\u0161u",
-      "text": "Latvie\u0161u",
+      "orig": "Latviešu",
+      "text": "Latviešu",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/116",
@@ -3413,10 +3413,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Lietuvi\u0173",
-      "text": "Lietuvi\u0173",
+      "orig": "Lietuvių",
+      "text": "Lietuvių",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/117",
@@ -3430,7 +3430,7 @@
       "orig": "Li Niha",
       "text": "Li Niha",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/118",
@@ -3444,7 +3444,7 @@
       "orig": "Ligure",
       "text": "Ligure",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/119",
@@ -3458,7 +3458,7 @@
       "orig": "Limburgs",
       "text": "Limburgs",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/120",
@@ -3469,10 +3469,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Ling\u00e1la",
-      "text": "Ling\u00e1la",
+      "orig": "Lingála",
+      "text": "Lingála",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/121",
@@ -3486,7 +3486,7 @@
       "orig": "Malagasy",
       "text": "Malagasy",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/122",
@@ -3497,10 +3497,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02",
-      "text": "\u0d2e\u0d32\u0d2f\u0d3e\u0d33\u0d02",
+      "orig": "മലയാളം",
+      "text": "മലയാളം",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/123",
@@ -3511,10 +3511,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u092e\u0930\u093e\u0920\u0940",
-      "text": "\u092e\u0930\u093e\u0920\u0940",
+      "orig": "मराठी",
+      "text": "मराठी",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/124",
@@ -3525,10 +3525,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0645\u0627\u0632\u0650\u0631\u0648\u0646\u06cc",
-      "text": "\u0645\u0627\u0632\u0650\u0631\u0648\u0646\u06cc",
+      "orig": "مازِرونی",
+      "text": "مازِرونی",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/125",
@@ -3542,7 +3542,7 @@
       "orig": "Bahasa Melayu",
       "text": "Bahasa Melayu",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/126",
@@ -3553,10 +3553,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\uabc3\uabe4\uabc7\uabe9 \uabc2\uabe3\uabdf",
-      "text": "\uabc3\uabe4\uabc7\uabe9 \uabc2\uabe3\uabdf",
+      "orig": "ꯃꯤꯇꯩ ꯂꯣꯟ",
+      "text": "ꯃꯤꯇꯩ ꯂꯣꯟ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/127",
@@ -3567,10 +3567,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u95a9\u6771\u8a9e / M\u00ecng-d\u0115\u0324ng-ng\u1e73\u0304",
-      "text": "\u95a9\u6771\u8a9e / M\u00ecng-d\u0115\u0324ng-ng\u1e73\u0304",
+      "orig": "閩東語 / Mìng-dĕ̤ng-ngṳ̄",
+      "text": "閩東語 / Mìng-dĕ̤ng-ngṳ̄",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/128",
@@ -3581,10 +3581,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u041c\u043e\u043a\u0448\u0435\u043d\u044c",
-      "text": "\u041c\u043e\u043a\u0448\u0435\u043d\u044c",
+      "orig": "Мокшень",
+      "text": "Мокшень",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/129",
@@ -3595,10 +3595,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u041c\u043e\u043d\u0433\u043e\u043b",
-      "text": "\u041c\u043e\u043d\u0433\u043e\u043b",
+      "orig": "Монгол",
+      "text": "Монгол",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/130",
@@ -3609,10 +3609,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u1019\u103c\u1014\u103a\u1019\u102c\u1018\u102c\u101e\u102c",
-      "text": "\u1019\u103c\u1014\u103a\u1019\u102c\u1018\u102c\u101e\u102c",
+      "orig": "မြန်မာဘာသာ",
+      "text": "မြန်မာဘာသာ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/131",
@@ -3626,7 +3626,7 @@
       "orig": "Nederlands",
       "text": "Nederlands",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/132",
@@ -3640,7 +3640,7 @@
       "orig": "Nedersaksies",
       "text": "Nedersaksies",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/133",
@@ -3651,10 +3651,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0928\u0947\u092a\u093e\u0932\u0940",
-      "text": "\u0928\u0947\u092a\u093e\u0932\u0940",
+      "orig": "नेपाली",
+      "text": "नेपाली",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/134",
@@ -3665,10 +3665,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0928\u0947\u092a\u093e\u0932 \u092d\u093e\u0937\u093e",
-      "text": "\u0928\u0947\u092a\u093e\u0932 \u092d\u093e\u0937\u093e",
+      "orig": "नेपाल भाषा",
+      "text": "नेपाल भाषा",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/135",
@@ -3679,10 +3679,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u65e5\u672c\u8a9e",
-      "text": "\u65e5\u672c\u8a9e",
+      "orig": "日本語",
+      "text": "日本語",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/136",
@@ -3693,10 +3693,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u041d\u043e\u0445\u0447\u0438\u0439\u043d",
-      "text": "\u041d\u043e\u0445\u0447\u0438\u0439\u043d",
+      "orig": "Нохчийн",
+      "text": "Нохчийн",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/137",
@@ -3710,7 +3710,7 @@
       "orig": "Norsk nynorsk",
       "text": "Norsk nynorsk",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/138",
@@ -3724,7 +3724,7 @@
       "orig": "Occitan",
       "text": "Occitan",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/139",
@@ -3738,7 +3738,7 @@
       "orig": "Oromoo",
       "text": "Oromoo",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/140",
@@ -3749,10 +3749,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40",
-      "text": "\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40",
+      "orig": "ਪੰਜਾਬੀ",
+      "text": "ਪੰਜਾਬੀ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/141",
@@ -3766,7 +3766,7 @@
       "orig": "Picard",
       "text": "Picard",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/142",
@@ -3777,10 +3777,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Plattd\u00fc\u00fctsch",
-      "text": "Plattd\u00fc\u00fctsch",
+      "orig": "Plattdüütsch",
+      "text": "Plattdüütsch",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/143",
@@ -3794,7 +3794,7 @@
       "orig": "Polski",
       "text": "Polski",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/144",
@@ -3805,10 +3805,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Portugu\u00eas",
-      "text": "Portugu\u00eas",
+      "orig": "Português",
+      "text": "Português",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/145",
@@ -3819,10 +3819,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Q\u0131r\u0131mtatarca",
-      "text": "Q\u0131r\u0131mtatarca",
+      "orig": "Qırımtatarca",
+      "text": "Qırımtatarca",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/146",
@@ -3833,10 +3833,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Rom\u00e2n\u0103",
-      "text": "Rom\u00e2n\u0103",
+      "orig": "Română",
+      "text": "Română",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/147",
@@ -3847,10 +3847,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
-      "text": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+      "orig": "Русский",
+      "text": "Русский",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/148",
@@ -3861,10 +3861,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0421\u0430\u0445\u0430 \u0442\u044b\u043b\u0430",
-      "text": "\u0421\u0430\u0445\u0430 \u0442\u044b\u043b\u0430",
+      "orig": "Саха тыла",
+      "text": "Саха тыла",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/149",
@@ -3875,10 +3875,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u1c65\u1c5f\u1c71\u1c5b\u1c5f\u1c72\u1c64",
-      "text": "\u1c65\u1c5f\u1c71\u1c5b\u1c5f\u1c72\u1c64",
+      "orig": "ᱥᱟᱱᱛᱟᱲᱤ",
+      "text": "ᱥᱟᱱᱛᱟᱲᱤ",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/150",
@@ -3892,7 +3892,7 @@
       "orig": "Sardu",
       "text": "Sardu",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/151",
@@ -3906,7 +3906,7 @@
       "orig": "Scots",
       "text": "Scots",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/152",
@@ -3920,7 +3920,7 @@
       "orig": "Seeltersk",
       "text": "Seeltersk",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/153",
@@ -3934,7 +3934,7 @@
       "orig": "Shqip",
       "text": "Shqip",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/154",
@@ -3948,7 +3948,7 @@
       "orig": "Sicilianu",
       "text": "Sicilianu",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/155",
@@ -3959,10 +3959,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0dc3\u0dd2\u0d82\u0dc4\u0dbd",
-      "text": "\u0dc3\u0dd2\u0d82\u0dc4\u0dbd",
+      "orig": "සිංහල",
+      "text": "සිංහල",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/156",
@@ -3976,7 +3976,7 @@
       "orig": "Simple English",
       "text": "Simple English",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/157",
@@ -3987,10 +3987,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0633\u0646\u068c\u064a",
-      "text": "\u0633\u0646\u068c\u064a",
+      "orig": "سنڌي",
+      "text": "سنڌي",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/158",
@@ -4001,10 +4001,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u06a9\u0648\u0631\u062f\u06cc",
-      "text": "\u06a9\u0648\u0631\u062f\u06cc",
+      "orig": "کوردی",
+      "text": "کوردی",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/159",
@@ -4015,10 +4015,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0421\u0440\u043f\u0441\u043a\u0438 / srpski",
-      "text": "\u0421\u0440\u043f\u0441\u043a\u0438 / srpski",
+      "orig": "Српски / srpski",
+      "text": "Српски / srpski",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/160",
@@ -4029,10 +4029,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Srpskohrvatski / \u0441\u0440\u043f\u0441\u043a\u043e\u0445\u0440\u0432\u0430\u0442\u0441\u043a\u0438",
-      "text": "Srpskohrvatski / \u0441\u0440\u043f\u0441\u043a\u043e\u0445\u0440\u0432\u0430\u0442\u0441\u043a\u0438",
+      "orig": "Srpskohrvatski / српскохрватски",
+      "text": "Srpskohrvatski / српскохрватски",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/161",
@@ -4046,7 +4046,7 @@
       "orig": "Sunda",
       "text": "Sunda",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/162",
@@ -4060,7 +4060,7 @@
       "orig": "Svenska",
       "text": "Svenska",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/163",
@@ -4074,7 +4074,7 @@
       "orig": "Tagalog",
       "text": "Tagalog",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/164",
@@ -4085,10 +4085,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd",
-      "text": "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd",
+      "orig": "தமிழ்",
+      "text": "தமிழ்",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/165",
@@ -4102,7 +4102,7 @@
       "orig": "Taqbaylit",
       "text": "Taqbaylit",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/166",
@@ -4113,10 +4113,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0422\u0430\u0442\u0430\u0440\u0447\u0430 / tatar\u00e7a",
-      "text": "\u0422\u0430\u0442\u0430\u0440\u0447\u0430 / tatar\u00e7a",
+      "orig": "Татарча / tatarça",
+      "text": "Татарча / tatarça",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/167",
@@ -4127,10 +4127,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0e44\u0e17\u0e22",
-      "text": "\u0e44\u0e17\u0e22",
+      "orig": "ไทย",
+      "text": "ไทย",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/168",
@@ -4141,10 +4141,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "T\u00fcrk\u00e7e",
-      "text": "T\u00fcrk\u00e7e",
+      "orig": "Türkçe",
+      "text": "Türkçe",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/169",
@@ -4155,10 +4155,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430",
-      "text": "\u0423\u043a\u0440\u0430\u0457\u043d\u0441\u044c\u043a\u0430",
+      "orig": "Українська",
+      "text": "Українська",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/170",
@@ -4169,10 +4169,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u0626\u06c7\u064a\u063a\u06c7\u0631\u0686\u06d5 / Uyghurche",
-      "text": "\u0626\u06c7\u064a\u063a\u06c7\u0631\u0686\u06d5 / Uyghurche",
+      "orig": "ئۇيغۇرچە / Uyghurche",
+      "text": "ئۇيغۇرچە / Uyghurche",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/171",
@@ -4186,7 +4186,7 @@
       "orig": "Vahcuengh",
       "text": "Vahcuengh",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/172",
@@ -4197,10 +4197,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Ti\u1ebfng Vi\u1ec7t",
-      "text": "Ti\u1ebfng Vi\u1ec7t",
+      "orig": "Tiếng Việt",
+      "text": "Tiếng Việt",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/173",
@@ -4214,7 +4214,7 @@
       "orig": "Walon",
       "text": "Walon",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/174",
@@ -4225,10 +4225,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u6587\u8a00",
-      "text": "\u6587\u8a00",
+      "orig": "文言",
+      "text": "文言",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/175",
@@ -4242,7 +4242,7 @@
       "orig": "Winaray",
       "text": "Winaray",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/176",
@@ -4253,10 +4253,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u5434\u8bed",
-      "text": "\u5434\u8bed",
+      "orig": "吴语",
+      "text": "吴语",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/177",
@@ -4267,10 +4267,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u7cb5\u8a9e",
-      "text": "\u7cb5\u8a9e",
+      "orig": "粵語",
+      "text": "粵語",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/178",
@@ -4281,10 +4281,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u017demait\u0117\u0161ka",
-      "text": "\u017demait\u0117\u0161ka",
+      "orig": "Žemaitėška",
+      "text": "Žemaitėška",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/179",
@@ -4295,10 +4295,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "\u4e2d\u6587",
-      "text": "\u4e2d\u6587",
+      "orig": "中文",
+      "text": "中文",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/180",
@@ -4312,7 +4312,7 @@
       "orig": "Article",
       "text": "Article",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/181",
@@ -4326,7 +4326,7 @@
       "orig": "Talk",
       "text": "Talk",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/182",
@@ -4340,7 +4340,7 @@
       "orig": "Read",
       "text": "Read",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/183",
@@ -4354,7 +4354,7 @@
       "orig": "View source",
       "text": "View source",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/184",
@@ -4368,7 +4368,7 @@
       "orig": "View history",
       "text": "View history",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/185",
@@ -4406,7 +4406,7 @@
       "orig": "Read",
       "text": "Read",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/188",
@@ -4420,7 +4420,7 @@
       "orig": "View source",
       "text": "View source",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/189",
@@ -4434,7 +4434,7 @@
       "orig": "View history",
       "text": "View history",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/190",
@@ -4460,7 +4460,7 @@
       "orig": "What links here",
       "text": "What links here",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/192",
@@ -4474,7 +4474,7 @@
       "orig": "Related changes",
       "text": "Related changes",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/193",
@@ -4488,7 +4488,7 @@
       "orig": "Upload file",
       "text": "Upload file",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/194",
@@ -4502,7 +4502,7 @@
       "orig": "Special pages",
       "text": "Special pages",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/195",
@@ -4516,7 +4516,7 @@
       "orig": "Permanent link",
       "text": "Permanent link",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/196",
@@ -4530,7 +4530,7 @@
       "orig": "Page information",
       "text": "Page information",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/197",
@@ -4544,7 +4544,7 @@
       "orig": "Cite this page",
       "text": "Cite this page",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/198",
@@ -4558,7 +4558,7 @@
       "orig": "Get shortened URL",
       "text": "Get shortened URL",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/199",
@@ -4572,7 +4572,7 @@
       "orig": "Download QR code",
       "text": "Download QR code",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/200",
@@ -4586,7 +4586,7 @@
       "orig": "Wikidata item",
       "text": "Wikidata item",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/201",
@@ -4612,7 +4612,7 @@
       "orig": "Download as PDF",
       "text": "Download as PDF",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/203",
@@ -4626,7 +4626,7 @@
       "orig": "Printable version",
       "text": "Printable version",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/204",
@@ -4652,7 +4652,7 @@
       "orig": "Wikimedia Commons",
       "text": "Wikimedia Commons",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/206",
@@ -4666,7 +4666,7 @@
       "orig": "Wikiquote",
       "text": "Wikiquote",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/207",
@@ -4796,8 +4796,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "The word duck comes from Old English d\u016bce 'diver', a derivative of the verb *d\u016bcan 'to duck, bend down low as if to get under something, or dive', because of the way many species in the dabbling duck group feed by upending; compare with Dutch duiken and German tauchen 'to dive'.",
-      "text": "The word duck comes from Old English d\u016bce 'diver', a derivative of the verb *d\u016bcan 'to duck, bend down low as if to get under something, or dive', because of the way many species in the dabbling duck group feed by upending; compare with Dutch duiken and German tauchen 'to dive'."
+      "orig": "The word duck comes from Old English dūce 'diver', a derivative of the verb *dūcan 'to duck, bend down low as if to get under something, or dive', because of the way many species in the dabbling duck group feed by upending; compare with Dutch duiken and German tauchen 'to dive'.",
+      "text": "The word duck comes from Old English dūce 'diver', a derivative of the verb *dūcan 'to duck, bend down low as if to get under something, or dive', because of the way many species in the dabbling duck group feed by upending; compare with Dutch duiken and German tauchen 'to dive'."
     },
     {
       "self_ref": "#/texts/216",
@@ -4820,8 +4820,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "This word replaced Old English ened /\u00e6nid 'duck', possibly to avoid confusion with other words, such as ende 'end' with similar forms. Other Germanic languages still have similar words for duck, for example, Dutch eend, German Ente and Norwegian and. The word ened /\u00e6nid was inherited from Proto-Indo-European; cf. Latin anas \"duck\", Lithuanian \u00e1ntis 'duck', Ancient Greek \u03bd\u1fc6\u03c3\u03c3\u03b1 /\u03bd\u1fc6\u03c4\u03c4\u03b1 (n\u0113ssa /n\u0113tta) 'duck', and Sanskrit \u0101t\u00ed 'water bird', among others.",
-      "text": "This word replaced Old English ened /\u00e6nid 'duck', possibly to avoid confusion with other words, such as ende 'end' with similar forms. Other Germanic languages still have similar words for duck, for example, Dutch eend, German Ente and Norwegian and. The word ened /\u00e6nid was inherited from Proto-Indo-European; cf. Latin anas \"duck\", Lithuanian \u00e1ntis 'duck', Ancient Greek \u03bd\u1fc6\u03c3\u03c3\u03b1 /\u03bd\u1fc6\u03c4\u03c4\u03b1 (n\u0113ssa /n\u0113tta) 'duck', and Sanskrit \u0101t\u00ed 'water bird', among others."
+      "orig": "This word replaced Old English ened /ænid 'duck', possibly to avoid confusion with other words, such as ende 'end' with similar forms. Other Germanic languages still have similar words for duck, for example, Dutch eend, German Ente and Norwegian and. The word ened /ænid was inherited from Proto-Indo-European; cf. Latin anas \"duck\", Lithuanian ántis 'duck', Ancient Greek νῆσσα /νῆττα (nēssa /nētta) 'duck', and Sanskrit ātí 'water bird', among others.",
+      "text": "This word replaced Old English ened /ænid 'duck', possibly to avoid confusion with other words, such as ende 'end' with similar forms. Other Germanic languages still have similar words for duck, for example, Dutch eend, German Ente and Norwegian and. The word ened /ænid was inherited from Proto-Indo-European; cf. Latin anas \"duck\", Lithuanian ántis 'duck', Ancient Greek νῆσσα /νῆττα (nēssa /nētta) 'duck', and Sanskrit ātí 'water bird', among others."
     },
     {
       "self_ref": "#/texts/218",
@@ -4930,8 +4930,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "In most modern classifications, the so-called 'true ducks' belong to the subfamily Anatinae, which is further split into a varying number of tribes.[10] The largest of these, the Anatini, contains the 'dabbling' or 'river' ducks \u2013 named for their method of feeding primarily at the surface of fresh water.[11] The 'diving ducks', also named for their primary feeding method, make up the tribe Aythyini.[12] The 'sea ducks' of the tribe Mergini are diving ducks which specialise on fish and shellfish and spend a majority of their lives in saltwater.[13] The tribe Oxyurini contains the 'stifftails', diving ducks notable for their small size and stiff, upright tails.[14]",
-      "text": "In most modern classifications, the so-called 'true ducks' belong to the subfamily Anatinae, which is further split into a varying number of tribes.[10] The largest of these, the Anatini, contains the 'dabbling' or 'river' ducks \u2013 named for their method of feeding primarily at the surface of fresh water.[11] The 'diving ducks', also named for their primary feeding method, make up the tribe Aythyini.[12] The 'sea ducks' of the tribe Mergini are diving ducks which specialise on fish and shellfish and spend a majority of their lives in saltwater.[13] The tribe Oxyurini contains the 'stifftails', diving ducks notable for their small size and stiff, upright tails.[14]"
+      "orig": "In most modern classifications, the so-called 'true ducks' belong to the subfamily Anatinae, which is further split into a varying number of tribes.[10] The largest of these, the Anatini, contains the 'dabbling' or 'river' ducks – named for their method of feeding primarily at the surface of fresh water.[11] The 'diving ducks', also named for their primary feeding method, make up the tribe Aythyini.[12] The 'sea ducks' of the tribe Mergini are diving ducks which specialise on fish and shellfish and spend a majority of their lives in saltwater.[13] The tribe Oxyurini contains the 'stifftails', diving ducks notable for their small size and stiff, upright tails.[14]",
+      "text": "In most modern classifications, the so-called 'true ducks' belong to the subfamily Anatinae, which is further split into a varying number of tribes.[10] The largest of these, the Anatini, contains the 'dabbling' or 'river' ducks – named for their method of feeding primarily at the surface of fresh water.[11] The 'diving ducks', also named for their primary feeding method, make up the tribe Aythyini.[12] The 'sea ducks' of the tribe Mergini are diving ducks which specialise on fish and shellfish and spend a majority of their lives in saltwater.[13] The tribe Oxyurini contains the 'stifftails', diving ducks notable for their small size and stiff, upright tails.[14]"
     },
     {
       "self_ref": "#/texts/226",
@@ -5051,8 +5051,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "Ducks have a cosmopolitan distribution, and are found on every continent except Antarctica.[5] Several species manage to live on subantarctic islands, including South Georgia and the Auckland Islands.[20] Ducks have reached a number of isolated oceanic islands, including the Hawaiian Islands, Micronesia and the Gal\u00e1pagos Islands, where they are often vagrants and less often residents.[21][22] A handful are endemic to such far-flung islands.[21]",
-      "text": "Ducks have a cosmopolitan distribution, and are found on every continent except Antarctica.[5] Several species manage to live on subantarctic islands, including South Georgia and the Auckland Islands.[20] Ducks have reached a number of isolated oceanic islands, including the Hawaiian Islands, Micronesia and the Gal\u00e1pagos Islands, where they are often vagrants and less often residents.[21][22] A handful are endemic to such far-flung islands.[21]"
+      "orig": "Ducks have a cosmopolitan distribution, and are found on every continent except Antarctica.[5] Several species manage to live on subantarctic islands, including South Georgia and the Auckland Islands.[20] Ducks have reached a number of isolated oceanic islands, including the Hawaiian Islands, Micronesia and the Galápagos Islands, where they are often vagrants and less often residents.[21][22] A handful are endemic to such far-flung islands.[21]",
+      "text": "Ducks have a cosmopolitan distribution, and are found on every continent except Antarctica.[5] Several species manage to live on subantarctic islands, including South Georgia and the Auckland Islands.[20] Ducks have reached a number of isolated oceanic islands, including the Hawaiian Islands, Micronesia and the Galápagos Islands, where they are often vagrants and less often residents.[21][22] A handful are endemic to such far-flung islands.[21]"
     },
     {
       "self_ref": "#/texts/234",
@@ -5311,8 +5311,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "Female mallard ducks (as well as several other species in the genus Anas, such as the American and Pacific black ducks, spot-billed duck, northern pintail and common teal) make the classic \"quack\" sound while males make a similar but raspier sound that is sometimes written as \"breeeeze\",[29][self-published source?] but, despite widespread misconceptions, most species of duck do not \"quack\".[30] In general, ducks make a range of calls, including whistles, cooing, yodels and grunts. For example, the scaup \u2013 which are diving ducks \u2013 make a noise like \"scaup\" (hence their name). Calls may be loud displaying calls or quieter contact calls.",
-      "text": "Female mallard ducks (as well as several other species in the genus Anas, such as the American and Pacific black ducks, spot-billed duck, northern pintail and common teal) make the classic \"quack\" sound while males make a similar but raspier sound that is sometimes written as \"breeeeze\",[29][self-published source?] but, despite widespread misconceptions, most species of duck do not \"quack\".[30] In general, ducks make a range of calls, including whistles, cooing, yodels and grunts. For example, the scaup \u2013 which are diving ducks \u2013 make a noise like \"scaup\" (hence their name). Calls may be loud displaying calls or quieter contact calls."
+      "orig": "Female mallard ducks (as well as several other species in the genus Anas, such as the American and Pacific black ducks, spot-billed duck, northern pintail and common teal) make the classic \"quack\" sound while males make a similar but raspier sound that is sometimes written as \"breeeeze\",[29][self-published source?] but, despite widespread misconceptions, most species of duck do not \"quack\".[30] In general, ducks make a range of calls, including whistles, cooing, yodels and grunts. For example, the scaup – which are diving ducks – make a noise like \"scaup\" (hence their name). Calls may be loud displaying calls or quieter contact calls.",
+      "text": "Female mallard ducks (as well as several other species in the genus Anas, such as the American and Pacific black ducks, spot-billed duck, northern pintail and common teal) make the classic \"quack\" sound while males make a similar but raspier sound that is sometimes written as \"breeeeze\",[29][self-published source?] but, despite widespread misconceptions, most species of duck do not \"quack\".[30] In general, ducks make a range of calls, including whistles, cooing, yodels and grunts. For example, the scaup – which are diving ducks – make a noise like \"scaup\" (hence their name). Calls may be loud displaying calls or quieter contact calls."
     },
     {
       "self_ref": "#/texts/251",
@@ -5440,8 +5440,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "Humans have hunted ducks since prehistoric times. Excavations of middens in California dating to 7800 \u2013 6400 BP have turned up bones of ducks, including at least one now-extinct flightless species.[33] Ducks were captured in \"significant numbers\" by Holocene inhabitants of the lower Ohio River valley, suggesting they took advantage of the seasonal bounty provided by migrating waterfowl.[34] Neolithic hunters in locations as far apart as the Caribbean,[35] Scandinavia,[36] Egypt,[37] Switzerland,[38] and China relied on ducks as a source of protein for some or all of the year.[39] Archeological evidence shows that M\u0101ori people in New Zealand hunted the flightless Finsch's duck, possibly to extinction, though rat predation may also have contributed to its fate.[40] A similar end awaited the Chatham duck, a species with reduced flying capabilities which went extinct shortly after its island was colonised by Polynesian settlers.[41] It is probable that duck eggs were gathered by Neolithic hunter-gathers as well, though hard evidence of this is uncommon.[35][42]",
-      "text": "Humans have hunted ducks since prehistoric times. Excavations of middens in California dating to 7800 \u2013 6400 BP have turned up bones of ducks, including at least one now-extinct flightless species.[33] Ducks were captured in \"significant numbers\" by Holocene inhabitants of the lower Ohio River valley, suggesting they took advantage of the seasonal bounty provided by migrating waterfowl.[34] Neolithic hunters in locations as far apart as the Caribbean,[35] Scandinavia,[36] Egypt,[37] Switzerland,[38] and China relied on ducks as a source of protein for some or all of the year.[39] Archeological evidence shows that M\u0101ori people in New Zealand hunted the flightless Finsch's duck, possibly to extinction, though rat predation may also have contributed to its fate.[40] A similar end awaited the Chatham duck, a species with reduced flying capabilities which went extinct shortly after its island was colonised by Polynesian settlers.[41] It is probable that duck eggs were gathered by Neolithic hunter-gathers as well, though hard evidence of this is uncommon.[35][42]"
+      "orig": "Humans have hunted ducks since prehistoric times. Excavations of middens in California dating to 7800 – 6400 BP have turned up bones of ducks, including at least one now-extinct flightless species.[33] Ducks were captured in \"significant numbers\" by Holocene inhabitants of the lower Ohio River valley, suggesting they took advantage of the seasonal bounty provided by migrating waterfowl.[34] Neolithic hunters in locations as far apart as the Caribbean,[35] Scandinavia,[36] Egypt,[37] Switzerland,[38] and China relied on ducks as a source of protein for some or all of the year.[39] Archeological evidence shows that Māori people in New Zealand hunted the flightless Finsch's duck, possibly to extinction, though rat predation may also have contributed to its fate.[40] A similar end awaited the Chatham duck, a species with reduced flying capabilities which went extinct shortly after its island was colonised by Polynesian settlers.[41] It is probable that duck eggs were gathered by Neolithic hunter-gathers as well, though hard evidence of this is uncommon.[35][42]",
+      "text": "Humans have hunted ducks since prehistoric times. Excavations of middens in California dating to 7800 – 6400 BP have turned up bones of ducks, including at least one now-extinct flightless species.[33] Ducks were captured in \"significant numbers\" by Holocene inhabitants of the lower Ohio River valley, suggesting they took advantage of the seasonal bounty provided by migrating waterfowl.[34] Neolithic hunters in locations as far apart as the Caribbean,[35] Scandinavia,[36] Egypt,[37] Switzerland,[38] and China relied on ducks as a source of protein for some or all of the year.[39] Archeological evidence shows that Māori people in New Zealand hunted the flightless Finsch's duck, possibly to extinction, though rat predation may also have contributed to its fate.[40] A similar end awaited the Chatham duck, a species with reduced flying capabilities which went extinct shortly after its island was colonised by Polynesian settlers.[41] It is probable that duck eggs were gathered by Neolithic hunter-gathers as well, though hard evidence of this is uncommon.[35][42]"
     },
     {
       "self_ref": "#/texts/259",
@@ -5496,8 +5496,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "Ducks have many economic uses, being farmed for their meat, eggs, and feathers (particularly their down). Approximately 3 billion ducks are slaughtered each year for meat worldwide.[45] They are also kept and bred by aviculturists and often displayed in zoos. Almost all the varieties of domestic ducks are descended from the mallard (Anas platyrhynchos), apart from the Muscovy duck (Cairina moschata).[46][47] The Call duck is another example of a domestic duck breed. Its name comes from its original use established by hunters, as a decoy to attract wild mallards from the sky, into traps set for them on the ground. The call duck is the world's smallest domestic duck breed, as it weighs less than 1\u00a0kg (2.2\u00a0lb).[48]",
-      "text": "Ducks have many economic uses, being farmed for their meat, eggs, and feathers (particularly their down). Approximately 3 billion ducks are slaughtered each year for meat worldwide.[45] They are also kept and bred by aviculturists and often displayed in zoos. Almost all the varieties of domestic ducks are descended from the mallard (Anas platyrhynchos), apart from the Muscovy duck (Cairina moschata).[46][47] The Call duck is another example of a domestic duck breed. Its name comes from its original use established by hunters, as a decoy to attract wild mallards from the sky, into traps set for them on the ground. The call duck is the world's smallest domestic duck breed, as it weighs less than 1\u00a0kg (2.2\u00a0lb).[48]"
+      "orig": "Ducks have many economic uses, being farmed for their meat, eggs, and feathers (particularly their down). Approximately 3 billion ducks are slaughtered each year for meat worldwide.[45] They are also kept and bred by aviculturists and often displayed in zoos. Almost all the varieties of domestic ducks are descended from the mallard (Anas platyrhynchos), apart from the Muscovy duck (Cairina moschata).[46][47] The Call duck is another example of a domestic duck breed. Its name comes from its original use established by hunters, as a decoy to attract wild mallards from the sky, into traps set for them on the ground. The call duck is the world's smallest domestic duck breed, as it weighs less than 1 kg (2.2 lb).[48]",
+      "text": "Ducks have many economic uses, being farmed for their meat, eggs, and feathers (particularly their down). Approximately 3 billion ducks are slaughtered each year for meat worldwide.[45] They are also kept and bred by aviculturists and often displayed in zoos. Almost all the varieties of domestic ducks are descended from the mallard (Anas platyrhynchos), apart from the Muscovy duck (Cairina moschata).[46][47] The Call duck is another example of a domestic duck breed. Its name comes from its original use established by hunters, as a decoy to attract wild mallards from the sky, into traps set for them on the ground. The call duck is the world's smallest domestic duck breed, as it weighs less than 1 kg (2.2 lb).[48]"
     },
     {
       "self_ref": "#/texts/263",
@@ -5540,8 +5540,8 @@
       "content_layer": "body",
       "label": "text",
       "prov": [],
-      "orig": "Ducks appear on several coats of arms, including the coat of arms of Lub\u0101na (Latvia)[50] and the coat of arms of F\u00f6gl\u00f6 (\u00c5land).[51]",
-      "text": "Ducks appear on several coats of arms, including the coat of arms of Lub\u0101na (Latvia)[50] and the coat of arms of F\u00f6gl\u00f6 (\u00c5land).[51]"
+      "orig": "Ducks appear on several coats of arms, including the coat of arms of Lubāna (Latvia)[50] and the coat of arms of Föglö (Åland).[51]",
+      "text": "Ducks appear on several coats of arms, including the coat of arms of Lubāna (Latvia)[50] and the coat of arms of Föglö (Åland).[51]"
     },
     {
       "self_ref": "#/texts/266",
@@ -5619,7 +5619,7 @@
       "orig": "Birds portal",
       "text": "Birds portal",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/271",
@@ -5633,7 +5633,7 @@
       "orig": "Domestic duck",
       "text": "Domestic duck",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/272",
@@ -5647,7 +5647,7 @@
       "orig": "Duck as food",
       "text": "Duck as food",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/273",
@@ -5661,7 +5661,7 @@
       "orig": "Duck test",
       "text": "Duck test",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/274",
@@ -5675,7 +5675,7 @@
       "orig": "Duck breeds",
       "text": "Duck breeds",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/275",
@@ -5689,7 +5689,7 @@
       "orig": "Fictional ducks",
       "text": "Fictional ducks",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/276",
@@ -5703,7 +5703,7 @@
       "orig": "Rubber duck",
       "text": "Rubber duck",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/277",
@@ -5754,7 +5754,7 @@
       "orig": "^ \"Duckling\". The American Heritage Dictionary of the English Language, Fourth Edition. Houghton Mifflin Company. 2006. Retrieved 2015-05-22.",
       "text": "^ \"Duckling\". The American Heritage Dictionary of the English Language, Fourth Edition. Houghton Mifflin Company. 2006. Retrieved 2015-05-22.",
       "enumerated": true,
-      "marker": "1."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/280",
@@ -5765,10 +5765,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ \"Duckling\". Kernerman English Multilingual Dictionary (Beta Version). K. Dictionaries Ltd. 2000\u20132006. Retrieved 2015-05-22.",
-      "text": "^ \"Duckling\". Kernerman English Multilingual Dictionary (Beta Version). K. Dictionaries Ltd. 2000\u20132006. Retrieved 2015-05-22.",
+      "orig": "^ \"Duckling\". Kernerman English Multilingual Dictionary (Beta Version). K. Dictionaries Ltd. 2000–2006. Retrieved 2015-05-22.",
+      "text": "^ \"Duckling\". Kernerman English Multilingual Dictionary (Beta Version). K. Dictionaries Ltd. 2000–2006. Retrieved 2015-05-22.",
       "enumerated": true,
-      "marker": "2."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/281",
@@ -5779,10 +5779,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Dohner, Janet Vorwald (2001). The Encyclopedia of Historic and Endangered Livestock and Poultry Breeds. Yale University Press. ISBN\u00a0978-0300138139.",
-      "text": "^ Dohner, Janet Vorwald (2001). The Encyclopedia of Historic and Endangered Livestock and Poultry Breeds. Yale University Press. ISBN\u00a0978-0300138139.",
+      "orig": "^ Dohner, Janet Vorwald (2001). The Encyclopedia of Historic and Endangered Livestock and Poultry Breeds. Yale University Press. ISBN 978-0300138139.",
+      "text": "^ Dohner, Janet Vorwald (2001). The Encyclopedia of Historic and Endangered Livestock and Poultry Breeds. Yale University Press. ISBN 978-0300138139.",
       "enumerated": true,
-      "marker": "3."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/282",
@@ -5793,10 +5793,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Visca, Curt; Visca, Kelley (2003). How to Draw Cartoon Birds. The Rosen Publishing Group. ISBN\u00a09780823961566.",
-      "text": "^ Visca, Curt; Visca, Kelley (2003). How to Draw Cartoon Birds. The Rosen Publishing Group. ISBN\u00a09780823961566.",
+      "orig": "^ Visca, Curt; Visca, Kelley (2003). How to Draw Cartoon Birds. The Rosen Publishing Group. ISBN 9780823961566.",
+      "text": "^ Visca, Curt; Visca, Kelley (2003). How to Draw Cartoon Birds. The Rosen Publishing Group. ISBN 9780823961566.",
       "enumerated": true,
-      "marker": "4."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/283",
@@ -5807,10 +5807,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ a b c d Carboneras 1992, p.\u00a0536.",
-      "text": "^ a b c d Carboneras 1992, p.\u00a0536.",
+      "orig": "^ a b c d Carboneras 1992, p. 536.",
+      "text": "^ a b c d Carboneras 1992, p. 536.",
       "enumerated": true,
-      "marker": "5."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/284",
@@ -5821,10 +5821,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Livezey 1986, pp.\u00a0737\u2013738.",
-      "text": "^ Livezey 1986, pp.\u00a0737\u2013738.",
+      "orig": "^ Livezey 1986, pp. 737–738.",
+      "text": "^ Livezey 1986, pp. 737–738.",
       "enumerated": true,
-      "marker": "6."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/285",
@@ -5835,10 +5835,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Madsen, McHugh & de Kloet 1988, p.\u00a0452.",
-      "text": "^ Madsen, McHugh & de Kloet 1988, p.\u00a0452.",
+      "orig": "^ Madsen, McHugh & de Kloet 1988, p. 452.",
+      "text": "^ Madsen, McHugh & de Kloet 1988, p. 452.",
       "enumerated": true,
-      "marker": "7."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/286",
@@ -5849,10 +5849,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Donne-Gouss\u00e9, Laudet & H\u00e4nni 2002, pp.\u00a0353\u2013354.",
-      "text": "^ Donne-Gouss\u00e9, Laudet & H\u00e4nni 2002, pp.\u00a0353\u2013354.",
+      "orig": "^ Donne-Goussé, Laudet & Hänni 2002, pp. 353–354.",
+      "text": "^ Donne-Goussé, Laudet & Hänni 2002, pp. 353–354.",
       "enumerated": true,
-      "marker": "8."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/287",
@@ -5863,10 +5863,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ a b c d e f Carboneras 1992, p.\u00a0540.",
-      "text": "^ a b c d e f Carboneras 1992, p.\u00a0540.",
+      "orig": "^ a b c d e f Carboneras 1992, p. 540.",
+      "text": "^ a b c d e f Carboneras 1992, p. 540.",
       "enumerated": true,
-      "marker": "9."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/288",
@@ -5877,10 +5877,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Elphick, Dunning & Sibley 2001, p.\u00a0191.",
-      "text": "^ Elphick, Dunning & Sibley 2001, p.\u00a0191.",
+      "orig": "^ Elphick, Dunning & Sibley 2001, p. 191.",
+      "text": "^ Elphick, Dunning & Sibley 2001, p. 191.",
       "enumerated": true,
-      "marker": "10."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/289",
@@ -5891,10 +5891,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Kear 2005, p.\u00a0448.",
-      "text": "^ Kear 2005, p.\u00a0448.",
+      "orig": "^ Kear 2005, p. 448.",
+      "text": "^ Kear 2005, p. 448.",
       "enumerated": true,
-      "marker": "11."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/290",
@@ -5905,10 +5905,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Kear 2005, p.\u00a0622\u2013623.",
-      "text": "^ Kear 2005, p.\u00a0622\u2013623.",
+      "orig": "^ Kear 2005, p. 622–623.",
+      "text": "^ Kear 2005, p. 622–623.",
       "enumerated": true,
-      "marker": "12."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/291",
@@ -5919,10 +5919,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Kear 2005, p.\u00a0686.",
-      "text": "^ Kear 2005, p.\u00a0686.",
+      "orig": "^ Kear 2005, p. 686.",
+      "text": "^ Kear 2005, p. 686.",
       "enumerated": true,
-      "marker": "13."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/292",
@@ -5933,10 +5933,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Elphick, Dunning & Sibley 2001, p.\u00a0193.",
-      "text": "^ Elphick, Dunning & Sibley 2001, p.\u00a0193.",
+      "orig": "^ Elphick, Dunning & Sibley 2001, p. 193.",
+      "text": "^ Elphick, Dunning & Sibley 2001, p. 193.",
       "enumerated": true,
-      "marker": "14."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/293",
@@ -5947,10 +5947,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ a b c d e f g Carboneras 1992, p.\u00a0537.",
-      "text": "^ a b c d e f g Carboneras 1992, p.\u00a0537.",
+      "orig": "^ a b c d e f g Carboneras 1992, p. 537.",
+      "text": "^ a b c d e f g Carboneras 1992, p. 537.",
       "enumerated": true,
-      "marker": "15."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/294",
@@ -5961,10 +5961,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ American Ornithologists' Union 1998, p.\u00a0xix.",
-      "text": "^ American Ornithologists' Union 1998, p.\u00a0xix.",
+      "orig": "^ American Ornithologists' Union 1998, p. xix.",
+      "text": "^ American Ornithologists' Union 1998, p. xix.",
       "enumerated": true,
-      "marker": "16."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/295",
@@ -5978,7 +5978,7 @@
       "orig": "^ American Ornithologists' Union 1998.",
       "text": "^ American Ornithologists' Union 1998.",
       "enumerated": true,
-      "marker": "17."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/296",
@@ -5989,10 +5989,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Carboneras 1992, p.\u00a0538.",
-      "text": "^ Carboneras 1992, p.\u00a0538.",
+      "orig": "^ Carboneras 1992, p. 538.",
+      "text": "^ Carboneras 1992, p. 538.",
       "enumerated": true,
-      "marker": "18."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/297",
@@ -6003,10 +6003,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Christidis & Boles 2008, p.\u00a062.",
-      "text": "^ Christidis & Boles 2008, p.\u00a062.",
+      "orig": "^ Christidis & Boles 2008, p. 62.",
+      "text": "^ Christidis & Boles 2008, p. 62.",
       "enumerated": true,
-      "marker": "19."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/298",
@@ -6017,10 +6017,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Shirihai 2008, pp.\u00a0239, 245.",
-      "text": "^ Shirihai 2008, pp.\u00a0239, 245.",
+      "orig": "^ Shirihai 2008, pp. 239, 245.",
+      "text": "^ Shirihai 2008, pp. 239, 245.",
       "enumerated": true,
-      "marker": "20."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/299",
@@ -6031,10 +6031,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ a b Pratt, Bruner & Berrett 1987, pp.\u00a098\u2013107.",
-      "text": "^ a b Pratt, Bruner & Berrett 1987, pp.\u00a098\u2013107.",
+      "orig": "^ a b Pratt, Bruner & Berrett 1987, pp. 98–107.",
+      "text": "^ a b Pratt, Bruner & Berrett 1987, pp. 98–107.",
       "enumerated": true,
-      "marker": "21."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/300",
@@ -6045,10 +6045,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Fitter, Fitter & Hosking 2000, pp.\u00a052\u20133.",
-      "text": "^ Fitter, Fitter & Hosking 2000, pp.\u00a052\u20133.",
+      "orig": "^ Fitter, Fitter & Hosking 2000, pp. 52–3.",
+      "text": "^ Fitter, Fitter & Hosking 2000, pp. 52–3.",
       "enumerated": true,
-      "marker": "22."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/301",
@@ -6062,7 +6062,7 @@
       "orig": "^ \"Pacific Black Duck\". www.wiresnr.org. Retrieved 2018-04-27.",
       "text": "^ \"Pacific Black Duck\". www.wiresnr.org. Retrieved 2018-04-27.",
       "enumerated": true,
-      "marker": "23."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/302",
@@ -6076,7 +6076,7 @@
       "orig": "^ Ogden, Evans. \"Dabbling Ducks\". CWE. Retrieved 2006-11-02.",
       "text": "^ Ogden, Evans. \"Dabbling Ducks\". CWE. Retrieved 2006-11-02.",
       "enumerated": true,
-      "marker": "24."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/303",
@@ -6090,7 +6090,7 @@
       "orig": "^ Karl Mathiesen (16 March 2015). \"Don't feed the ducks bread, say conservationists\". The Guardian. Retrieved 13 November 2016.",
       "text": "^ Karl Mathiesen (16 March 2015). \"Don't feed the ducks bread, say conservationists\". The Guardian. Retrieved 13 November 2016.",
       "enumerated": true,
-      "marker": "25."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/304",
@@ -6101,10 +6101,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Rohwer, Frank C.; Anderson, Michael G. (1988). \"Female-Biased Philopatry, Monogamy, and the Timing of Pair Formation in Migratory Waterfowl\". Current Ornithology. pp.\u00a0187\u2013221. doi:10.1007/978-1-4615-6787-5_4. ISBN\u00a0978-1-4615-6789-9.",
-      "text": "^ Rohwer, Frank C.; Anderson, Michael G. (1988). \"Female-Biased Philopatry, Monogamy, and the Timing of Pair Formation in Migratory Waterfowl\". Current Ornithology. pp.\u00a0187\u2013221. doi:10.1007/978-1-4615-6787-5_4. ISBN\u00a0978-1-4615-6789-9.",
+      "orig": "^ Rohwer, Frank C.; Anderson, Michael G. (1988). \"Female-Biased Philopatry, Monogamy, and the Timing of Pair Formation in Migratory Waterfowl\". Current Ornithology. pp. 187–221. doi:10.1007/978-1-4615-6787-5_4. ISBN 978-1-4615-6789-9.",
+      "text": "^ Rohwer, Frank C.; Anderson, Michael G. (1988). \"Female-Biased Philopatry, Monogamy, and the Timing of Pair Formation in Migratory Waterfowl\". Current Ornithology. pp. 187–221. doi:10.1007/978-1-4615-6787-5_4. ISBN 978-1-4615-6789-9.",
       "enumerated": true,
-      "marker": "26."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/305",
@@ -6115,10 +6115,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Smith, Cyndi M.; Cooke, Fred; Robertson, Gregory J.; Goudie, R. Ian; Boyd, W. Sean (2000). \"Long-Term Pair Bonds in Harlequin Ducks\". The Condor. 102 (1): 201\u2013205. doi:10.1093/condor/102.1.201. hdl:10315/13797.",
-      "text": "^ Smith, Cyndi M.; Cooke, Fred; Robertson, Gregory J.; Goudie, R. Ian; Boyd, W. Sean (2000). \"Long-Term Pair Bonds in Harlequin Ducks\". The Condor. 102 (1): 201\u2013205. doi:10.1093/condor/102.1.201. hdl:10315/13797.",
+      "orig": "^ Smith, Cyndi M.; Cooke, Fred; Robertson, Gregory J.; Goudie, R. Ian; Boyd, W. Sean (2000). \"Long-Term Pair Bonds in Harlequin Ducks\". The Condor. 102 (1): 201–205. doi:10.1093/condor/102.1.201. hdl:10315/13797.",
+      "text": "^ Smith, Cyndi M.; Cooke, Fred; Robertson, Gregory J.; Goudie, R. Ian; Boyd, W. Sean (2000). \"Long-Term Pair Bonds in Harlequin Ducks\". The Condor. 102 (1): 201–205. doi:10.1093/condor/102.1.201. hdl:10315/13797.",
       "enumerated": true,
-      "marker": "27."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/306",
@@ -6132,7 +6132,7 @@
       "orig": "^ \"If You Find An Orphaned Duckling - Wildlife Rehabber\". wildliferehabber.com. Archived from the original on 2018-09-23. Retrieved 2018-12-22.",
       "text": "^ \"If You Find An Orphaned Duckling - Wildlife Rehabber\". wildliferehabber.com. Archived from the original on 2018-09-23. Retrieved 2018-12-22.",
       "enumerated": true,
-      "marker": "28."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/307",
@@ -6143,10 +6143,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Carver, Heather (2011). The Duck Bible. Lulu.com. ISBN\u00a09780557901562.[self-published source]",
-      "text": "^ Carver, Heather (2011). The Duck Bible. Lulu.com. ISBN\u00a09780557901562.[self-published source]",
+      "orig": "^ Carver, Heather (2011). The Duck Bible. Lulu.com. ISBN 9780557901562.[self-published source]",
+      "text": "^ Carver, Heather (2011). The Duck Bible. Lulu.com. ISBN 9780557901562.[self-published source]",
       "enumerated": true,
-      "marker": "29."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/308",
@@ -6157,10 +6157,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Titlow, Budd (2013-09-03). Bird Brains: Inside the Strange Minds of Our Fine Feathered Friends. Rowman & Littlefield. ISBN\u00a09780762797707.",
-      "text": "^ Titlow, Budd (2013-09-03). Bird Brains: Inside the Strange Minds of Our Fine Feathered Friends. Rowman & Littlefield. ISBN\u00a09780762797707.",
+      "orig": "^ Titlow, Budd (2013-09-03). Bird Brains: Inside the Strange Minds of Our Fine Feathered Friends. Rowman & Littlefield. ISBN 9780762797707.",
+      "text": "^ Titlow, Budd (2013-09-03). Bird Brains: Inside the Strange Minds of Our Fine Feathered Friends. Rowman & Littlefield. ISBN 9780762797707.",
       "enumerated": true,
-      "marker": "30."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/309",
@@ -6174,7 +6174,7 @@
       "orig": "^ Amos, Jonathan (2003-09-08). \"Sound science is quackers\". BBC News. Retrieved 2006-11-02.",
       "text": "^ Amos, Jonathan (2003-09-08). \"Sound science is quackers\". BBC News. Retrieved 2006-11-02.",
       "enumerated": true,
-      "marker": "31."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/310",
@@ -6188,7 +6188,7 @@
       "orig": "^ \"Mythbusters Episode 8\". 12 December 2003.",
       "text": "^ \"Mythbusters Episode 8\". 12 December 2003.",
       "enumerated": true,
-      "marker": "32."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/311",
@@ -6199,10 +6199,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Erlandson 1994, p.\u00a0171.",
-      "text": "^ Erlandson 1994, p.\u00a0171.",
+      "orig": "^ Erlandson 1994, p. 171.",
+      "text": "^ Erlandson 1994, p. 171.",
       "enumerated": true,
-      "marker": "33."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/312",
@@ -6213,10 +6213,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Jeffries 2008, pp.\u00a0168, 243.",
-      "text": "^ Jeffries 2008, pp.\u00a0168, 243.",
+      "orig": "^ Jeffries 2008, pp. 168, 243.",
+      "text": "^ Jeffries 2008, pp. 168, 243.",
       "enumerated": true,
-      "marker": "34."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/313",
@@ -6227,10 +6227,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ a b Sued-Badillo 2003, p.\u00a065.",
-      "text": "^ a b Sued-Badillo 2003, p.\u00a065.",
+      "orig": "^ a b Sued-Badillo 2003, p. 65.",
+      "text": "^ a b Sued-Badillo 2003, p. 65.",
       "enumerated": true,
-      "marker": "35."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/314",
@@ -6241,10 +6241,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Thorpe 1996, p.\u00a068.",
-      "text": "^ Thorpe 1996, p.\u00a068.",
+      "orig": "^ Thorpe 1996, p. 68.",
+      "text": "^ Thorpe 1996, p. 68.",
       "enumerated": true,
-      "marker": "36."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/315",
@@ -6255,10 +6255,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Maisels 1999, p.\u00a042.",
-      "text": "^ Maisels 1999, p.\u00a042.",
+      "orig": "^ Maisels 1999, p. 42.",
+      "text": "^ Maisels 1999, p. 42.",
       "enumerated": true,
-      "marker": "37."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/316",
@@ -6269,10 +6269,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Rau 1876, p.\u00a0133.",
-      "text": "^ Rau 1876, p.\u00a0133.",
+      "orig": "^ Rau 1876, p. 133.",
+      "text": "^ Rau 1876, p. 133.",
       "enumerated": true,
-      "marker": "38."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/317",
@@ -6283,10 +6283,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Higman 2012, p.\u00a023.",
-      "text": "^ Higman 2012, p.\u00a023.",
+      "orig": "^ Higman 2012, p. 23.",
+      "text": "^ Higman 2012, p. 23.",
       "enumerated": true,
-      "marker": "39."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/318",
@@ -6297,10 +6297,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Hume 2012, p.\u00a053.",
-      "text": "^ Hume 2012, p.\u00a053.",
+      "orig": "^ Hume 2012, p. 53.",
+      "text": "^ Hume 2012, p. 53.",
       "enumerated": true,
-      "marker": "40."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/319",
@@ -6311,10 +6311,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Hume 2012, p.\u00a052.",
-      "text": "^ Hume 2012, p.\u00a052.",
+      "orig": "^ Hume 2012, p. 52.",
+      "text": "^ Hume 2012, p. 52.",
       "enumerated": true,
-      "marker": "41."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/320",
@@ -6325,10 +6325,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Fieldhouse 2002, p.\u00a0167.",
-      "text": "^ Fieldhouse 2002, p.\u00a0167.",
+      "orig": "^ Fieldhouse 2002, p. 167.",
+      "text": "^ Fieldhouse 2002, p. 167.",
       "enumerated": true,
-      "marker": "42."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/321",
@@ -6339,10 +6339,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Livingston, A. D. (1998-01-01). Guide to Edible Plants and Animals. Wordsworth Editions, Limited. ISBN\u00a09781853263774.",
-      "text": "^ Livingston, A. D. (1998-01-01). Guide to Edible Plants and Animals. Wordsworth Editions, Limited. ISBN\u00a09781853263774.",
+      "orig": "^ Livingston, A. D. (1998-01-01). Guide to Edible Plants and Animals. Wordsworth Editions, Limited. ISBN 9781853263774.",
+      "text": "^ Livingston, A. D. (1998-01-01). Guide to Edible Plants and Animals. Wordsworth Editions, Limited. ISBN 9781853263774.",
       "enumerated": true,
-      "marker": "43."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/322",
@@ -6353,10 +6353,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ \"Study plan for waterfowl injury assessment: Determining PCB concentrations in Hudson river resident waterfowl\" (PDF). New York State Department of Environmental Conservation. US Department of Commerce. December 2008. p.\u00a03. Archived (PDF) from the original on 2022-10-09. Retrieved 2 July 2019.",
-      "text": "^ \"Study plan for waterfowl injury assessment: Determining PCB concentrations in Hudson river resident waterfowl\" (PDF). New York State Department of Environmental Conservation. US Department of Commerce. December 2008. p.\u00a03. Archived (PDF) from the original on 2022-10-09. Retrieved 2 July 2019.",
+      "orig": "^ \"Study plan for waterfowl injury assessment: Determining PCB concentrations in Hudson river resident waterfowl\" (PDF). New York State Department of Environmental Conservation. US Department of Commerce. December 2008. p. 3. Archived (PDF) from the original on 2022-10-09. Retrieved 2 July 2019.",
+      "text": "^ \"Study plan for waterfowl injury assessment: Determining PCB concentrations in Hudson river resident waterfowl\" (PDF). New York State Department of Environmental Conservation. US Department of Commerce. December 2008. p. 3. Archived (PDF) from the original on 2022-10-09. Retrieved 2 July 2019.",
       "enumerated": true,
-      "marker": "44."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/323",
@@ -6370,7 +6370,7 @@
       "orig": "^ \"FAOSTAT\". www.fao.org. Retrieved 2019-10-25.",
       "text": "^ \"FAOSTAT\". www.fao.org. Retrieved 2019-10-25.",
       "enumerated": true,
-      "marker": "45."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/324",
@@ -6384,7 +6384,7 @@
       "orig": "^ \"Anas platyrhynchos, Domestic Duck; DigiMorph Staff - The University of Texas at Austin\". Digimorph.org. Retrieved 2012-12-23.",
       "text": "^ \"Anas platyrhynchos, Domestic Duck; DigiMorph Staff - The University of Texas at Austin\". Digimorph.org. Retrieved 2012-12-23.",
       "enumerated": true,
-      "marker": "46."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/325",
@@ -6395,10 +6395,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Sy Montgomery. \"Mallard; Encyclop\u00e6dia Britannica\". Britannica.com. Retrieved 2012-12-23.",
-      "text": "^ Sy Montgomery. \"Mallard; Encyclop\u00e6dia Britannica\". Britannica.com. Retrieved 2012-12-23.",
+      "orig": "^ Sy Montgomery. \"Mallard; Encyclopædia Britannica\". Britannica.com. Retrieved 2012-12-23.",
+      "text": "^ Sy Montgomery. \"Mallard; Encyclopædia Britannica\". Britannica.com. Retrieved 2012-12-23.",
       "enumerated": true,
-      "marker": "47."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/326",
@@ -6409,10 +6409,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Glenday, Craig (2014). Guinness World Records. Guinness World Records Limited. pp.\u00a0135. ISBN\u00a0978-1-908843-15-9.",
-      "text": "^ Glenday, Craig (2014). Guinness World Records. Guinness World Records Limited. pp.\u00a0135. ISBN\u00a0978-1-908843-15-9.",
+      "orig": "^ Glenday, Craig (2014). Guinness World Records. Guinness World Records Limited. pp. 135. ISBN 978-1-908843-15-9.",
+      "text": "^ Glenday, Craig (2014). Guinness World Records. Guinness World Records Limited. pp. 135. ISBN 978-1-908843-15-9.",
       "enumerated": true,
-      "marker": "48."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/327",
@@ -6423,10 +6423,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Suomen kunnallisvaakunat (in Finnish). Suomen Kunnallisliitto. 1982. p.\u00a0147. ISBN\u00a0951-773-085-3.",
-      "text": "^ Suomen kunnallisvaakunat (in Finnish). Suomen Kunnallisliitto. 1982. p.\u00a0147. ISBN\u00a0951-773-085-3.",
+      "orig": "^ Suomen kunnallisvaakunat (in Finnish). Suomen Kunnallisliitto. 1982. p. 147. ISBN 951-773-085-3.",
+      "text": "^ Suomen kunnallisvaakunat (in Finnish). Suomen Kunnallisliitto. 1982. p. 147. ISBN 951-773-085-3.",
       "enumerated": true,
-      "marker": "49."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/328",
@@ -6437,10 +6437,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ \"Lub\u0101nas simbolika\" (in Latvian). Retrieved September 9, 2021.",
-      "text": "^ \"Lub\u0101nas simbolika\" (in Latvian). Retrieved September 9, 2021.",
+      "orig": "^ \"Lubānas simbolika\" (in Latvian). Retrieved September 9, 2021.",
+      "text": "^ \"Lubānas simbolika\" (in Latvian). Retrieved September 9, 2021.",
       "enumerated": true,
-      "marker": "50."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/329",
@@ -6451,10 +6451,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ \"F\u00f6gl\u00f6\" (in Swedish). Retrieved September 9, 2021.",
-      "text": "^ \"F\u00f6gl\u00f6\" (in Swedish). Retrieved September 9, 2021.",
+      "orig": "^ \"Föglö\" (in Swedish). Retrieved September 9, 2021.",
+      "text": "^ \"Föglö\" (in Swedish). Retrieved September 9, 2021.",
       "enumerated": true,
-      "marker": "51."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/330",
@@ -6468,7 +6468,7 @@
       "orig": "^ Young, Emma. \"World's funniest joke revealed\". New Scientist. Retrieved 7 January 2019.",
       "text": "^ Young, Emma. \"World's funniest joke revealed\". New Scientist. Retrieved 7 January 2019.",
       "enumerated": true,
-      "marker": "52."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/331",
@@ -6482,7 +6482,7 @@
       "orig": "^ \"Howard the Duck (character)\". Grand Comics Database.",
       "text": "^ \"Howard the Duck (character)\". Grand Comics Database.",
       "enumerated": true,
-      "marker": "53."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/332",
@@ -6493,10 +6493,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "^ Sanderson, Peter; Gilbert, Laura (2008). \"1970s\". Marvel Chronicle A Year by Year History. London, United Kingdom: Dorling Kindersley. p.\u00a0161. ISBN\u00a0978-0756641238. December saw the debut of the cigar-smoking Howard the Duck. In this story by writer Steve Gerber and artist Val Mayerik, various beings from different realities had begun turning up in the Man-Thing's Florida swamp, including this bad-tempered talking duck.",
-      "text": "^ Sanderson, Peter; Gilbert, Laura (2008). \"1970s\". Marvel Chronicle A Year by Year History. London, United Kingdom: Dorling Kindersley. p.\u00a0161. ISBN\u00a0978-0756641238. December saw the debut of the cigar-smoking Howard the Duck. In this story by writer Steve Gerber and artist Val Mayerik, various beings from different realities had begun turning up in the Man-Thing's Florida swamp, including this bad-tempered talking duck.",
+      "orig": "^ Sanderson, Peter; Gilbert, Laura (2008). \"1970s\". Marvel Chronicle A Year by Year History. London, United Kingdom: Dorling Kindersley. p. 161. ISBN 978-0756641238. December saw the debut of the cigar-smoking Howard the Duck. In this story by writer Steve Gerber and artist Val Mayerik, various beings from different realities had begun turning up in the Man-Thing's Florida swamp, including this bad-tempered talking duck.",
+      "text": "^ Sanderson, Peter; Gilbert, Laura (2008). \"1970s\". Marvel Chronicle A Year by Year History. London, United Kingdom: Dorling Kindersley. p. 161. ISBN 978-0756641238. December saw the debut of the cigar-smoking Howard the Duck. In this story by writer Steve Gerber and artist Val Mayerik, various beings from different realities had begun turning up in the Man-Thing's Florida swamp, including this bad-tempered talking duck.",
       "enumerated": true,
-      "marker": "54."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/333",
@@ -6510,7 +6510,7 @@
       "orig": "^ \"The Duck\". University of Oregon Athletics. Retrieved 2022-01-20.",
       "text": "^ \"The Duck\". University of Oregon Athletics. Retrieved 2022-01-20.",
       "enumerated": true,
-      "marker": "55."
+      "marker": ""
     },
     {
       "self_ref": "#/texts/334",
@@ -6538,10 +6538,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "American Ornithologists' Union (1998). Checklist of North American Birds (PDF). Washington, DC: American Ornithologists' Union. ISBN\u00a0978-1-891276-00-2. Archived (PDF) from the original on 2022-10-09.",
-      "text": "American Ornithologists' Union (1998). Checklist of North American Birds (PDF). Washington, DC: American Ornithologists' Union. ISBN\u00a0978-1-891276-00-2. Archived (PDF) from the original on 2022-10-09.",
+      "orig": "American Ornithologists' Union (1998). Checklist of North American Birds (PDF). Washington, DC: American Ornithologists' Union. ISBN 978-1-891276-00-2. Archived (PDF) from the original on 2022-10-09.",
+      "text": "American Ornithologists' Union (1998). Checklist of North American Birds (PDF). Washington, DC: American Ornithologists' Union. ISBN 978-1-891276-00-2. Archived (PDF) from the original on 2022-10-09.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/336",
@@ -6552,10 +6552,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Carboneras, Carlos (1992). del Hoyo, Josep; Elliott, Andrew; Sargatal, Jordi (eds.). Handbook of the Birds of the World. Vol.\u00a01: Ostrich to Ducks. Barcelona: Lynx Edicions. ISBN\u00a0978-84-87334-10-8.",
-      "text": "Carboneras, Carlos (1992). del Hoyo, Josep; Elliott, Andrew; Sargatal, Jordi (eds.). Handbook of the Birds of the World. Vol.\u00a01: Ostrich to Ducks. Barcelona: Lynx Edicions. ISBN\u00a0978-84-87334-10-8.",
+      "orig": "Carboneras, Carlos (1992). del Hoyo, Josep; Elliott, Andrew; Sargatal, Jordi (eds.). Handbook of the Birds of the World. Vol. 1: Ostrich to Ducks. Barcelona: Lynx Edicions. ISBN 978-84-87334-10-8.",
+      "text": "Carboneras, Carlos (1992). del Hoyo, Josep; Elliott, Andrew; Sargatal, Jordi (eds.). Handbook of the Birds of the World. Vol. 1: Ostrich to Ducks. Barcelona: Lynx Edicions. ISBN 978-84-87334-10-8.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/337",
@@ -6566,10 +6566,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Christidis, Les; Boles, Walter E., eds. (2008). Systematics and Taxonomy of Australian Birds. Collingwood, VIC: Csiro Publishing. ISBN\u00a0978-0-643-06511-6.",
-      "text": "Christidis, Les; Boles, Walter E., eds. (2008). Systematics and Taxonomy of Australian Birds. Collingwood, VIC: Csiro Publishing. ISBN\u00a0978-0-643-06511-6.",
+      "orig": "Christidis, Les; Boles, Walter E., eds. (2008). Systematics and Taxonomy of Australian Birds. Collingwood, VIC: Csiro Publishing. ISBN 978-0-643-06511-6.",
+      "text": "Christidis, Les; Boles, Walter E., eds. (2008). Systematics and Taxonomy of Australian Birds. Collingwood, VIC: Csiro Publishing. ISBN 978-0-643-06511-6.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/338",
@@ -6580,10 +6580,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Donne-Gouss\u00e9, Carole; Laudet, Vincent; H\u00e4nni, Catherine (July 2002). \"A molecular phylogeny of Anseriformes based on mitochondrial DNA analysis\". Molecular Phylogenetics and Evolution. 23 (3): 339\u2013356. Bibcode:2002MolPE..23..339D. doi:10.1016/S1055-7903(02)00019-2. PMID\u00a012099792.",
-      "text": "Donne-Gouss\u00e9, Carole; Laudet, Vincent; H\u00e4nni, Catherine (July 2002). \"A molecular phylogeny of Anseriformes based on mitochondrial DNA analysis\". Molecular Phylogenetics and Evolution. 23 (3): 339\u2013356. Bibcode:2002MolPE..23..339D. doi:10.1016/S1055-7903(02)00019-2. PMID\u00a012099792.",
+      "orig": "Donne-Goussé, Carole; Laudet, Vincent; Hänni, Catherine (July 2002). \"A molecular phylogeny of Anseriformes based on mitochondrial DNA analysis\". Molecular Phylogenetics and Evolution. 23 (3): 339–356. Bibcode:2002MolPE..23..339D. doi:10.1016/S1055-7903(02)00019-2. PMID 12099792.",
+      "text": "Donne-Goussé, Carole; Laudet, Vincent; Hänni, Catherine (July 2002). \"A molecular phylogeny of Anseriformes based on mitochondrial DNA analysis\". Molecular Phylogenetics and Evolution. 23 (3): 339–356. Bibcode:2002MolPE..23..339D. doi:10.1016/S1055-7903(02)00019-2. PMID 12099792.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/339",
@@ -6594,10 +6594,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Elphick, Chris; Dunning, John B. Jr.; Sibley, David, eds. (2001). The Sibley Guide to Bird Life and Behaviour. London: Christopher Helm. ISBN\u00a0978-0-7136-6250-4.",
-      "text": "Elphick, Chris; Dunning, John B. Jr.; Sibley, David, eds. (2001). The Sibley Guide to Bird Life and Behaviour. London: Christopher Helm. ISBN\u00a0978-0-7136-6250-4.",
+      "orig": "Elphick, Chris; Dunning, John B. Jr.; Sibley, David, eds. (2001). The Sibley Guide to Bird Life and Behaviour. London: Christopher Helm. ISBN 978-0-7136-6250-4.",
+      "text": "Elphick, Chris; Dunning, John B. Jr.; Sibley, David, eds. (2001). The Sibley Guide to Bird Life and Behaviour. London: Christopher Helm. ISBN 978-0-7136-6250-4.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/340",
@@ -6608,10 +6608,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Erlandson, Jon M. (1994). Early Hunter-Gatherers of the California Coast. New York, NY: Springer Science & Business Media. ISBN\u00a0978-1-4419-3231-0.",
-      "text": "Erlandson, Jon M. (1994). Early Hunter-Gatherers of the California Coast. New York, NY: Springer Science & Business Media. ISBN\u00a0978-1-4419-3231-0.",
+      "orig": "Erlandson, Jon M. (1994). Early Hunter-Gatherers of the California Coast. New York, NY: Springer Science & Business Media. ISBN 978-1-4419-3231-0.",
+      "text": "Erlandson, Jon M. (1994). Early Hunter-Gatherers of the California Coast. New York, NY: Springer Science & Business Media. ISBN 978-1-4419-3231-0.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/341",
@@ -6622,10 +6622,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Fieldhouse, Paul (2002). Food, Feasts, and Faith: An Encyclopedia of Food Culture in World Religions. Vol.\u00a0I: A\u2013K. Santa Barbara: ABC-CLIO. ISBN\u00a0978-1-61069-412-4.",
-      "text": "Fieldhouse, Paul (2002). Food, Feasts, and Faith: An Encyclopedia of Food Culture in World Religions. Vol.\u00a0I: A\u2013K. Santa Barbara: ABC-CLIO. ISBN\u00a0978-1-61069-412-4.",
+      "orig": "Fieldhouse, Paul (2002). Food, Feasts, and Faith: An Encyclopedia of Food Culture in World Religions. Vol. I: A–K. Santa Barbara: ABC-CLIO. ISBN 978-1-61069-412-4.",
+      "text": "Fieldhouse, Paul (2002). Food, Feasts, and Faith: An Encyclopedia of Food Culture in World Religions. Vol. I: A–K. Santa Barbara: ABC-CLIO. ISBN 978-1-61069-412-4.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/342",
@@ -6636,10 +6636,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Fitter, Julian; Fitter, Daniel; Hosking, David (2000). Wildlife of the Gal\u00e1pagos. Princeton, NJ: Princeton University Press. ISBN\u00a0978-0-691-10295-5.",
-      "text": "Fitter, Julian; Fitter, Daniel; Hosking, David (2000). Wildlife of the Gal\u00e1pagos. Princeton, NJ: Princeton University Press. ISBN\u00a0978-0-691-10295-5.",
+      "orig": "Fitter, Julian; Fitter, Daniel; Hosking, David (2000). Wildlife of the Galápagos. Princeton, NJ: Princeton University Press. ISBN 978-0-691-10295-5.",
+      "text": "Fitter, Julian; Fitter, Daniel; Hosking, David (2000). Wildlife of the Galápagos. Princeton, NJ: Princeton University Press. ISBN 978-0-691-10295-5.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/343",
@@ -6650,10 +6650,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Higman, B. W. (2012). How Food Made History. Chichester, UK: John Wiley & Sons. ISBN\u00a0978-1-4051-8947-7.",
-      "text": "Higman, B. W. (2012). How Food Made History. Chichester, UK: John Wiley & Sons. ISBN\u00a0978-1-4051-8947-7.",
+      "orig": "Higman, B. W. (2012). How Food Made History. Chichester, UK: John Wiley & Sons. ISBN 978-1-4051-8947-7.",
+      "text": "Higman, B. W. (2012). How Food Made History. Chichester, UK: John Wiley & Sons. ISBN 978-1-4051-8947-7.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/344",
@@ -6664,10 +6664,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Hume, Julian H. (2012). Extinct Birds. London: Christopher Helm. ISBN\u00a0978-1-4729-3744-5.",
-      "text": "Hume, Julian H. (2012). Extinct Birds. London: Christopher Helm. ISBN\u00a0978-1-4729-3744-5.",
+      "orig": "Hume, Julian H. (2012). Extinct Birds. London: Christopher Helm. ISBN 978-1-4729-3744-5.",
+      "text": "Hume, Julian H. (2012). Extinct Birds. London: Christopher Helm. ISBN 978-1-4729-3744-5.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/345",
@@ -6678,10 +6678,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Jeffries, Richard (2008). Holocene Hunter-Gatherers of the Lower Ohio River Valley. Tuscaloosa: University of Alabama Press. ISBN\u00a0978-0-8173-1658-7.",
-      "text": "Jeffries, Richard (2008). Holocene Hunter-Gatherers of the Lower Ohio River Valley. Tuscaloosa: University of Alabama Press. ISBN\u00a0978-0-8173-1658-7.",
+      "orig": "Jeffries, Richard (2008). Holocene Hunter-Gatherers of the Lower Ohio River Valley. Tuscaloosa: University of Alabama Press. ISBN 978-0-8173-1658-7.",
+      "text": "Jeffries, Richard (2008). Holocene Hunter-Gatherers of the Lower Ohio River Valley. Tuscaloosa: University of Alabama Press. ISBN 978-0-8173-1658-7.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/346",
@@ -6692,10 +6692,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Kear, Janet, ed. (2005). Ducks, Geese and Swans: Species Accounts (Cairina to Mergus). Bird Families of the World. Oxford: Oxford University Press. ISBN\u00a0978-0-19-861009-0.",
-      "text": "Kear, Janet, ed. (2005). Ducks, Geese and Swans: Species Accounts (Cairina to Mergus). Bird Families of the World. Oxford: Oxford University Press. ISBN\u00a0978-0-19-861009-0.",
+      "orig": "Kear, Janet, ed. (2005). Ducks, Geese and Swans: Species Accounts (Cairina to Mergus). Bird Families of the World. Oxford: Oxford University Press. ISBN 978-0-19-861009-0.",
+      "text": "Kear, Janet, ed. (2005). Ducks, Geese and Swans: Species Accounts (Cairina to Mergus). Bird Families of the World. Oxford: Oxford University Press. ISBN 978-0-19-861009-0.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/347",
@@ -6706,10 +6706,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Livezey, Bradley C. (October 1986). \"A phylogenetic analysis of recent Anseriform genera using morphological characters\" (PDF). The Auk. 103 (4): 737\u2013754. doi:10.1093/auk/103.4.737. Archived (PDF) from the original on 2022-10-09.",
-      "text": "Livezey, Bradley C. (October 1986). \"A phylogenetic analysis of recent Anseriform genera using morphological characters\" (PDF). The Auk. 103 (4): 737\u2013754. doi:10.1093/auk/103.4.737. Archived (PDF) from the original on 2022-10-09.",
+      "orig": "Livezey, Bradley C. (October 1986). \"A phylogenetic analysis of recent Anseriform genera using morphological characters\" (PDF). The Auk. 103 (4): 737–754. doi:10.1093/auk/103.4.737. Archived (PDF) from the original on 2022-10-09.",
+      "text": "Livezey, Bradley C. (October 1986). \"A phylogenetic analysis of recent Anseriform genera using morphological characters\" (PDF). The Auk. 103 (4): 737–754. doi:10.1093/auk/103.4.737. Archived (PDF) from the original on 2022-10-09.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/348",
@@ -6720,10 +6720,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Madsen, Cort S.; McHugh, Kevin P.; de Kloet, Siwo R. (July 1988). \"A partial classification of waterfowl (Anatidae) based on single-copy DNA\" (PDF). The Auk. 105 (3): 452\u2013459. doi:10.1093/auk/105.3.452. Archived (PDF) from the original on 2022-10-09.",
-      "text": "Madsen, Cort S.; McHugh, Kevin P.; de Kloet, Siwo R. (July 1988). \"A partial classification of waterfowl (Anatidae) based on single-copy DNA\" (PDF). The Auk. 105 (3): 452\u2013459. doi:10.1093/auk/105.3.452. Archived (PDF) from the original on 2022-10-09.",
+      "orig": "Madsen, Cort S.; McHugh, Kevin P.; de Kloet, Siwo R. (July 1988). \"A partial classification of waterfowl (Anatidae) based on single-copy DNA\" (PDF). The Auk. 105 (3): 452–459. doi:10.1093/auk/105.3.452. Archived (PDF) from the original on 2022-10-09.",
+      "text": "Madsen, Cort S.; McHugh, Kevin P.; de Kloet, Siwo R. (July 1988). \"A partial classification of waterfowl (Anatidae) based on single-copy DNA\" (PDF). The Auk. 105 (3): 452–459. doi:10.1093/auk/105.3.452. Archived (PDF) from the original on 2022-10-09.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/349",
@@ -6734,10 +6734,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Maisels, Charles Keith (1999). Early Civilizations of the Old World. London: Routledge. ISBN\u00a0978-0-415-10975-8.",
-      "text": "Maisels, Charles Keith (1999). Early Civilizations of the Old World. London: Routledge. ISBN\u00a0978-0-415-10975-8.",
+      "orig": "Maisels, Charles Keith (1999). Early Civilizations of the Old World. London: Routledge. ISBN 978-0-415-10975-8.",
+      "text": "Maisels, Charles Keith (1999). Early Civilizations of the Old World. London: Routledge. ISBN 978-0-415-10975-8.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/350",
@@ -6748,10 +6748,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Pratt, H. Douglas; Bruner, Phillip L.; Berrett, Delwyn G. (1987). A Field Guide to the Birds of Hawaii and the Tropical Pacific. Princeton, NJ: Princeton University Press. ISBN\u00a00-691-02399-9.",
-      "text": "Pratt, H. Douglas; Bruner, Phillip L.; Berrett, Delwyn G. (1987). A Field Guide to the Birds of Hawaii and the Tropical Pacific. Princeton, NJ: Princeton University Press. ISBN\u00a00-691-02399-9.",
+      "orig": "Pratt, H. Douglas; Bruner, Phillip L.; Berrett, Delwyn G. (1987). A Field Guide to the Birds of Hawaii and the Tropical Pacific. Princeton, NJ: Princeton University Press. ISBN 0-691-02399-9.",
+      "text": "Pratt, H. Douglas; Bruner, Phillip L.; Berrett, Delwyn G. (1987). A Field Guide to the Birds of Hawaii and the Tropical Pacific. Princeton, NJ: Princeton University Press. ISBN 0-691-02399-9.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/351",
@@ -6762,10 +6762,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Rau, Charles (1876). Early Man in Europe. New York: Harper & Brothers. LCCN\u00a005040168.",
-      "text": "Rau, Charles (1876). Early Man in Europe. New York: Harper & Brothers. LCCN\u00a005040168.",
+      "orig": "Rau, Charles (1876). Early Man in Europe. New York: Harper & Brothers. LCCN 05040168.",
+      "text": "Rau, Charles (1876). Early Man in Europe. New York: Harper & Brothers. LCCN 05040168.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/352",
@@ -6776,10 +6776,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Shirihai, Hadoram (2008). A Complete Guide to Antarctic Wildlife. Princeton, NJ, US: Princeton University Press. ISBN\u00a0978-0-691-13666-0.",
-      "text": "Shirihai, Hadoram (2008). A Complete Guide to Antarctic Wildlife. Princeton, NJ, US: Princeton University Press. ISBN\u00a0978-0-691-13666-0.",
+      "orig": "Shirihai, Hadoram (2008). A Complete Guide to Antarctic Wildlife. Princeton, NJ, US: Princeton University Press. ISBN 978-0-691-13666-0.",
+      "text": "Shirihai, Hadoram (2008). A Complete Guide to Antarctic Wildlife. Princeton, NJ, US: Princeton University Press. ISBN 978-0-691-13666-0.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/353",
@@ -6790,10 +6790,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Sued-Badillo, Jalil (2003). Autochthonous Societies. General History of the Caribbean. Paris: UNESCO. ISBN\u00a0978-92-3-103832-7.",
-      "text": "Sued-Badillo, Jalil (2003). Autochthonous Societies. General History of the Caribbean. Paris: UNESCO. ISBN\u00a0978-92-3-103832-7.",
+      "orig": "Sued-Badillo, Jalil (2003). Autochthonous Societies. General History of the Caribbean. Paris: UNESCO. ISBN 978-92-3-103832-7.",
+      "text": "Sued-Badillo, Jalil (2003). Autochthonous Societies. General History of the Caribbean. Paris: UNESCO. ISBN 978-92-3-103832-7.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/354",
@@ -6804,10 +6804,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Thorpe, I. J. (1996). The Origins of Agriculture in Europe. New York: Routledge. ISBN\u00a0978-0-415-08009-5.",
-      "text": "Thorpe, I. J. (1996). The Origins of Agriculture in Europe. New York: Routledge. ISBN\u00a0978-0-415-08009-5.",
+      "orig": "Thorpe, I. J. (1996). The Origins of Agriculture in Europe. New York: Routledge. ISBN 978-0-415-08009-5.",
+      "text": "Thorpe, I. J. (1996). The Origins of Agriculture in Europe. New York: Routledge. ISBN 978-0-415-08009-5.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/355",
@@ -6874,7 +6874,7 @@
       "orig": "Definitions from Wiktionary",
       "text": "Definitions from Wiktionary",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/357",
@@ -6888,7 +6888,7 @@
       "orig": "Media from Commons",
       "text": "Media from Commons",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/358",
@@ -6902,7 +6902,7 @@
       "orig": "Quotations from Wikiquote",
       "text": "Quotations from Wikiquote",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/359",
@@ -6916,7 +6916,7 @@
       "orig": "Recipes from Wikibooks",
       "text": "Recipes from Wikibooks",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/360",
@@ -6930,7 +6930,7 @@
       "orig": "Taxa from Wikispecies",
       "text": "Taxa from Wikispecies",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/361",
@@ -6944,7 +6944,7 @@
       "orig": "Data from Wikidata",
       "text": "Data from Wikidata",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/362",
@@ -6958,7 +6958,7 @@
       "orig": "list of books (useful looking abstracts)",
       "text": "list of books (useful looking abstracts)",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/363",
@@ -6972,7 +6972,7 @@
       "orig": "Ducks on postage stamps Archived 2013-05-13 at the Wayback Machine",
       "text": "Ducks on postage stamps Archived 2013-05-13 at the Wayback Machine",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/364",
@@ -6986,7 +6986,7 @@
       "orig": "Ducks at a Distance, by Rob Hines at Project Gutenberg - A modern illustrated guide to identification of US waterfowl",
       "text": "Ducks at a Distance, by Rob Hines at Project Gutenberg - A modern illustrated guide to identification of US waterfowl",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/365",
@@ -7024,7 +7024,7 @@
       "orig": "Ducks",
       "text": "Ducks",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/368",
@@ -7038,7 +7038,7 @@
       "orig": "Game birds",
       "text": "Game birds",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/369",
@@ -7052,7 +7052,7 @@
       "orig": "Bird common names",
       "text": "Bird common names",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/370",
@@ -7078,7 +7078,7 @@
       "orig": "All accuracy disputes",
       "text": "All accuracy disputes",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/372",
@@ -7092,7 +7092,7 @@
       "orig": "Accuracy disputes from February 2020",
       "text": "Accuracy disputes from February 2020",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/373",
@@ -7106,7 +7106,7 @@
       "orig": "CS1 Finnish-language sources (fi)",
       "text": "CS1 Finnish-language sources (fi)",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/374",
@@ -7120,7 +7120,7 @@
       "orig": "CS1 Latvian-language sources (lv)",
       "text": "CS1 Latvian-language sources (lv)",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/375",
@@ -7134,7 +7134,7 @@
       "orig": "CS1 Swedish-language sources (sv)",
       "text": "CS1 Swedish-language sources (sv)",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/376",
@@ -7148,7 +7148,7 @@
       "orig": "Articles with short description",
       "text": "Articles with short description",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/377",
@@ -7162,7 +7162,7 @@
       "orig": "Short description is different from Wikidata",
       "text": "Short description is different from Wikidata",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/378",
@@ -7176,7 +7176,7 @@
       "orig": "Wikipedia indefinitely move-protected pages",
       "text": "Wikipedia indefinitely move-protected pages",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/379",
@@ -7190,7 +7190,7 @@
       "orig": "Wikipedia indefinitely semi-protected pages",
       "text": "Wikipedia indefinitely semi-protected pages",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/380",
@@ -7204,7 +7204,7 @@
       "orig": "Articles with 'species' microformats",
       "text": "Articles with 'species' microformats",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/381",
@@ -7218,7 +7218,7 @@
       "orig": "Articles containing Old English (ca. 450-1100)-language text",
       "text": "Articles containing Old English (ca. 450-1100)-language text",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/382",
@@ -7232,7 +7232,7 @@
       "orig": "Articles containing Dutch-language text",
       "text": "Articles containing Dutch-language text",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/383",
@@ -7246,7 +7246,7 @@
       "orig": "Articles containing German-language text",
       "text": "Articles containing German-language text",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/384",
@@ -7260,7 +7260,7 @@
       "orig": "Articles containing Norwegian-language text",
       "text": "Articles containing Norwegian-language text",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/385",
@@ -7274,7 +7274,7 @@
       "orig": "Articles containing Lithuanian-language text",
       "text": "Articles containing Lithuanian-language text",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/386",
@@ -7288,7 +7288,7 @@
       "orig": "Articles containing Ancient Greek (to 1453)-language text",
       "text": "Articles containing Ancient Greek (to 1453)-language text",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/387",
@@ -7302,7 +7302,7 @@
       "orig": "All articles with self-published sources",
       "text": "All articles with self-published sources",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/388",
@@ -7316,7 +7316,7 @@
       "orig": "Articles with self-published sources from February 2020",
       "text": "Articles with self-published sources from February 2020",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/389",
@@ -7330,7 +7330,7 @@
       "orig": "All articles with unsourced statements",
       "text": "All articles with unsourced statements",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/390",
@@ -7344,7 +7344,7 @@
       "orig": "Articles with unsourced statements from January 2022",
       "text": "Articles with unsourced statements from January 2022",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/391",
@@ -7358,7 +7358,7 @@
       "orig": "CS1: long volume value",
       "text": "CS1: long volume value",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/392",
@@ -7372,7 +7372,7 @@
       "orig": "Pages using Sister project links with wikidata mismatch",
       "text": "Pages using Sister project links with wikidata mismatch",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/393",
@@ -7386,7 +7386,7 @@
       "orig": "Pages using Sister project links with hidden wikidata",
       "text": "Pages using Sister project links with hidden wikidata",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/394",
@@ -7400,7 +7400,7 @@
       "orig": "Webarchive template wayback links",
       "text": "Webarchive template wayback links",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/395",
@@ -7414,7 +7414,7 @@
       "orig": "Articles with Project Gutenberg links",
       "text": "Articles with Project Gutenberg links",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/396",
@@ -7428,7 +7428,7 @@
       "orig": "Articles containing video clips",
       "text": "Articles containing video clips",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/397",
@@ -7439,10 +7439,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "This page was last edited on 21 September 2024, at 12:11\u00a0(UTC).",
-      "text": "This page was last edited on 21 September 2024, at 12:11\u00a0(UTC).",
+      "orig": "This page was last edited on 21 September 2024, at 12:11 (UTC).",
+      "text": "This page was last edited on 21 September 2024, at 12:11 (UTC).",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/398",
@@ -7453,10 +7453,10 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Text is available under the Creative Commons Attribution-ShareAlike License 4.0;\nadditional terms may apply. By using this site, you agree to the Terms of Use and Privacy Policy. Wikipedia\u00ae is a registered trademark of the Wikimedia Foundation, Inc., a non-profit organization.",
-      "text": "Text is available under the Creative Commons Attribution-ShareAlike License 4.0;\nadditional terms may apply. By using this site, you agree to the Terms of Use and Privacy Policy. Wikipedia\u00ae is a registered trademark of the Wikimedia Foundation, Inc., a non-profit organization.",
+      "orig": "Text is available under the Creative Commons Attribution-ShareAlike License 4.0;\nadditional terms may apply. By using this site, you agree to the Terms of Use and Privacy Policy. Wikipedia® is a registered trademark of the Wikimedia Foundation, Inc., a non-profit organization.",
+      "text": "Text is available under the Creative Commons Attribution-ShareAlike License 4.0;\nadditional terms may apply. By using this site, you agree to the Terms of Use and Privacy Policy. Wikipedia® is a registered trademark of the Wikimedia Foundation, Inc., a non-profit organization.",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/399",
@@ -7470,7 +7470,7 @@
       "orig": "Privacy policy",
       "text": "Privacy policy",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/400",
@@ -7484,7 +7484,7 @@
       "orig": "About Wikipedia",
       "text": "About Wikipedia",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/401",
@@ -7498,7 +7498,7 @@
       "orig": "Disclaimers",
       "text": "Disclaimers",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/402",
@@ -7512,7 +7512,7 @@
       "orig": "Contact Wikipedia",
       "text": "Contact Wikipedia",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/403",
@@ -7526,7 +7526,7 @@
       "orig": "Code of Conduct",
       "text": "Code of Conduct",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/404",
@@ -7540,7 +7540,7 @@
       "orig": "Developers",
       "text": "Developers",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/405",
@@ -7554,7 +7554,7 @@
       "orig": "Statistics",
       "text": "Statistics",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/406",
@@ -7568,7 +7568,7 @@
       "orig": "Cookie statement",
       "text": "Cookie statement",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/407",
@@ -7582,7 +7582,7 @@
       "orig": "Mobile view",
       "text": "Mobile view",
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     }
   ],
   "pictures": [
@@ -8489,7 +8489,8 @@
             }
           ]
         ]
-      }
+      },
+      "annotations": []
     },
     {
       "self_ref": "#/tables/1",
@@ -8648,7 +8649,8 @@
             }
           ]
         ]
-      }
+      },
+      "annotations": []
     }
   ],
   "key_value_items": [],

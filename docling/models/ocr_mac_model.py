@@ -8,10 +8,10 @@ from typing import Optional, Type
 from docling_core.types.doc import BoundingBox, CoordOrigin
 from docling_core.types.doc.page import BoundingRectangle, TextCell
 
+from docling.datamodel.accelerator_options import AcceleratorOptions
 from docling.datamodel.base_models import Page
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import (
-    AcceleratorOptions,
     OcrMacOptions,
     OcrOptions,
 )
@@ -132,7 +132,7 @@ class OcrMacModel(BaseOcrModel):
                         all_ocr_cells.extend(cells)
 
                     # Post-process the cells
-                    page.cells = self.post_process_cells(all_ocr_cells, page.cells)
+                    self.post_process_cells(all_ocr_cells, page)
 
                 # DEBUG code:
                 if settings.debug.visualize_ocr:

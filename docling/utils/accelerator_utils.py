@@ -1,13 +1,14 @@
 import logging
+from typing import List, Optional
 
-import torch
-
-from docling.datamodel.pipeline_options import AcceleratorDevice
+from docling.datamodel.accelerator_options import AcceleratorDevice
 
 _log = logging.getLogger(__name__)
 
 
-def decide_device(accelerator_device: str) -> str:
+def decide_device(
+    accelerator_device: str, supported_devices: Optional[List[AcceleratorDevice]] = None
+) -> str:
     r"""
     Resolve the device based on the acceleration options and the available devices in the system.
 
@@ -15,10 +16,24 @@ def decide_device(accelerator_device: str) -> str:
     1. AUTO: Check for the best available device on the system.
     2. User-defined: Check if the device actually exists, otherwise fall-back to CPU
     """
+    import torch
+
     device = "cpu"
 
     has_cuda = torch.backends.cuda.is_built() and torch.cuda.is_available()
     has_mps = torch.backends.mps.is_built() and torch.backends.mps.is_available()
+
+    if supported_devices is not None:
+        if has_cuda and AcceleratorDevice.CUDA not in supported_devices:
+            _log.info(
+                f"Removing CUDA from available devices because it is not in {supported_devices=}"
+            )
+            has_cuda = False
+        if has_mps and AcceleratorDevice.MPS not in supported_devices:
+            _log.info(
+                f"Removing MPS from available devices because it is not in {supported_devices=}"
+            )
+            has_mps = False
 
     if accelerator_device == AcceleratorDevice.AUTO.value:  # Handle 'auto'
         if has_cuda:

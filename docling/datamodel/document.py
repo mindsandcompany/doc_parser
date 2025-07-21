@@ -14,6 +14,7 @@ from typing import (
     Set,
     Type,
     Union,
+    Any,
 )
 
 import filetype
@@ -47,7 +48,7 @@ from docling_core.types.legacy_doc.document import (
 )
 from docling_core.utils.file import resolve_source_to_stream
 from docling_core.utils.legacy import docling_document_to_legacy
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing_extensions import deprecated
 
 from docling.backend.abstract_backend import (
@@ -56,6 +57,7 @@ from docling.backend.abstract_backend import (
 )
 from docling.datamodel.base_models import (
     AssembledUnit,
+    ConfidenceReport,
     ConversionStatus,
     DocumentStream,
     ErrorItem,
@@ -206,8 +208,10 @@ class ConversionResult(BaseModel):
     pages: List[Page] = []
     assembled: AssembledUnit = AssembledUnit()
     timings: Dict[str, ProfilingItem] = {}
+    confidence: ConfidenceReport = Field(default_factory=ConfidenceReport)
 
     document: DoclingDocument = _EMPTY_DOCLING_DOC
+    metadata: Optional[Dict[str, Any]] = None  # 추출된 메타데이터
 
     @property
     @deprecated("Use document instead.")
@@ -252,7 +256,7 @@ class _DocumentConversionInput(BaseModel):
             backend: Type[AbstractDocumentBackend]
             if format not in format_options.keys():
                 _log.error(
-                    f"Input document {obj.name} does not match any allowed format."
+                    f"Input document {obj.name} with format {format} does not match any allowed format: ({format_options.keys()})"
                 )
                 backend = _DummyBackend
             else:
@@ -325,6 +329,8 @@ class _DocumentConversionInput(BaseModel):
         mime = mime or _DocumentConversionInput._detect_csv(content)
         mime = mime or "text/plain"
         formats = MimeTypeToFormat.get(mime, [])
+        _log.info(f"detected formats: {formats}")
+
         if formats:
             if len(formats) == 1 and mime not in ("text/plain"):
                 return formats[0]
@@ -341,11 +347,11 @@ class _DocumentConversionInput(BaseModel):
     ) -> Optional[InputFormat]:
         """Guess the input format of a document by checking part of its content."""
         input_format: Optional[InputFormat] = None
-        
+
         # HWP/HWPX 파일은 바이너리이므로 UTF-8 디코딩 시도하지 않음
         if any(fmt in formats for fmt in [InputFormat.HWP, InputFormat.XML_HWPX]):
             return formats[0] if formats else None
-        
+
         try:
             content_str = content.decode("utf-8")
         except UnicodeDecodeError:
@@ -353,6 +359,7 @@ class _DocumentConversionInput(BaseModel):
             return formats[0] if formats else None
 
         if mime == "application/xml":
+            content_str = content.decode("utf-8")
             match_doctype = re.search(r"<!DOCTYPE [^>]+>", content_str)
             if match_doctype:
                 xml_doctype = match_doctype.group()
@@ -374,6 +381,7 @@ class _DocumentConversionInput(BaseModel):
                     input_format = InputFormat.XML_JATS
 
         elif mime == "text/plain":
+            content_str = content.decode("utf-8")
             if InputFormat.XML_USPTO in formats and content_str.startswith("PATN\r\n"):
                 input_format = InputFormat.XML_USPTO
 
@@ -431,7 +439,11 @@ class _DocumentConversionInput(BaseModel):
             else:
                 return "application/xml"
 
-        if re.match(r"<!doctype\s+html|<html|<head|<body", content_str):
+        if re.match(
+            r"(<script.*?>.*?</script>\s*)?(<!doctype\s+html|<html|<head|<body)",
+            content_str,
+            re.DOTALL,
+        ):
             return "text/html"
 
         p = re.compile(

@@ -3,12 +3,14 @@ import warnings
 from pathlib import Path
 from typing import Optional, cast
 
+import numpy as np
 from docling_core.types.doc import DocItem, ImageRef, PictureItem, TableItem
 
 from docling.backend.abstract_backend import AbstractDocumentBackend
 from docling.backend.pdf_backend import PdfDocumentBackend
 from docling.datamodel.base_models import AssembledUnit, Page
 from docling.datamodel.document import ConversionResult
+from docling.datamodel.layout_model_specs import LayoutModelConfig
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.datamodel.settings import settings
 from docling.models.base_ocr_model import BaseOcrModel
@@ -35,9 +37,6 @@ _log = logging.getLogger(__name__)
 
 
 class StandardPdfPipeline(PaginatedPipeline):
-    _layout_model_path = LayoutModel._model_path
-    _table_model_path = TableStructureModel._model_path
-
     def __init__(self, pipeline_options: PdfPipelineOptions):
         super().__init__(pipeline_options)
         self.pipeline_options: PdfPipelineOptions
@@ -54,13 +53,15 @@ class StandardPdfPipeline(PaginatedPipeline):
                 "When defined, it must point to a folder containing all models required by the pipeline."
             )
 
-        self.keep_images = (
-            self.pipeline_options.generate_page_images
-            or self.pipeline_options.generate_picture_images
-            or self.pipeline_options.generate_table_images
-        )
+        with warnings.catch_warnings():  # deprecated generate_table_images
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            self.keep_images = (
+                self.pipeline_options.generate_page_images
+                or self.pipeline_options.generate_picture_images
+                or self.pipeline_options.generate_table_images
+            )
 
-        self.glm_model = ReadingOrderModel(options=ReadingOrderOptions())
+        self.reading_order_model = ReadingOrderModel(options=ReadingOrderOptions())
 
         ocr_model = self.get_ocr_model(artifacts_path=artifacts_path)
 
@@ -69,7 +70,6 @@ class StandardPdfPipeline(PaginatedPipeline):
             PagePreprocessingModel(
                 options=PagePreprocessingOptions(
                     images_scale=pipeline_options.images_scale,
-                    create_parsed_page=pipeline_options.generate_parsed_pages,
                 )
             ),
             # OCR
@@ -78,6 +78,7 @@ class StandardPdfPipeline(PaginatedPipeline):
             LayoutModel(
                 artifacts_path=artifacts_path,
                 accelerator_options=pipeline_options.accelerator_options,
+                options=pipeline_options.layout_options,
             ),
             # Table structure model
             TableStructureModel(
@@ -126,6 +127,7 @@ class StandardPdfPipeline(PaginatedPipeline):
         if (
             self.pipeline_options.do_formula_enrichment
             or self.pipeline_options.do_code_enrichment
+            or self.pipeline_options.do_picture_classification
             or self.pipeline_options.do_picture_description
         ):
             self.keep_backend = True
@@ -197,7 +199,7 @@ class StandardPdfPipeline(PaginatedPipeline):
                 elements=all_elements, headers=all_headers, body=all_body
             )
 
-            conv_res.document = self.glm_model(conv_res)
+            conv_res.document = self.reading_order_model(conv_res)
 
             # Generate page images in the output
             if self.pipeline_options.generate_page_images:
@@ -209,40 +211,74 @@ class StandardPdfPipeline(PaginatedPipeline):
                     )
 
             # Generate images of the requested element types
-            if (
-                self.pipeline_options.generate_picture_images
-                or self.pipeline_options.generate_table_images
-            ):
-                scale = self.pipeline_options.images_scale
-                for element, _level in conv_res.document.iterate_items():
-                    if not isinstance(element, DocItem) or len(element.prov) == 0:
-                        continue
-                    if (
-                        isinstance(element, PictureItem)
-                        and self.pipeline_options.generate_picture_images
-                    ) or (
-                        isinstance(element, TableItem)
-                        and self.pipeline_options.generate_table_images
-                    ):
-                        page_ix = element.prov[0].page_no - 1
-                        page = next(
-                            (p for p in conv_res.pages if p.page_no == page_ix),
-                            cast("Page", None),
-                        )
-                        assert page is not None
-                        assert page.size is not None
-                        assert page.image is not None
+            with warnings.catch_warnings():  # deprecated generate_table_images
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                if (
+                    self.pipeline_options.generate_picture_images
+                    or self.pipeline_options.generate_table_images
+                ):
+                    scale = self.pipeline_options.images_scale
+                    for element, _level in conv_res.document.iterate_items():
+                        if not isinstance(element, DocItem) or len(element.prov) == 0:
+                            continue
+                        if (
+                            isinstance(element, PictureItem)
+                            and self.pipeline_options.generate_picture_images
+                        ) or (
+                            isinstance(element, TableItem)
+                            and self.pipeline_options.generate_table_images
+                        ):
+                            page_ix = element.prov[0].page_no - 1
+                            page = next(
+                                (p for p in conv_res.pages if p.page_no == page_ix),
+                                cast("Page", None),
+                            )
+                            assert page is not None
+                            assert page.size is not None
+                            assert page.image is not None
 
-                        crop_bbox = (
-                            element.prov[0]
-                            .bbox.scaled(scale=scale)
-                            .to_top_left_origin(page_height=page.size.height * scale)
-                        )
+                            crop_bbox = (
+                                element.prov[0]
+                                .bbox.scaled(scale=scale)
+                                .to_top_left_origin(
+                                    page_height=page.size.height * scale
+                                )
+                            )
 
-                        cropped_im = page.image.crop(crop_bbox.as_tuple())
-                        element.image = ImageRef.from_pil(
-                            cropped_im, dpi=int(72 * scale)
+                            cropped_im = page.image.crop(crop_bbox.as_tuple())
+                            element.image = ImageRef.from_pil(
+                                cropped_im, dpi=int(72 * scale)
+                            )
+
+            # Aggregate confidence values for document:
+            if len(conv_res.pages) > 0:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        category=RuntimeWarning,
+                        message="Mean of empty slice|All-NaN slice encountered",
+                    )
+                    conv_res.confidence.layout_score = float(
+                        np.nanmean(
+                            [c.layout_score for c in conv_res.confidence.pages.values()]
                         )
+                    )
+                    conv_res.confidence.parse_score = float(
+                        np.nanquantile(
+                            [c.parse_score for c in conv_res.confidence.pages.values()],
+                            q=0.1,  # parse score should relate to worst 10% of pages.
+                        )
+                    )
+                    conv_res.confidence.table_score = float(
+                        np.nanmean(
+                            [c.table_score for c in conv_res.confidence.pages.values()]
+                        )
+                    )
+                    conv_res.confidence.ocr_score = float(
+                        np.nanmean(
+                            [c.ocr_score for c in conv_res.confidence.pages.values()]
+                        )
+                    )
 
         return conv_res
 

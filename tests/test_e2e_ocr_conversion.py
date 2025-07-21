@@ -1,12 +1,15 @@
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
+from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
+from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+from docling.datamodel.accelerator_options import AcceleratorDevice
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import (
-    AcceleratorDevice,
     EasyOcrOptions,
     OcrMacOptions,
     OcrOptions,
@@ -18,9 +21,8 @@ from docling.datamodel.pipeline_options import (
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
 from .test_data_gen_flag import GEN_TEST_DATA
-from .verify_utils import verify_conversion_result_v1, verify_conversion_result_v2
+from .verify_utils import verify_conversion_result_v2
 
-GENERATE_V1 = GEN_TEST_DATA
 GENERATE_V2 = GEN_TEST_DATA
 
 
@@ -45,7 +47,7 @@ def get_converter(ocr_options: OcrOptions):
         format_options={
             InputFormat.PDF: PdfFormatOption(
                 pipeline_options=pipeline_options,
-                backend=DoclingParseDocumentBackend,
+                backend=DoclingParseDocumentBackend,  # PdfFormatOption().backend,
             )
         }
     )
@@ -56,43 +58,38 @@ def get_converter(ocr_options: OcrOptions):
 def test_e2e_conversions():
     pdf_paths = get_pdf_paths()
 
-    engines: List[OcrOptions] = [
-        EasyOcrOptions(),
-        TesseractOcrOptions(),
-        TesseractCliOcrOptions(),
-        EasyOcrOptions(force_full_page_ocr=True),
-        TesseractOcrOptions(force_full_page_ocr=True),
-        TesseractOcrOptions(force_full_page_ocr=True, lang=["auto"]),
-        TesseractCliOcrOptions(force_full_page_ocr=True),
-        TesseractCliOcrOptions(force_full_page_ocr=True, lang=["auto"]),
+    engines: List[Tuple[OcrOptions, bool]] = [
+        (TesseractOcrOptions(), True),
+        (TesseractCliOcrOptions(), True),
+        (EasyOcrOptions(), False),
+        (TesseractOcrOptions(force_full_page_ocr=True), True),
+        (TesseractOcrOptions(force_full_page_ocr=True, lang=["auto"]), True),
+        (TesseractCliOcrOptions(force_full_page_ocr=True), True),
+        (TesseractCliOcrOptions(force_full_page_ocr=True, lang=["auto"]), True),
+        (EasyOcrOptions(force_full_page_ocr=True), False),
     ]
 
     # rapidocr is only available for Python >=3.6,<3.13
     if sys.version_info < (3, 13):
-        engines.append(RapidOcrOptions())
-        engines.append(RapidOcrOptions(force_full_page_ocr=True))
+        engines.append((RapidOcrOptions(), False))
+        engines.append((RapidOcrOptions(force_full_page_ocr=True), False))
 
     # only works on mac
     if "darwin" == sys.platform:
-        engines.append(OcrMacOptions())
-        engines.append(OcrMacOptions(force_full_page_ocr=True))
+        engines.append((OcrMacOptions(), True))
+        engines.append((OcrMacOptions(force_full_page_ocr=True), True))
 
-    for ocr_options in engines:
+    for ocr_options, supports_rotation in engines:
         print(
             f"Converting with ocr_engine: {ocr_options.kind}, language: {ocr_options.lang}"
         )
         converter = get_converter(ocr_options=ocr_options)
         for pdf_path in pdf_paths:
+            if not supports_rotation and "rotated" in pdf_path.name:
+                continue
             print(f"converting {pdf_path}")
 
             doc_result: ConversionResult = converter.convert(pdf_path)
-
-            verify_conversion_result_v1(
-                input_path=pdf_path,
-                doc_result=doc_result,
-                generate=GENERATE_V1,
-                fuzzy=True,
-            )
 
             verify_conversion_result_v2(
                 input_path=pdf_path,

@@ -8,7 +8,8 @@ from docling_core.types.doc import DocItemLabel, Size
 from docling_core.types.doc.page import TextCell
 from rtree import index
 
-from docling.datamodel.base_models import BoundingBox, Cluster
+from docling.datamodel.base_models import BoundingBox, Cluster, Page
+from docling.datamodel.pipeline_options import LayoutOptions
 
 _log = logging.getLogger(__name__)
 
@@ -90,17 +91,12 @@ class SpatialClusterIndex:
         containment_threshold: float,
     ) -> bool:
         """Check if two bboxes overlap sufficiently."""
-        area1, area2 = bbox1.area(), bbox2.area()
-        if area1 <= 0 or area2 <= 0:
+        if bbox1.area() <= 0 or bbox2.area() <= 0:
             return False
 
-        overlap_area = bbox1.intersection_area_with(bbox2)
-        if overlap_area <= 0:
-            return False
-
-        iou = overlap_area / (area1 + area2 - overlap_area)
-        containment1 = overlap_area / area1
-        containment2 = overlap_area / area2
+        iou = bbox1.intersection_over_union(bbox2)
+        containment1 = bbox1.intersection_over_self(bbox2)
+        containment2 = bbox2.intersection_over_self(bbox1)
 
         return (
             iou > overlap_threshold
@@ -199,12 +195,16 @@ class LayoutPostprocessor:
         DocItemLabel.TITLE: DocItemLabel.SECTION_HEADER,
     }
 
-    def __init__(self, cells: List[TextCell], clusters: List[Cluster], page_size: Size):
-        """Initialize processor with cells and clusters."""
-        """Initialize processor with cells and spatial indices."""
-        self.cells = cells
-        self.page_size = page_size
+    def __init__(
+        self, page: Page, clusters: List[Cluster], options: LayoutOptions
+    ) -> None:
+        """Initialize processor with page and clusters."""
+
+        self.cells = page.cells
+        self.page = page
+        self.page_size = page.size
         self.all_clusters = clusters
+        self.options = options
         self.regular_clusters = [
             c for c in clusters if c.label not in self.SPECIAL_TYPES
         ]
@@ -245,6 +245,10 @@ class LayoutPostprocessor:
             for child in cluster.children:
                 child.cells = self._sort_cells(child.cells)
 
+        assert self.page.parsed_page is not None
+        self.page.parsed_page.textline_cells = self.cells
+        self.page.parsed_page.has_lines = len(self.cells) > 0
+
         return final_clusters, self.cells
 
     def _process_regular_clusters(self) -> List[Cluster]:
@@ -268,7 +272,7 @@ class LayoutPostprocessor:
 
         # Handle orphaned cells
         unassigned = self._find_unassigned_cells(clusters)
-        if unassigned:
+        if unassigned and self.options.create_orphan_clusters:
             next_id = max((c.id for c in self.all_clusters), default=0) + 1
             orphan_clusters = []
             for i, cell in enumerate(unassigned):
@@ -306,6 +310,7 @@ class LayoutPostprocessor:
         special_clusters = self._handle_cross_type_overlaps(special_clusters)
 
         # Calculate page area from known page size
+        assert self.page_size is not None
         page_area = self.page_size.width * self.page_size.height
         if page_area > 0:
             # Filter out full-page pictures
@@ -321,11 +326,9 @@ class LayoutPostprocessor:
         for special in special_clusters:
             contained = []
             for cluster in self.regular_clusters:
-                overlap = cluster.bbox.intersection_area_with(special.bbox)
-                if overlap > 0:
-                    containment = overlap / cluster.bbox.area()
-                    if containment > 0.8:
-                        contained.append(cluster)
+                containment = cluster.bbox.intersection_over_self(special.bbox)
+                if containment > 0.8:
+                    contained.append(cluster)
 
             if contained:
                 # Sort contained clusters by minimum cell ID:
@@ -379,9 +382,7 @@ class LayoutPostprocessor:
             for regular in self.regular_clusters:
                 if regular.label == DocItemLabel.TABLE:
                     # Calculate overlap
-                    overlap = regular.bbox.intersection_area_with(wrapper.bbox)
-                    wrapper_area = wrapper.bbox.area()
-                    overlap_ratio = overlap / wrapper_area
+                    overlap_ratio = wrapper.bbox.intersection_over_self(regular.bbox)
 
                     conf_diff = wrapper.confidence - regular.confidence
 
@@ -421,8 +422,7 @@ class LayoutPostprocessor:
         # Rule 2: CODE vs others
         if candidate.label == DocItemLabel.CODE:
             # Calculate how much of the other cluster is contained within the CODE cluster
-            overlap = other.bbox.intersection_area_with(candidate.bbox)
-            containment = overlap / other.bbox.area()
+            containment = other.bbox.intersection_over_self(candidate.bbox)
             if containment > 0.8:  # other is 80% contained within CODE
                 return True
 
@@ -586,11 +586,9 @@ class LayoutPostprocessor:
                 if cell.rect.to_bounding_box().area() <= 0:
                     continue
 
-                overlap = cell.rect.to_bounding_box().intersection_area_with(
+                overlap_ratio = cell.rect.to_bounding_box().intersection_over_self(
                     cluster.bbox
                 )
-                overlap_ratio = overlap / cell.rect.to_bounding_box().area()
-
                 if overlap_ratio > best_overlap:
                     best_overlap = overlap_ratio
                     best_cluster = cluster

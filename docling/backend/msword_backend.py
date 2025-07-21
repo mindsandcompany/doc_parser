@@ -10,6 +10,7 @@ from docling_core.types.doc import (
     DocumentOrigin,
     GroupLabel,
     ImageRef,
+    ListGroup,
     NodeItem,
     TableCell,
     TableData,
@@ -60,8 +61,6 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         self.equation_bookends: str = "<eq>{EQ}</eq>"
         # Track processed textbox elements to avoid duplication
         self.processed_textbox_elements: List[int] = []
-        # Track content hash of processed paragraphs to avoid duplicate content
-        self.processed_paragraph_content: List[str] = []
 
         for i in range(-1, self.max_levels):
             self.parents[i] = None
@@ -86,7 +85,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             self.valid = True
         except Exception as e:
             raise RuntimeError(
-                f"MsPowerpointDocumentBackend could not load document with hash {self.document_hash}"
+                f"MsWordDocumentBackend could not load document with hash {self.document_hash}"
             ) from e
 
     @override
@@ -253,9 +252,15 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
                     self._handle_tables(element, docx_obj, doc)
                 except Exception:
                     _log.debug("could not parse a table, broken docx table")
-
+            # Check for Image
             elif drawing_blip:
                 self._handle_pictures(docx_obj, drawing_blip, doc)
+                # Check for Text after the Image
+                if (
+                    tag_name in ["p"]
+                    and element.find(".//w:t", namespaces=namespaces) is not None
+                ):
+                    self._handle_text_elements(element, docx_obj, doc)
             # Check for the sdt containers, like table of contents
             elif tag_name in ["sdt"]:
                 sdt_content = element.find(".//w:sdtContent", namespaces=namespaces)
@@ -270,6 +275,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
                 self._handle_text_elements(element, docx_obj, doc)
             else:
                 _log.debug(f"Ignoring element in DOCX with tag: {tag_name}")
+
         return doc
 
     def _str_to_int(
@@ -392,7 +398,11 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             if isinstance(c, Hyperlink):
                 text = c.text
                 hyperlink = Path(c.address)
-                format = self._get_format_from_run(c.runs[0])
+                format = (
+                    self._get_format_from_run(c.runs[0])
+                    if c.runs and len(c.runs) > 0
+                    else None
+                )
             elif isinstance(c, Run):
                 text = c.text
                 hyperlink = None
@@ -580,7 +590,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         all_paragraphs = []
 
         # Sort paragraphs within each container, then process containers
-        for container_id, paragraphs in container_paragraphs.items():
+        for paragraphs in container_paragraphs.values():
             # Sort by vertical position within each container
             sorted_container_paragraphs = sorted(
                 paragraphs,
@@ -593,9 +603,29 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             # Add the sorted paragraphs to our processing list
             all_paragraphs.extend(sorted_container_paragraphs)
 
+        # Track processed paragraphs to avoid duplicates (same content and position)
+        processed_paragraphs = set()
+
         # Process all the paragraphs
-        for p, _ in all_paragraphs:
-            self._handle_text_elements(p, docx_obj, doc, is_from_textbox=True)
+        for p, position in all_paragraphs:
+            # Create paragraph object to get text content
+            paragraph = Paragraph(p, docx_obj)
+            text_content = paragraph.text
+
+            # Create a unique identifier based on content and position
+            paragraph_id = (text_content, position)
+
+            # Skip if this paragraph (same content and position) was already processed
+            if paragraph_id in processed_paragraphs:
+                _log.debug(
+                    f"Skipping duplicate paragraph: content='{text_content[:50]}...', position={position}"
+                )
+                continue
+
+            # Mark this paragraph as processed
+            processed_paragraphs.add(paragraph_id)
+
+            self._handle_text_elements(p, docx_obj, doc)
 
         # Restore original parent
         self.parents[level] = original_parent
@@ -659,7 +689,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         paragraph_elements: list,
     ) -> Optional[NodeItem]:
         return (
-            doc.add_group(label=GroupLabel.INLINE, parent=prev_parent)
+            doc.add_inline_group(parent=prev_parent)
             if len(paragraph_elements) > 1
             else prev_parent
         )
@@ -669,26 +699,15 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         element: BaseOxmlElement,
         docx_obj: DocxDocument,
         doc: DoclingDocument,
-        is_from_textbox: bool = False,
     ) -> None:
         paragraph = Paragraph(element, docx_obj)
-
-        # Skip if from a textbox and this exact paragraph content was already processed
-        # Skip if from a textbox and this exact paragraph content was already processed
-        raw_text = paragraph.text
-        if is_from_textbox and raw_text:
-            # Create a simple hash of content to detect duplicates
-            content_hash = f"{len(raw_text)}:{raw_text[:50]}"
-            if content_hash in self.processed_paragraph_content:
-                _log.debug(f"Skipping duplicate paragraph content: {content_hash}")
-                return
-            self.processed_paragraph_content.append(content_hash)
-
-        text, equations = self._handle_equations_in_text(element=element, text=raw_text)
+        paragraph_elements = self._get_paragraph_elements(paragraph)
+        text, equations = self._handle_equations_in_text(
+            element=element, text=paragraph.text
+        )
 
         if text is None:
             return
-        paragraph_elements = self._get_paragraph_elements(paragraph)
         text = text.strip()
 
         # Common styles for bullet and numbered lists.
@@ -750,7 +769,9 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             self._add_header(doc, p_level, text, is_numbered_style)
 
         elif len(equations) > 0:
-            if (raw_text is None or len(raw_text.strip()) == 0) and len(text) > 0:
+            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
+                text
+            ) > 0:
                 # Standalone equation
                 level = self._get_level()
                 doc.add_text(
@@ -761,9 +782,7 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             else:
                 # Inline equation
                 level = self._get_level()
-                inline_equation = doc.add_group(
-                    label=GroupLabel.INLINE, parent=self.parents[level - 1]
-                )
+                inline_equation = doc.add_inline_group(parent=self.parents[level - 1])
                 text_tmp = text
                 for eq in equations:
                     if len(text_tmp) == 0:
@@ -902,6 +921,49 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         )
         return
 
+    def _add_formatted_list_item(
+        self,
+        doc: DoclingDocument,
+        elements: list,
+        marker: str,
+        enumerated: bool,
+        level: int,
+    ) -> None:
+        # This should not happen by construction
+        if not isinstance(self.parents[level], ListGroup):
+            return
+        if not elements:
+            return
+
+        if len(elements) == 1:
+            text, format, hyperlink = elements[0]
+            if text:
+                doc.add_list_item(
+                    marker=marker,
+                    enumerated=enumerated,
+                    parent=self.parents[level],
+                    text=text,
+                    formatting=format,
+                    hyperlink=hyperlink,
+                )
+        else:
+            new_item = doc.add_list_item(
+                marker=marker,
+                enumerated=enumerated,
+                parent=self.parents[level],
+                text="",
+            )
+            new_parent = doc.add_inline_group(parent=new_item)
+            for text, format, hyperlink in elements:
+                if text:
+                    doc.add_text(
+                        label=DocItemLabel.TEXT,
+                        parent=new_parent,
+                        text=text,
+                        formatting=format,
+                        hyperlink=hyperlink,
+                    )
+
     def _add_list_item(
         self,
         *,
@@ -911,6 +973,9 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         elements: list,
         is_numbered: bool = False,
     ) -> None:
+        # TODO: this method is always called with is_numbered. Numbered lists should be properly addressed.
+        if not elements:
+            return None
         enum_marker = ""
 
         level = self._get_level()
@@ -918,8 +983,8 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
         if self._prev_numid() is None:  # Open new list
             self.level_at_new_list = level
 
-            self.parents[level] = doc.add_group(
-                label=GroupLabel.LIST, name="list", parent=self.parents[level - 1]
+            self.parents[level] = doc.add_list_group(
+                name="list", parent=self.parents[level - 1]
             )
 
             # Set marker and enumerated arguments if this is an enumeration element.
@@ -927,21 +992,9 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             if is_numbered:
                 enum_marker = str(self.listIter) + "."
                 is_numbered = True
-            new_parent = self._create_or_reuse_parent(
-                doc=doc,
-                prev_parent=self.parents[level],
-                paragraph_elements=elements,
+            self._add_formatted_list_item(
+                doc, elements, enum_marker, is_numbered, level
             )
-            for text, format, hyperlink in elements:
-                doc.add_list_item(
-                    marker=enum_marker,
-                    enumerated=is_numbered,
-                    parent=new_parent,
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                )
-
         elif (
             self._prev_numid() == numid
             and self.level_at_new_list is not None
@@ -952,47 +1005,30 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
                 self.level_at_new_list + prev_indent + 1,
                 self.level_at_new_list + ilevel + 1,
             ):
-                # Determine if this is an unordered list or an ordered list.
-                # Set GroupLabel.ORDERED_LIST when it fits.
                 self.listIter = 0
-                if is_numbered:
-                    self.parents[i] = doc.add_group(
-                        label=GroupLabel.ORDERED_LIST,
-                        name="list",
-                        parent=self.parents[i - 1],
-                    )
-                else:
-                    self.parents[i] = doc.add_group(
-                        label=GroupLabel.LIST, name="list", parent=self.parents[i - 1]
-                    )
+                self.parents[i] = doc.add_list_group(
+                    name="list", parent=self.parents[i - 1]
+                )
 
             # TODO: Set marker and enumerated arguments if this is an enumeration element.
             self.listIter += 1
             if is_numbered:
                 enum_marker = str(self.listIter) + "."
                 is_numbered = True
-
-            new_parent = self._create_or_reuse_parent(
-                doc=doc,
-                prev_parent=self.parents[self.level_at_new_list + ilevel],
-                paragraph_elements=elements,
+            self._add_formatted_list_item(
+                doc,
+                elements,
+                enum_marker,
+                is_numbered,
+                self.level_at_new_list + ilevel,
             )
-            for text, format, hyperlink in elements:
-                doc.add_list_item(
-                    marker=enum_marker,
-                    enumerated=is_numbered,
-                    parent=new_parent,
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                )
         elif (
             self._prev_numid() == numid
             and self.level_at_new_list is not None
             and prev_indent is not None
             and ilevel < prev_indent
         ):  # Close list
-            for k, v in self.parents.items():
+            for k in self.parents:
                 if k > self.level_at_new_list + ilevel:
                     self.parents[k] = None
 
@@ -1001,20 +1037,13 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             if is_numbered:
                 enum_marker = str(self.listIter) + "."
                 is_numbered = True
-            new_parent = self._create_or_reuse_parent(
-                doc=doc,
-                prev_parent=self.parents[self.level_at_new_list + ilevel],
-                paragraph_elements=elements,
+            self._add_formatted_list_item(
+                doc,
+                elements,
+                enum_marker,
+                is_numbered,
+                self.level_at_new_list + ilevel,
             )
-            for text, format, hyperlink in elements:
-                doc.add_list_item(
-                    marker=enum_marker,
-                    enumerated=is_numbered,
-                    parent=new_parent,
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                )
             self.listIter = 0
 
         elif self._prev_numid() == numid or prev_indent == ilevel:
@@ -1023,21 +1052,10 @@ class MsWordDocumentBackend(DeclarativeDocumentBackend):
             if is_numbered:
                 enum_marker = str(self.listIter) + "."
                 is_numbered = True
-            new_parent = self._create_or_reuse_parent(
-                doc=doc,
-                prev_parent=self.parents[level - 1],
-                paragraph_elements=elements,
+            self._add_formatted_list_item(
+                doc, elements, enum_marker, is_numbered, level - 1
             )
-            for text, format, hyperlink in elements:
-                # Add the list item to the parent group
-                doc.add_list_item(
-                    marker=enum_marker,
-                    enumerated=is_numbered,
-                    parent=new_parent,
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                )
+
         return
 
     def _handle_tables(

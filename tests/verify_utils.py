@@ -4,12 +4,17 @@ import warnings
 from pathlib import Path
 from typing import List, Optional
 
+import pytest
 from docling_core.types.doc import (
     DocItem,
     DoclingDocument,
     PictureItem,
     TableItem,
     TextItem,
+)
+from docling_core.types.doc.base import (
+    BoundingBox,
+    PydanticSerCtxKey,
 )
 from docling_core.types.legacy_doc.document import ExportedCCSDocument as DsDocument
 from PIL import Image as PILImage
@@ -18,6 +23,9 @@ from pydantic.json import pydantic_encoder
 
 from docling.datamodel.base_models import ConversionStatus, Page
 from docling.datamodel.document import ConversionResult
+
+COORD_PREC = 2  # decimal places for coordinates
+CONFID_PREC = 3  # decimal places for confidence
 
 
 def levenshtein(str1: str, str2: str) -> int:
@@ -75,9 +83,13 @@ def verify_cells(doc_pred_pages: List[Page], doc_true_pages: List[Page]):
             assert true_text == pred_text, f"{true_text}!={pred_text}"
 
             true_bbox = cell_true_item.rect.to_bounding_box().as_tuple()
-            pred_bbox = cell_pred_item.rect.to_bounding_box().as_tuple()
-            assert true_bbox == pred_bbox, (
-                f"bbox is not the same: {true_bbox} != {pred_bbox}"
+            norm_pred_bbox = BoundingBox.model_validate_json(
+                cell_pred_item.rect.to_bounding_box().model_dump_json(
+                    context={PydanticSerCtxKey.COORD_PREC.value: COORD_PREC}
+                )
+            ).as_tuple()
+            assert true_bbox == norm_pred_bbox, (
+                f"bbox is not the same: {true_bbox} != {norm_pred_bbox}"
             )
 
     return True
@@ -302,9 +314,8 @@ def verify_conversion_result_v1(
     )
 
     doc_pred_pages: List[Page] = doc_result.pages
-    doc_pred: DsDocument = doc_result.legacy_document
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
+    with pytest.warns(DeprecationWarning, match="Use document instead"):
+        doc_pred: DsDocument = doc_result.legacy_document
         doc_pred_md = doc_result.legacy_document.export_to_markdown()
         doc_pred_dt = doc_result.legacy_document.export_to_document_tokens()
 
@@ -323,33 +334,33 @@ def verify_conversion_result_v1(
 
     if generate:  # only used when re-generating truth
         pages_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(pages_path, "w") as fw:
+        with open(pages_path, mode="w", encoding="utf-8") as fw:
             fw.write(
                 json.dumps(doc_pred_pages, default=pydantic_encoder, indent=indent)
             )
 
         json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(json_path, "w") as fw:
+        with open(json_path, mode="w", encoding="utf-8") as fw:
             fw.write(json.dumps(doc_pred, default=pydantic_encoder, indent=indent))
 
         md_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(md_path, "w") as fw:
+        with open(md_path, mode="w", encoding="utf-8") as fw:
             fw.write(doc_pred_md)
 
         dt_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(dt_path, "w") as fw:
+        with open(dt_path, mode="w", encoding="utf-8") as fw:
             fw.write(doc_pred_dt)
     else:  # default branch in test
-        with open(pages_path) as fr:
+        with open(pages_path, encoding="utf-8") as fr:
             doc_true_pages = PageList.validate_json(fr.read())
 
-        with open(json_path) as fr:
+        with open(json_path, encoding="utf-8") as fr:
             doc_true: DsDocument = DsDocument.model_validate_json(fr.read())
 
-        with open(md_path) as fr:
+        with open(md_path, encoding="utf-8") as fr:
             doc_true_md = fr.read()
 
-        with open(dt_path) as fr:
+        with open(dt_path, encoding="utf-8") as fr:
             doc_true_dt = fr.read()
 
         if not fuzzy:
@@ -391,7 +402,7 @@ def verify_conversion_result_v2(
     doc_pred_pages: List[Page] = doc_result.pages
     doc_pred: DoclingDocument = doc_result.document
     doc_pred_md = doc_result.document.export_to_markdown()
-    doc_pred_dt = doc_result.document.export_to_document_tokens()
+    doc_pred_dt = doc_result.document.export_to_doctags()
 
     engine_suffix = "" if ocr_engine is None else f".{ocr_engine}"
 
@@ -408,33 +419,43 @@ def verify_conversion_result_v2(
 
     if generate:  # only used when re-generating truth
         pages_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(pages_path, "w") as fw:
-            fw.write(
-                json.dumps(doc_pred_pages, default=pydantic_encoder, indent=indent)
+
+        pages_data = [
+            page.model_dump(
+                mode="json",
+                context={
+                    PydanticSerCtxKey.COORD_PREC.value: COORD_PREC,
+                    PydanticSerCtxKey.CONFID_PREC.value: CONFID_PREC,
+                },
             )
+            for page in doc_pred_pages
+        ]
+        with open(pages_path, mode="w", encoding="utf-8") as fw:
+            fw.write(json.dumps(pages_data, indent=indent))
 
         json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(json_path, "w") as fw:
-            fw.write(json.dumps(doc_pred, default=pydantic_encoder, indent=indent))
+        doc_pred.save_as_json(
+            json_path, coord_precision=COORD_PREC, confid_precision=CONFID_PREC
+        )
 
         md_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(md_path, "w") as fw:
+        with open(md_path, mode="w", encoding="utf-8") as fw:
             fw.write(doc_pred_md)
 
         dt_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(dt_path, "w") as fw:
+        with open(dt_path, mode="w", encoding="utf-8") as fw:
             fw.write(doc_pred_dt)
     else:  # default branch in test
-        with open(pages_path) as fr:
+        with open(pages_path, encoding="utf-8") as fr:
             doc_true_pages = PageList.validate_json(fr.read())
 
-        with open(json_path) as fr:
+        with open(json_path, encoding="utf-8") as fr:
             doc_true: DoclingDocument = DoclingDocument.model_validate_json(fr.read())
 
-        with open(md_path) as fr:
+        with open(md_path, encoding="utf-8") as fr:
             doc_true_md = fr.read()
 
-        with open(dt_path) as fr:
+        with open(dt_path, encoding="utf-8") as fr:
             doc_true_dt = fr.read()
 
         if not fuzzy:
@@ -461,12 +482,16 @@ def verify_conversion_result_v2(
 
 def verify_document(pred_doc: DoclingDocument, gtfile: str, generate: bool = False):
     if not os.path.exists(gtfile) or generate:
-        with open(gtfile, "w") as fw:
-            json.dump(pred_doc.export_to_dict(), fw, ensure_ascii=False, indent=2)
+        with open(gtfile, mode="w", encoding="utf-8") as fw:
+            pred_dict = pred_doc.export_to_dict(
+                coord_precision=COORD_PREC,
+                confid_precision=CONFID_PREC,
+            )
+            json.dump(pred_dict, fw, ensure_ascii=False, indent=2)
 
         return True
     else:
-        with open(gtfile) as fr:
+        with open(gtfile, encoding="utf-8") as fr:
             true_doc = DoclingDocument.model_validate_json(fr.read())
 
         return verify_docitems(pred_doc, true_doc, fuzzy=False)
@@ -476,11 +501,11 @@ def verify_export(pred_text: str, gtfile: str, generate: bool = False) -> bool:
     file = Path(gtfile)
 
     if not file.exists() or generate:
-        with file.open("w") as fw:
+        with file.open(mode="w", encoding="utf-8") as fw:
             fw.write(pred_text)
         return True
 
-    with file.open("r") as fr:
+    with file.open(encoding="utf-8") as fr:
         true_text = fr.read()
 
     return pred_text == true_text

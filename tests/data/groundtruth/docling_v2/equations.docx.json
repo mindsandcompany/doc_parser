@@ -1,6 +1,6 @@
 {
   "schema_name": "DoclingDocument",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "name": "equations",
   "origin": {
     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -245,7 +245,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "And that is an equation by itself. Cheers!",
-      "text": "And that is an equation by itself. Cheers!"
+      "text": "And that is an equation by itself. Cheers!",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/6",
@@ -269,7 +276,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "This is another equation:",
-      "text": "This is another equation:"
+      "text": "This is another equation:",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/8",
@@ -305,7 +319,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text.",
-      "text": "This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text."
+      "text": "This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text.",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/11",
@@ -413,7 +434,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "And that is an equation by itself. Cheers!",
-      "text": "And that is an equation by itself. Cheers!"
+      "text": "And that is an equation by itself. Cheers!",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/20",
@@ -437,7 +465,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "This is another equation:",
-      "text": "This is another equation:"
+      "text": "This is another equation:",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/22",
@@ -485,7 +520,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text.",
-      "text": "This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text."
+      "text": "This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text. This is text.",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/26",
@@ -593,7 +635,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "And that is an equation by itself. Cheers!",
-      "text": "And that is an equation by itself. Cheers!"
+      "text": "And that is an equation by itself. Cheers!",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/35",

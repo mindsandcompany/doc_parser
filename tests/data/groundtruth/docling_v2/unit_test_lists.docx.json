@@ -1,6 +1,6 @@
 {
   "schema_name": "DoclingDocument",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "name": "unit_test_lists",
   "origin": {
     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -365,7 +365,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "Paragraph 2.1.1",
-      "text": "Paragraph 2.1.1"
+      "text": "Paragraph 2.1.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/4",
@@ -389,7 +396,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "Paragraph 2.1.2",
-      "text": "Paragraph 2.1.2"
+      "text": "Paragraph 2.1.2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/6",
@@ -434,8 +448,15 @@
       "prov": [],
       "orig": "List item 1",
       "text": "List item 1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/9",
@@ -448,8 +469,15 @@
       "prov": [],
       "orig": "List item 2",
       "text": "List item 2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/10",
@@ -462,8 +490,15 @@
       "prov": [],
       "orig": "List item 3",
       "text": "List item 3",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/11",
@@ -508,8 +543,15 @@
       "prov": [],
       "orig": "List item a",
       "text": "List item a",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/14",
@@ -522,8 +564,15 @@
       "prov": [],
       "orig": "List item b",
       "text": "List item b",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/15",
@@ -536,8 +585,15 @@
       "prov": [],
       "orig": "List item c",
       "text": "List item c",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/16",
@@ -582,8 +638,15 @@
       "prov": [],
       "orig": "List item 1",
       "text": "List item 1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/19",
@@ -596,8 +659,15 @@
       "prov": [],
       "orig": "List item 2",
       "text": "List item 2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/20",
@@ -610,8 +680,15 @@
       "prov": [],
       "orig": "List item 1.1",
       "text": "List item 1.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/21",
@@ -624,8 +701,15 @@
       "prov": [],
       "orig": "List item 1.2",
       "text": "List item 1.2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/22",
@@ -638,8 +722,15 @@
       "prov": [],
       "orig": "List item 1.3",
       "text": "List item 1.3",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/23",
@@ -652,8 +743,15 @@
       "prov": [],
       "orig": "List item 3",
       "text": "List item 3",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/24",
@@ -698,8 +796,15 @@
       "prov": [],
       "orig": "List item 1",
       "text": "List item 1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/27",
@@ -712,8 +817,15 @@
       "prov": [],
       "orig": "List item 1.1",
       "text": "List item 1.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/28",
@@ -726,8 +838,15 @@
       "prov": [],
       "orig": "List item 2",
       "text": "List item 2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/29",
@@ -772,8 +891,15 @@
       "prov": [],
       "orig": "List item 1",
       "text": "List item 1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/32",
@@ -786,8 +912,15 @@
       "prov": [],
       "orig": "List item 1.1",
       "text": "List item 1.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/33",
@@ -800,8 +933,15 @@
       "prov": [],
       "orig": "List item 1.1.1",
       "text": "List item 1.1.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/34",
@@ -814,8 +954,15 @@
       "prov": [],
       "orig": "List item 3",
       "text": "List item 3",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/35",
@@ -866,8 +1013,15 @@
       "prov": [],
       "orig": "List item 1",
       "text": "List item 1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/38",
@@ -880,8 +1034,15 @@
       "prov": [],
       "orig": "List item 2",
       "text": "List item 2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/39",
@@ -894,8 +1055,15 @@
       "prov": [],
       "orig": "List item 1.1",
       "text": "List item 1.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/40",
@@ -908,8 +1076,15 @@
       "prov": [],
       "orig": "List item 1.2",
       "text": "List item 1.2",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/41",
@@ -922,8 +1097,15 @@
       "prov": [],
       "orig": "List item 1.2.1",
       "text": "List item 1.2.1",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/42",
@@ -936,8 +1118,15 @@
       "prov": [],
       "orig": "List item 3",
       "text": "List item 3",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/43",

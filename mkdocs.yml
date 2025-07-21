@@ -60,6 +60,7 @@ nav:
       - Usage: usage/index.md
       - Supported formats: usage/supported_formats.md
       - Enrichment features: usage/enrichments.md
+      - Vision models: usage/vision_models.md
     - FAQ:
       - FAQ: faq/index.md
   - Concepts:
@@ -78,6 +79,8 @@ nav:
       - "Multi-format conversion": examples/run_with_formats.py
       - "VLM pipeline with SmolDocling": examples/minimal_vlm_pipeline.py
       - "VLM pipeline with remote model": examples/vlm_pipeline_api_model.py
+      - "VLM comparison": examples/compare_vlm_models.py
+      - "ASR pipeline with Whisper": examples/minimal_asr_pipeline.py      
       - "Figure export": examples/export_figures.py
       - "Table export": examples/export_tables.py
       - "Multimodal export": examples/export_multimodal.py
@@ -131,6 +134,7 @@ nav:
       - "DocETL": integrations/docetl.md
       - "Kotaemon": integrations/kotaemon.md
       - "OpenContracts": integrations/opencontracts.md
+      - "Open WebUI": integrations/openwebui.md
       - "Vectara": integrations/vectara.md
   - Reference:
     - Python API:

@@ -1,6 +1,6 @@
 {
   "schema_name": "DoclingDocument",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "name": "word_sample",
   "origin": {
     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -101,7 +101,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "Summer activities",
-      "text": "Summer activities"
+      "text": "Summer activities",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/1",
@@ -138,7 +145,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "Duck",
-      "text": "Duck"
+      "text": "Duck",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/3",
@@ -150,7 +164,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "Figure 1: This is a cute duckling",
-      "text": "Figure 1: This is a cute duckling"
+      "text": "Figure 1: This is a cute duckling",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/4",
@@ -180,8 +201,8 @@
       "content_layer": "body",
       "label": "section_header",
       "prov": [],
-      "orig": "Let\u2019s swim!",
-      "text": "Let\u2019s swim!",
+      "orig": "Let’s swim!",
+      "text": "Let’s swim!",
       "level": 1
     },
     {
@@ -194,7 +215,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "To get started with swimming, first lay down in a water and try not to drown:",
-      "text": "To get started with swimming, first lay down in a water and try not to drown:"
+      "text": "To get started with swimming, first lay down in a water and try not to drown:",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/6",
@@ -207,8 +235,15 @@
       "prov": [],
       "orig": "You can relax and look around",
       "text": "You can relax and look around",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/7",
@@ -221,8 +256,15 @@
       "prov": [],
       "orig": "Paddle about",
       "text": "Paddle about",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/8",
@@ -235,8 +277,15 @@
       "prov": [],
       "orig": "Enjoy summer warmth",
       "text": "Enjoy summer warmth",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/9",
@@ -247,8 +296,15 @@
       "content_layer": "body",
       "label": "paragraph",
       "prov": [],
-      "orig": "Also, don\u2019t forget:",
-      "text": "Also, don\u2019t forget:"
+      "orig": "Also, don’t forget:",
+      "text": "Also, don’t forget:",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/10",
@@ -261,8 +317,15 @@
       "prov": [],
       "orig": "Wear sunglasses",
       "text": "Wear sunglasses",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/11",
@@ -273,10 +336,17 @@
       "content_layer": "body",
       "label": "list_item",
       "prov": [],
-      "orig": "Don\u2019t forget to drink water",
-      "text": "Don\u2019t forget to drink water",
+      "orig": "Don’t forget to drink water",
+      "text": "Don’t forget to drink water",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/12",
@@ -289,8 +359,15 @@
       "prov": [],
       "orig": "Use sun cream",
       "text": "Use sun cream",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/13",
@@ -301,8 +378,15 @@
       "content_layer": "body",
       "label": "paragraph",
       "prov": [],
-      "orig": "Hmm, what else\u2026",
-      "text": "Hmm, what else\u2026"
+      "orig": "Hmm, what else…",
+      "text": "Hmm, what else…",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/14",
@@ -335,8 +419,8 @@
       "content_layer": "body",
       "label": "section_header",
       "prov": [],
-      "orig": "Let\u2019s eat",
-      "text": "Let\u2019s eat",
+      "orig": "Let’s eat",
+      "text": "Let’s eat",
       "level": 2
     },
     {
@@ -348,8 +432,15 @@
       "content_layer": "body",
       "label": "paragraph",
       "prov": [],
-      "orig": "After we had a good day of swimming in the lake, it\u2019s important to eat something nice",
-      "text": "After we had a good day of swimming in the lake, it\u2019s important to eat something nice"
+      "orig": "After we had a good day of swimming in the lake, it’s important to eat something nice",
+      "text": "After we had a good day of swimming in the lake, it’s important to eat something nice",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/16",
@@ -361,7 +452,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "I like to eat leaves",
-      "text": "I like to eat leaves"
+      "text": "I like to eat leaves",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/17",
@@ -373,7 +471,14 @@
       "label": "paragraph",
       "prov": [],
       "orig": "Here are some interesting things a respectful duck could eat:",
-      "text": "Here are some interesting things a respectful duck could eat:"
+      "text": "Here are some interesting things a respectful duck could eat:",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/18",
@@ -396,8 +501,15 @@
       "content_layer": "body",
       "label": "paragraph",
       "prov": [],
-      "orig": "And let\u2019s add another list in the end:",
-      "text": "And let\u2019s add another list in the end:"
+      "orig": "And let’s add another list in the end:",
+      "text": "And let’s add another list in the end:",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      }
     },
     {
       "self_ref": "#/texts/20",
@@ -410,8 +522,15 @@
       "prov": [],
       "orig": "Leaves",
       "text": "Leaves",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/21",
@@ -424,8 +543,15 @@
       "prov": [],
       "orig": "Berries",
       "text": "Berries",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     },
     {
       "self_ref": "#/texts/22",
@@ -438,8 +564,15 @@
       "prov": [],
       "orig": "Grain",
       "text": "Grain",
+      "formatting": {
+        "bold": false,
+        "italic": false,
+        "underline": false,
+        "strikethrough": false,
+        "script": "baseline"
+      },
       "enumerated": false,
-      "marker": "-"
+      "marker": ""
     }
   ],
   "pictures": [
@@ -783,7 +916,8 @@
             }
           ]
         ]
-      }
+      },
+      "annotations": []
     }
   ],
   "key_value_items": [],

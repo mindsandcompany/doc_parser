@@ -3,10 +3,9 @@ import logging
 import time
 from pathlib import Path
 
+from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
-    AcceleratorDevice,
-    AcceleratorOptions,
     PdfPipelineOptions,
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -17,7 +16,8 @@ _log = logging.getLogger(__name__)
 def main():
     logging.basicConfig(level=logging.INFO)
 
-    input_doc_path = Path("./tests/data/pdf/2206.01062.pdf")
+    data_folder = Path(__file__).parent / "../../tests/data"
+    input_doc_path = data_folder / "pdf/2206.01062.pdf"
 
     ###########################################################################
 

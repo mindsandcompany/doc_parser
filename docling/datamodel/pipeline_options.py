@@ -254,7 +254,8 @@ class PipelineOptions(BaseModel):
     accelerator_options: AcceleratorOptions = AcceleratorOptions()
     enable_remote_services: bool = False
     allow_external_plugins: bool = False
-    save_images: bool = False
+    save_images: bool = True
+    include_wmf: bool = False
 
 
 class PaginatedPipelineOptions(PipelineOptions):
@@ -263,38 +264,6 @@ class PaginatedPipelineOptions(PipelineOptions):
     images_scale: float = 1.0
     generate_page_images: bool = False
     generate_picture_images: bool = False
-
-
-class DataEnrichmentOptions(BaseModel):
-    """Data enrichment options for metadata extraction and other enrichment features."""
-    
-    # TOC enrichment options
-    do_toc_enrichment: bool = False
-    toc_system_prompt: Optional[str] = None
-    toc_user_prompt: Optional[str] = None
-    # TOC API configuration options
-    toc_api_provider: Optional[str] = None  # e.g., "openrouter", "openai", "custom"
-    toc_api_key: Optional[str] = None
-    toc_api_base_url: Optional[str] = None
-    toc_model: Optional[str] = None
-    toc_temperature: Optional[float] = None
-    toc_top_p: Optional[float] = None
-    toc_seed: Optional[int] = None
-    toc_max_tokens: Optional[int] = None
-    
-    # Metadata extraction options  
-    extract_metadata: bool = False
-    metadata_system_prompt: Optional[str] = None
-    metadata_user_prompt: Optional[str] = None
-    # Metadata API configuration options
-    metadata_api_provider: Optional[str] = None  # e.g., "openrouter", "openai", "custom"
-    metadata_api_key: Optional[str] = None
-    metadata_api_base_url: Optional[str] = None
-    metadata_model: Optional[str] = None
-    metadata_temperature: Optional[float] = None
-    metadata_top_p: Optional[float] = None
-    metadata_seed: Optional[int] = None
-    metadata_max_tokens: Optional[int] = None
 
 
 class VlmPipelineOptions(PaginatedPipelineOptions):

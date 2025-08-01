@@ -26,7 +26,7 @@ from copy import deepcopy
 
 
 class HwpxDocumentBackend(DeclarativeDocumentBackend):
-    def __init__(self, in_doc: InputDocument, path_or_stream: Union[Path, BytesIO], save_images: bool = False) -> None:
+    def __init__(self, in_doc: InputDocument, path_or_stream: Union[Path, BytesIO], save_images: bool = True) -> None:
         """Initialize the HWPX backend by loading the .hwpx file (zip archive)."""
         super().__init__(in_doc, path_or_stream)
         self.save_images = save_images
@@ -1185,13 +1185,15 @@ class HwpxDocumentBackend(DeclarativeDocumentBackend):
             except KeyError:
                 continue
             # If WMF, try converting to PNG
-            if ext == ".wmf":
-                converted = self._convert_wmf_to_png(data)
-                if converted:
-                    return converted
-                else:
-                    return None
-            return data
+            # if ext == ".wmf":
+            #     converted = self._convert_wmf_to_png(data)
+            #     if converted:
+            #         return converted
+            #     else:
+            #         return None
+            # return data
+            if ext != '.wmf':
+                return data
         return None
 
     def _process_picture(

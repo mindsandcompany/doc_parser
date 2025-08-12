@@ -70,7 +70,9 @@ dependencies = [
     'scipy (>=1.6.0,<2.0.0)',
     # 'scipy (>=1.6.0,<2.0.0) ; python_version >= "3.10"',
     # 'scipy (>=1.6.0,<1.14.0) ; python_version < "3.10"',
-    'wand'
+    'wand',
+    'grpcio',
+    'grpcio-tools'
 ]
 
 [project.urls]
@@ -148,9 +150,6 @@ constraints = [
 [tool.uv]
 package = true
 default-groups = "all"
-
-[tool.uv.sources]
-paddlepaddle = { index = "paddle-cpu" }
 
 [tool.setuptools.packages.find]
 include = ["docling*"]

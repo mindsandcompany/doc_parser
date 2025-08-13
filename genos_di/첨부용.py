@@ -416,9 +416,9 @@ class TabularLoader:
         text = "[DA] " + str(self.data_dict)  # Add a token to indicate this string is for data analysis
         vectors = [GenOSVectorMeta.model_validate({
             'text': text,
-            'n_chars': 1,
-            'n_words': 1,
-            'n_lines': 1,
+            'n_char': 1,
+            'n_word': 1,
+            'n_line': 1,
             'i_page': 1,
             'e_page': 1,
             'n_page': 1,
@@ -491,9 +491,9 @@ class AudioLoader:
         transcribed_text = self.transcribe_audio(audio_chunks)
         res = [GenOSVectorMeta.model_validate({
             'text': transcribed_text,
-            'n_chars': 1,
-            'n_words': 1,
-            'n_lines': 1,
+            'n_char': 1,
+            'n_word': 1,
+            'n_line': 1,
             'i_page': 1,
             'e_page': 1,
             'n_page': 1,
@@ -1092,9 +1092,9 @@ class DocumentProcessor:
 
             vectors.append(GenOSVectorMeta.model_validate({
                 'text': text,
-                'n_chars': len(text),
-                'n_words': len(text.split()),
-                'n_lines': len(text.splitlines()),
+                'n_char': len(text),
+                'n_word': len(text.split()),
+                'n_line': len(text.splitlines()),
                 'i_page': page,
                 'e_page': page,
                 'i_chunk_on_page': chunk_index_on_page,

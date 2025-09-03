@@ -149,9 +149,6 @@ constraints = [
 package = true
 default-groups = "all"
 
-[tool.uv.sources]
-paddlepaddle = { index = "paddle-cpu" }
-
 [tool.setuptools.packages.find]
 include = ["docling*"]
 

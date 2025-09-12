@@ -87,7 +87,7 @@ except ImportError:
         "`pip install 'docling-core[chunking]'`"
     )
 
-from genos_utils import upload_files
+# from genos_utils import upload_files
 
 # ============================================
 #
@@ -938,7 +938,7 @@ class DocumentProcessor:
         # ocr_options.lang = ['kor', 'kor_vert', 'eng', 'jpn', 'jpn_vert']
         # ocr_options.path = './.tesseract/tessdata'
         # self.pipe_line_options.ocr_options = ocr_options
-        self.pipe_line_options.artifacts_path = Path("/nfs-root/models/223/760")  # Path("/nfs-root/aiModel/.cache/huggingface/hub/models--ds4sd--docling-models/snapshots/4659a7d29247f9f7a94102e1f313dad8e8c8f2f6/")
+        # self.pipe_line_options.artifacts_path = Path("/nfs-root/models/223/760")  # Path("/nfs-root/aiModel/.cache/huggingface/hub/models--ds4sd--docling-models/snapshots/4659a7d29247f9f7a94102e1f313dad8e8c8f2f6/")
         self.pipe_line_options.do_table_structure = True
         self.pipe_line_options.images_scale = 2
         self.pipe_line_options.table_structure_options.do_cell_matching = True
@@ -1136,10 +1136,10 @@ class DocumentProcessor:
             vectors.append(vector)
 
             chunk_index_on_page += 1
-            file_list = self.get_media_files(chunk.meta.doc_items)
-            upload_tasks.append(asyncio.create_task(
-                upload_files(file_list, request=request)
-            ))
+            # file_list = self.get_media_files(chunk.meta.doc_items)
+            # upload_tasks.append(asyncio.create_task(
+            #     upload_files(file_list, request=request)
+            # ))
 
         if upload_tasks:
             await asyncio.gather(*upload_tasks)
@@ -1170,7 +1170,7 @@ class DocumentProcessor:
 
         document = document._with_pictures_refs(image_dir=artifacts_dir, reference_path=reference_path)
 
-        document = self.enrichment(document, **kwargs)
+        # document = self.enrichment(document, **kwargs)
 
         has_text_items = False
         for item, _ in document.iterate_items():

@@ -439,3 +439,6 @@ pip-selfcheck.json
 # Docs
 # docs/**/*.png
 # docs/**/*.svg
+
+sample_files/
+doc_preprocessors/result.json

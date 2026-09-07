@@ -1,0 +1,75 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(sed -n:*)",
+      "Bash(awk:*)",
+      "Bash(find:*)",
+      "Bash(jq:*)",
+      "Bash(du:*)",
+      "Bash(diff:*)",
+      "Bash(sort:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(cat:*)",
+      "Bash(pytest:*)",
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(gh auth status)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run view:*)"
+    ],
+    "deny": [
+      "Read(dist/**)",
+      "Read(dist-docling/**)",
+      "Read(build/**)",
+      "Read(docling.egg-info/**)",
+      "Read(debug/**)",
+      "Read(tmp/**)",
+      "Read(code-serving/**)",
+      "Read(shkim_labs/**)",
+      "Read(model_artifacts/**)",
+      "Read(**/__pycache__/**)",
+      "Read(**/.venv/**)",
+      "Read(**/*.whl)",
+      "Edit(reference/**)",
+      "Edit(code-serving/**)",
+      "Edit(dist/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pytest-filter.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/large-file-read-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -26,8 +26,10 @@ from facade.parser_processor import (
     GenosServiceException,
     GenericDocumentLoader,
     IntelligentDocumentProcessor,
-    TabularLoader,
 )
+# check_sql_dtypes 는 공용 로더(facade/common/loaders.py)에 있다. parser 파이프라인은
+# tabular 입력을 converters.xlsx_processor 로 처리하므로 parser 쪽 사본은 없다.
+from genon.preprocessor.facade.common.loaders import TabularLoaderBase
 from docling.prompts.prompt_manager import LLMApiError
 
 
@@ -565,22 +567,24 @@ class TestExportTableContent:
         item.export_to_html.assert_called_once_with(doc=doc)
         assert result == "<table></table>"
 
-    def test_markdown_format_noncompact_calls_export_to_markdown(self):
-        # compact_tables=False 일 때만 TableItem.export_to_markdown() 경로를 탄다.
+    def test_markdown_format_uses_shared_export_markdown(self):
+        # 표 markdown 은 공용 관문을 거친다 - 링크 URL 억제가 여기 한 벌로 걸린다.
         item = _make_table_item()
         doc = MagicMock()
-        result = DocumentProcessor._export_table_content(
-            item, doc, table_format="markdown", compact_tables=False
-        )
-        item.export_to_markdown.assert_called_once_with(doc=doc)
+        with patch("facade.parser_processor.export_markdown", return_value="| a |") as em:
+            result = DocumentProcessor._export_table_content(
+                item, doc, table_format="markdown", compact_tables=False
+            )
+        em.assert_called_once_with(doc, item=item, compact_tables=False)
+        item.export_to_markdown.assert_not_called()
         assert result == "| a |"
 
-    def test_markdown_format_compact_uses_serializer_not_export_to_markdown(self):
-        # compact_tables=True(기본)면 MarkdownDocSerializer 경로 → export_to_markdown 미호출.
+    def test_markdown_format_passes_compact_tables_through(self):
         item = _make_table_item()
         doc = MagicMock()
-        DocumentProcessor._export_table_content(item, doc, table_format="markdown")
-        item.export_to_markdown.assert_not_called()
+        with patch("facade.parser_processor.export_markdown", return_value="| a |") as em:
+            DocumentProcessor._export_table_content(item, doc, table_format="markdown")
+        assert em.call_args.kwargs["compact_tables"] is True
 
     def test_default_format_is_html(self):
         item = _make_table_item()
@@ -637,21 +641,24 @@ class TestDoclingToContent:
         doc.export_to_html.assert_called_once()
         assert result == "<html>content</html>"
 
-    def test_markdown_format_with_markdown_table_calls_export_to_markdown(self):
+    def test_markdown_format_with_markdown_table_uses_shared_export_markdown(self):
         proc = _make_proc_with_format("markdown", "markdown")
         doc = MagicMock()
-        doc.export_to_markdown.return_value = "# heading\n| a | b |"
-        result = proc._docling_to_content(doc)
-        doc.export_to_markdown.assert_called_once()
+        with patch("facade.parser_processor.export_markdown",
+                   return_value="# heading\n| a | b |") as em:
+            result = proc._docling_to_content(doc)
+        em.assert_called_once()
+        doc.export_to_markdown.assert_not_called()
         assert result == "# heading\n| a | b |"
 
     def test_markdown_format_with_html_table_uses_replace(self):
         proc = _make_proc_with_format("markdown", "html")
         doc = MagicMock()
-        doc.export_to_markdown.return_value = "# heading\n| a | b |"
         doc.iterate_items.return_value = []
-        result = proc._docling_to_content(doc)
-        doc.export_to_markdown.assert_called_once()
+        with patch("facade.parser_processor.export_markdown",
+                   return_value="# heading\n| a | b |") as em:
+            result = proc._docling_to_content(doc)
+        em.assert_called_once()
         assert isinstance(result, str)
 
     def test_json_format_returns_empty_string(self):
@@ -727,13 +734,13 @@ class TestBuildDoclingResponse:
         assert intel.check_glyph_text("GLYPHXYZ") is True
 
 
-# ─── TabularLoader.check_sql_dtypes ──────────────────────────────────────────
+# ─── TabularLoaderBase.check_sql_dtypes (공용 로더) ───────────────────────────
 
 @pytest.mark.unit
 class TestCheckSqlDtypes:
     @pytest.fixture
     def loader(self):
-        return object.__new__(TabularLoader)
+        return object.__new__(TabularLoaderBase)
 
     def test_int_column_maps_to_int_type(self, loader):
         df = pd.DataFrame({"n": [1, 2, 3]})
@@ -916,3 +923,91 @@ class TestBuildOcrOptions:
         )
         assert opts.timeout == 120
         assert opts.text_score == 0.7
+
+
+# ─── _apply_llm_fields_document_scope — 문서 1건당 LLM 1회 ────────────────────
+#
+# json_semantic(llm_fields_scope="document")은 섹션(청크)마다 LLM 을 부르면 카드 1장에
+# 10회 넘게 호출된다 — enricher 실제 호출은 이 테스트가 검증하려는 대상이 아니라(엔드포인트
+# 테스트 스크립트가 실제 호출을 담당한다), "호출 횟수를 섹션 수와 무관하게 1회로 제어하는
+# 로직" 자체를 검증하는 것이 목적이라 스텁을 쓴다.
+
+from facade.enrichment.custom_fields_enricher import LlmFieldSpec  # noqa: E402
+
+
+class _CountingStubEnricher:
+    """is_configured/extract_fields_from_text 만 흉내 낸 최소 스텁 — 실제 LLM 호출 없음."""
+
+    def __init__(self):
+        self.is_configured = True
+        self.calls = 0
+
+    async def extract_fields_from_text(self, text: str) -> dict:
+        self.calls += 1
+        return {"SALE_STATUS": "판매중"}
+
+
+class _StubDocumentScopeMapper:
+    """json_semantic 매퍼의 document 스코프 계약(llm_field_specs/document_input_fields)만 흉내."""
+
+    def __init__(self, llm_field_specs):
+        self.llm_field_specs = llm_field_specs
+        self.resource_path = None
+
+    def document_input_fields(
+        self, fields_list: list, input_field_names: list | None = None
+    ) -> dict:
+        # 파서가 spec.input_fields 를 함께 넘긴다(섹션 이름 입력 지원).
+        self.received_input_field_names = input_field_names
+        return {"PRODUCT_INFO": "\n\n".join(f.get("SECTION_NM", "") for f in fields_list)}
+
+
+def _make_llm_field_spec() -> LlmFieldSpec:
+    return LlmFieldSpec({
+        "output_fields": ["SALE_STATUS"],
+        "input_fields": ["PRODUCT_INFO"],
+        "url": "http://llm.invalid/v1/chat/completions",
+        "model": "model",
+    })
+
+
+def test_apply_llm_fields_document_scope_calls_enricher_once_regardless_of_section_count(dp):
+    """섹션이 5건이어도 spec 당 enricher 호출은 1회뿐이고, 결과는 전 섹션에 복사된다."""
+    mapper = _StubDocumentScopeMapper(llm_field_specs=[_make_llm_field_spec()])
+    stub_enricher = _CountingStubEnricher()
+    dp._llm_field_enricher = MagicMock(return_value=stub_enricher)
+
+    fields_list = [{"SECTION_NM": f"섹션{i}"} for i in range(5)]
+    result = asyncio.run(dp._apply_llm_fields_document_scope(mapper, fields_list))
+
+    assert stub_enricher.calls == 1
+    assert len(result) == 5
+    assert all(fields["SALE_STATUS"] == "판매중" for fields in result)
+
+
+def test_apply_llm_fields_document_scope_fills_null_when_enricher_not_configured(dp):
+    """url/model 미설정(is_configured=False)이면 호출 없이 null 로 채우고 나머지는 계속 진행한다."""
+    mapper = _StubDocumentScopeMapper(llm_field_specs=[_make_llm_field_spec()])
+    stub_enricher = _CountingStubEnricher()
+    stub_enricher.is_configured = False
+    dp._llm_field_enricher = MagicMock(return_value=stub_enricher)
+
+    fields_list = [{"SECTION_NM": "섹션0"}, {"SECTION_NM": "섹션1"}]
+    result = asyncio.run(dp._apply_llm_fields_document_scope(mapper, fields_list))
+
+    assert stub_enricher.calls == 0
+    assert all(fields["SALE_STATUS"] is None for fields in result)
+
+
+def test_apply_llm_fields_document_scope_routes_from_apply_llm_fields(dp):
+    """llm_fields_scope='document' 인 매퍼는 _apply_llm_fields 가 document 스코프로 위임한다."""
+    mapper = _StubDocumentScopeMapper(llm_field_specs=[_make_llm_field_spec()])
+    mapper.llm_fields_scope = "document"
+    stub_enricher = _CountingStubEnricher()
+    dp._llm_field_enricher = MagicMock(return_value=stub_enricher)
+
+    fields_list = [{"SECTION_NM": f"섹션{i}"} for i in range(3)]
+    result = asyncio.run(dp._apply_llm_fields(mapper, fields_list))
+
+    assert stub_enricher.calls == 1
+    assert len(result) == 3

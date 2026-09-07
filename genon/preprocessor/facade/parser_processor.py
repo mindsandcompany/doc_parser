@@ -2,63 +2,35 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
-import math
 import os
-import re
-import shutil
 import subprocess
-import sys
 import tempfile
-import threading
-import time
-import unicodedata
-import uuid
-import warnings
 from collections import defaultdict
-from datetime import datetime
-from glob import glob
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Optional
 
-import fitz
-import pandas as pd
-import pydub
-import requests
-import yaml
 from fastapi import Request
-from markdown2 import markdown
-from pandas import DataFrame
-from pydantic import BaseModel
-from typing_extensions import Self
 
 from langchain_community.document_loaders import (
-    DataFrameLoader,
     PyMuPDFLoader,
     UnstructuredFileLoader,
     UnstructuredImageLoader,
-    UnstructuredMarkdownLoader,
     UnstructuredPowerPointLoader,
     UnstructuredWordDocumentLoader,
 )
 from langchain_core.documents import Document
 
-from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
 from docling.backend.genos_hwp_backend import GenosHwpDocumentBackend
 from docling.backend.genos_msword_backend import GenosMsWordDocumentBackend
 from docling.backend.hwp_backend import HwpDocumentBackend
-from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.backend.xml.hwpx_backend import HwpxDocumentBackend
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.document import ConversionResult
 from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
-    AcceleratorOptions,
     DataEnrichmentOptions,
-    LayoutModelType,
-    PaddleOcrOptions,
     PdfPipelineOptions,
     PipelineOptions,
     TableFormerMode,
@@ -82,54 +54,41 @@ from docling.utils.llm_cache import (
     resolve_context as _resolve_cache_context,
     set_context as _set_cache_context,
 )
-from docling_core.types import DoclingDocument
 from docling_core.types.doc import (
     BoundingBox,
-    DocItem,
     DocItemLabel,
     DoclingDocument,
-    DocumentOrigin,
     PictureItem,
     ProvenanceItem,
-    SectionHeaderItem,
     TableItem,
-    TextItem,
 )
 from docling_core.types.doc.base import CoordOrigin
-from docling_core.types.doc.document import CodeItem, ContentLayer, ListItem
-from docling_core.transforms.serializer.markdown import (
-    MarkdownDocSerializer,
-    MarkdownParams,
+from docling_core.types.doc.document import ContentLayer
+from genon.preprocessor.facade.common.markdown_export import export_markdown
+
+from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+    build_document_custom_fields_enrichers,
+    normalize_doc_type,
+    normalize_doc_types,
 )
-
-try:
-    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
-        build_document_custom_fields_enrichers,
-        normalize_doc_type,
-        normalize_doc_types,
-    )
-    from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
-        build_tabular_custom_fields_mappers,
-    )
-    from genon.preprocessor.facade.enrichment.json_records import (
-        build_json_records_mappers,
-    )
-except ImportError:
-    build_document_custom_fields_enrichers = None  # type: ignore[assignment]
-    build_tabular_custom_fields_mappers = None  # type: ignore[assignment]
-    build_json_records_mappers = None  # type: ignore[assignment]
-
-    def normalize_doc_type(value):  # type: ignore[no-redef]
-        return str(value or "").strip().lower()
-
-    def normalize_doc_types(value):  # type: ignore[no-redef]
-        values = value if isinstance(value, (list, tuple, set)) else [value]
-        return tuple(dict.fromkeys(d for d in (normalize_doc_type(v) for v in values) if d))
-
-try:
-    from genon.preprocessor.facade.enrichment.metadata_enricher import MetadataEnricher
-except ImportError:
-    MetadataEnricher = None  # type: ignore[assignment,misc]
+from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
+    build_tabular_custom_fields_mappers,
+    claimed_row_pages,
+    merge_parse_formats,
+)
+from genon.preprocessor.facade.enrichment.json_records import (
+    build_json_records_mappers,
+)
+from genon.preprocessor.facade.enrichment.json_semantic import (
+    build_semantic_json_mappers,
+)
+from genon.preprocessor.facade.enrichment.markdown_front_matter import (
+    build_markdown_front_matter_specs,
+    build_markdown_text_fence_specs,
+    build_html_marker_heading_doc_types,
+    build_markdown_marker_heading_doc_types,
+)
+from genon.preprocessor.facade.enrichment.metadata_enricher import MetadataEnricher
 
 from genon.preprocessor.facade import guardrail as gr
 from genon.preprocessor.facade.enrichment.enrichment_config import EnrichmentConfig
@@ -142,19 +101,20 @@ from genon.preprocessor.facade.enrichment.image_description import (
     ImageDescriptionOptions,
     ImageDescriptionEnricher,
     PictureDescriptionExtractor,
-    resolve_runtime_image_options,
+)
+from genon.preprocessor.facade.enrichment.table_text_description import (
+    TableTextDescriptionEnricher,
+    apply_table_description_stage,
 )
 from genon.preprocessor.facade.enrichment.table_description import (
     TableDescriptionOptions,
     TableDescriptionEnricher,
     TableDescriptionExtractor,
     refined_html_to_format,
-    resolve_runtime_table_options,
 )
 from genon.preprocessor.facade.enrichment.doc_summary import (
     DocSummaryOptions,
     DocSummaryEnricher,
-    resolve_runtime_doc_summary_options,
 )
 
 try:
@@ -191,149 +151,41 @@ def _handle_stage_error(exc: Exception, stage: str) -> None:
     _log.warning(f"[DocumentProcessor] {stage} enrichment skipped ({error_type}): {exc}")
 
 
-# ── 비정상/암호화 파일 사전 감지 (이슈 #278/#307) ─────────────────────────────
-# intelligent_processor.py 의 동일 블록을 복제한 것. facade 는 단일 파일로 배포되므로
-# import 공유 대신 복제한다. 수정 시 네 파일(intelligent/parser/convert/attachment) 동기화 필요.
-# 지원 포맷의 매직 헤더(allowlist). 각 값은 아래 공식 출처로 근거 확인 + 실제 샘플로 검증함.
-#   - 정본 매직 DB: file/file(libmagic) magic/Magdir — 실제 본 모듈이 쓰는 python-magic의 DB.
-#     (PDF=Magdir/pdf "%PDF-", PNG/GIF=Magdir/images, JPEG=Magdir/jpeg 0xffd8ff, ZIP=Magdir/msooxml "PK\3\4")
-#   - 포맷 공식 스펙: PDF=ISO 32000(%PDF-), PNG=W3C PNG/RFC2083(89 50 4E 47 0D 0A 1A 0A),
-#     ZIP=PKWARE APPNOTE(local file header 0x04034b50), OLE2/CFB=[MS-CFB] §2.2 Header(D0CF11E0A1B11AE1).
-# zip(PK)=docx/xlsx/pptx/hwpx, OLE2(d0cf..)=hwp/doc/ppt/xls(레거시).
-_KNOWN_MAGIC_PREFIXES = (
-    b"%PDF-",                                # pdf
-    b"\x89PNG\r\n\x1a\n",                    # png
-    b"\xff\xd8\xff",                         # jpeg/jpg
-    b"GIF87a", b"GIF89a",                    # gif
-    b"BM",                                    # bmp
-    b"II*\x00", b"MM\x00*",                  # tiff
-    b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08",  # zip 계열(ooxml/hwpx)
-    b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",     # OLE2/CFB(hwp5/doc/ppt/xls)
-    b"ID3",                                   # mp3(id3v2)
-    b"RIFF",                                  # wav/avi/webp
-    b"OggS",                                  # ogg
-    b"fLaC",                                  # flac
-    b"\x1f\x8b",                             # gzip
-    b"7z\xbc\xaf\x27\x1c",                  # 7z
-    b"Rar!\x1a\x07",                        # rar
-    b"<?xml",                                 # xml
-)
+# ── 공용 하위 모듈로 옮긴 헬퍼들의 별칭 ──────────────────────────────
+# 구현은 facade/common/, facade/chunking/ 에 한 벌만 둔다. 여기서는 기존 이름을
+# 그대로 유지해 호출부를 건드리지 않는다. 사이트별 조정 대상 상수(구분자, 최소
+# 청크 크기, 토크나이저 경로)는 이 파일에 남아 있으므로 래퍼가 넘겨준다.
+from genon.preprocessor.facade.chunking import table_shape as ts
+from genon.preprocessor.facade.common import config_parse as cp
+from genon.preprocessor.facade.common import loaders as ld
+from genon.preprocessor.facade.common import pipeline_setup as ps
+from genon.preprocessor.facade.common import runtime_kwargs as rk
+from genon.preprocessor.facade.common import docling_ops as dops
+from genon.preprocessor.facade.common import runtime as rt
+from genon.preprocessor.facade.common import file_probe as fp
+from genon.preprocessor.facade.common import pdf_convert as pc
+from genon.preprocessor.facade.common import format_alias as fa
+from genon.preprocessor.facade.common.doc_meta import strip_enricher_meta
 
-# 텍스트로 봐줄 수 없는 제어 바이트(탭/개행/CR/FF 제외). 텍스트 파일엔 거의 없음.
-_TEXT_ALLOWED_CTRL = {0x09, 0x0A, 0x0C, 0x0D}
-
-
-def _looks_like_text(head: bytes) -> bool:
-    """csv/txt/json/md/html 등 매직넘버 없는 텍스트 파일인지 휴리스틱 판정.
-    NUL 이 있거나 제어문자 비율이 높으면 바이너리(=텍스트 아님)."""
-    if not head:
-        return False
-    # UTF-16/32 텍스트는 NUL 바이트가 흔하므로 BOM 이면 먼저 텍스트로 인정.
-    if head.startswith((b"\xff\xfe", b"\xfe\xff")):  # UTF-16 LE/BE (UTF-32 BOM 도 이 prefix로 시작)
-        return True
-    if b"\x00" in head:
-        return False
-    ctrl = sum(
-        1 for c in head if (c < 0x20 and c not in _TEXT_ALLOWED_CTRL) or c == 0x7F
-    )
-    return (ctrl / len(head)) < 0.05
+_as_dict = cp.as_dict
+_materialize_alias_copy = fa.materialize_alias_copy
+_parse_extension_aliases = fa.parse_extension_aliases
+_resolve_ext = fa.resolve_ext
+_as_int_flag = cp.as_int_flag
+_copy_enrichment_options = cp.copy_enrichment_options
+_detect_unsupported_file = fp.detect_unsupported_file
+_is_encrypted_office = fp.is_encrypted_office
+_is_encrypted_pdf = fp.is_encrypted_pdf
+_is_protected_hwp = fp.is_protected_hwp
+_looks_like_text = fp.looks_like_text
+_parse_optional_bool = cp.parse_optional_bool
+_parse_optional_float = cp.parse_optional_float
+_parse_optional_int = cp.parse_optional_int
+_warn_unresolved_placeholders = cp.warn_unresolved_placeholders
 
 
-def _is_encrypted_pdf(file_path: str) -> bool:
-    """PDF /Encrypt(비밀번호/DRM 암호화) 여부. ISO 32000 기준, pypdf is_encrypted 사용."""
-    try:
-        from pypdf import PdfReader
-
-        return bool(PdfReader(file_path).is_encrypted)
-    except Exception:
-        return False  # 파싱 실패는 여기서 단정 안 함(후속 단계에서 처리)
-
-
-def _is_encrypted_office(file_path: str) -> bool:
-    """암호화된 OOXML(docx/xlsx/pptx)은 OLE2 컨테이너의 'EncryptedPackage' 스트림으로
-    저장된다(MS-OFFCRYPTO). olefile 로 그 스트림 존재를 확인."""
-    try:
-        import olefile
-
-        if not olefile.isOleFile(file_path):
-            return False
-        ole = olefile.OleFileIO(file_path)
-        try:
-            return ole.exists("EncryptedPackage")
-        finally:
-            ole.close()
-    except Exception:
-        return False
-
-
-def _is_protected_hwp(file_path: str) -> bool:
-    """암호화/배포용(DRM) HWP 감지. HWP 5.0 'FileHeader' 스트림(OLE2 내, 256B)의
-    flags(offset 36, uint32 LE) bit1=password, bit2=distribution(배포용/DRM).
-    이런 HWP 는 본문 스트림이 암호화돼 변환기가 정상 처리 못 함. (근거: HWP 5.0 스펙)"""
-    try:
-        import olefile
-        import struct
-
-        if not olefile.isOleFile(file_path):
-            return False
-        ole = olefile.OleFileIO(file_path)
-        try:
-            if not ole.exists("FileHeader"):
-                return False
-            data = ole.openstream("FileHeader").read()
-            if len(data) < 40 or data[:17] != b"HWP Document File":
-                return False
-            flags = struct.unpack("<I", data[36:40])[0]
-            return bool(flags & 0x02) or bool(flags & 0x04)  # password or distribution(DRM)
-        finally:
-            ole.close()
-    except Exception:
-        return False
-
-
-def _detect_unsupported_file(file_path: str) -> str | None:
-    """입력 파일이 정상 처리 가능한지 판정(이슈 #278). 차단 사유 문자열 또는 정상이면 None.
-
-    근거(공식):
-    - 포맷 인식: 매직헤더 allowlist (file/file libmagic 정본 DB + 각 포맷 공식 스펙).
-      _KNOWN_MAGIC_PREFIXES 위 주석에 출처 명시. 확장자와 무관하게 실제 바이트로 본다.
-    - 암호화 자체는 바이트 패턴으로 못 본다(암호문=고엔트로피 랜덤). 포맷별 구조로 판정:
-      PDF=/Encrypt(pypdf is_encrypted, ISO 32000), Office=OLE2의 EncryptedPackage(MS-OFFCRYPTO),
-      HWP=FileHeader flags(HWP 5.0 스펙).
-    - Fasoo 등 독점 DRM은 표준 감지법이 없다 → 알려진 매직헤더에 안 맞고 텍스트도 아닌
-      바이너리(=고엔트로피 garbage)로 걸러낸다.
-    """
-    try:
-        with open(file_path, "rb") as f:
-            head = f.read(512)
-    except Exception:
-        return None  # 읽기 실패는 여기서 판단 안 함(후속 단계에서 처리)
-    if not head:
-        return "빈 파일"
-
-    is_pdf = head.startswith(b"%PDF-")
-    is_ole2 = head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
-    # ── Layer 1: 알려진 포맷 매직헤더인가 ──
-    known = (
-        is_pdf
-        or is_ole2
-        or head[4:8] == b"ftyp"  # mp4/mov/m4a (ISO-BMFF, offset 4)
-        or (len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0)  # mp3 frame sync
-        or any(head.startswith(sig) for sig in _KNOWN_MAGIC_PREFIXES)
-    )
-    if not known:
-        if _looks_like_text(head):
-            return None  # csv/txt/json/md/html 등 텍스트 파일
-        return "지원하지 않거나 손상된 파일(DRM 암호화 등)"
-
-    # ── Layer 2: 알려진 포맷이지만 비밀번호/암호화된 경우 ──
-    if is_pdf and _is_encrypted_pdf(file_path):
-        return "암호화된 PDF 문서"
-    if is_ole2 and _is_encrypted_office(file_path):
-        return "암호화된 Office 문서"
-    if is_ole2 and _is_protected_hwp(file_path):
-        return "암호화/배포용(DRM) HWP 문서"
-    return None
+def _load_config(config_path: str) -> dict:
+    return cp.load_config(config_path, strict=True)
 
 
 # fontTools 로그 억제
@@ -350,124 +202,6 @@ CONVERTIBLE_EXTENSIONS = ['.hwp', '.txt', '.json', '.md', '.ppt', '.pptx', '.doc
 # ============================================================
 # 설정 로딩
 # ============================================================
-
-def _warn_unresolved_placeholders(cfg: dict, config_path: str) -> None:
-    """config 에 남아있는 미치환 플레이스홀더(<UPPER_SNAKE>)를 탐지해 경고한다.
-
-    Site 배포 시 OCR/Layout/Enrichment endpoint·serving ID 등의 치환 누락을 조기에
-    드러내기 위함. fail-fast 하지 않고(기동 보존) WARNING 로그만 남긴다.
-    """
-    pattern = re.compile(r"<[A-Z0-9_]+>")
-    found = []
-
-    def _scan(node, path):
-        if isinstance(node, dict):
-            for k, v in node.items():
-                _scan(v, f"{path}.{k}" if path else str(k))
-        elif isinstance(node, list):
-            for i, v in enumerate(node):
-                _scan(v, f"{path}[{i}]")
-        elif isinstance(node, str):
-            for ph in pattern.findall(node):
-                found.append((path, ph))
-
-    _scan(cfg, "")
-    if found:
-        lines = "\n".join(f"  - {path}: {ph}" for path, ph in found)
-        _log.warning(
-            "[DocumentProcessor] 미치환 설정 플레이스홀더가 발견되었습니다 "
-            f"(config='{config_path}'). Site 배포 시 실제 값으로 변경하세요:\n{lines}"
-        )
-
-
-def _load_config(config_path: str) -> dict:
-    with open(config_path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    if not isinstance(cfg, dict):
-        raise ValueError(f"Invalid config format: expected mapping, got {type(cfg).__name__}")
-    _warn_unresolved_placeholders(cfg, config_path)
-    return cfg
-
-
-def _as_dict(value: Any) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
-def _as_int_flag(value: Any, default: int = 0) -> int:
-    """Normalize runtime feature flags to 0 or 1."""
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return 1 if value else 0
-    if isinstance(value, (int, float)):
-        return 1 if int(value) == 1 else 0
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "y", "on"}:
-            return 1
-        if normalized in {"0", "false", "no", "n", "off"}:
-            return 0
-    return default
-
-
-def _copy_enrichment_options(options, **updates):
-    """DataEnrichmentOptions 를 얕게 복제하며 지정 필드를 override(원본 불변)."""
-    try:
-        return options.model_copy(update=updates)
-    except AttributeError:
-        import copy as _copy
-        cloned = _copy.copy(options)
-        for key, value in updates.items():
-            setattr(cloned, key, value)
-        return cloned
-
-
-def _parse_optional_bool(value: Any, key: str = "") -> Optional[bool]:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in {"1", "true", "yes", "y", "on"}:
-            return True
-        if text in {"0", "false", "no", "n", "off"}:
-            return False
-    if key:
-        _log.warning(
-            f"[ImageDescriptionOptions] Invalid bool value for '{key}': {value!r}. Fallback to default."
-        )
-    return None
-
-
-def _parse_optional_int(value: Any, key: str = "") -> Optional[int]:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        if key:
-            _log.warning(
-                f"[ImageDescriptionOptions] Invalid int value for '{key}': {value!r}. Fallback to default."
-            )
-        return None
-
-
-def _parse_optional_float(value: Any, key: str = "") -> Optional[float]:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        if key:
-            _log.warning(
-                f"Invalid float value for '{key}': {value!r}. Fallback to default."
-            )
-        return None
-
-
 
 
 # pdf_pipeline.device / pdf_pipeline.table_structure_mode 의 yaml 문자열 → docling enum 매핑.
@@ -499,106 +233,23 @@ def _resolve_default_parser_config_path() -> str:
 # 헬퍼 함수 (from attachment_processor.py)
 # ============================================================
 
-def _is_libreoffice_available() -> bool:
-    """LibreOffice 가 가용한지 확인 (이슈 #286).
-
-    parser_processor 의 convert_to_pdf 는 soffice(LibreOffice) 단독 구현이라,
-    rhwp/pdf_sdk 와 무관하게 LibreOffice 가용성만 따져야 정확하다. 빌드 시
-    INSTALL_LIBREOFFICE 를 끄면 False. 가용성 판단 자체가 불가하면(import 실패 등)
-    True 를 반환해 기존 동작을 유지한다.
-    """
-    try:
-        from genon.preprocessor.converters.hwp_to_pdf.availability import libreoffice_available
-        return bool(libreoffice_available())
-    except ImportError:
-        # facade 단일 파일 실행 등으로 모듈 import 가 안 되는 경우 → 기존 동작 유지(가용 가정)
-        return True
-    except Exception as exc:
-        # 가용성 probe 자체가 예기치 못하게 실패하면 로그만 남기고 파이프라인은 막지 않는다
-        _log.warning(f"[_is_libreoffice_available] LibreOffice 가용성 확인 실패: {exc}")
-        return True
+_is_libreoffice_available = fp.is_libreoffice_available
 
 
 def convert_to_pdf(file_path: str) -> str | None:
+    """LibreOffice 로 PDF 변환을 시도한다. 실패해도 예외를 던지지 않고 None 을 반환한다.
+
+    이 facade 는 backend chain 을 LibreOffice 하나로 고정한다(rhwp/pdf_sdk 미사용).
+    구현은 facade/common/pdf_convert.py 에 있다.
     """
-    LibreOffice로 PDF 변환을 시도한다.
-    실패해도 예외를 던지지 않고 None을 반환한다.
-    """
-    # 이슈 #286 — LibreOffice 가 없으면(이 함수는 soffice 단독 사용) 변환 시도가 무의미하므로,
-    # PDF 직접 입력을 안내하는 warning 한 번만 남기고 None 을 반환한다.
-    if not _is_libreoffice_available():
-        _log.warning(
-            "[convert_to_pdf] PDF 변환기(LibreOffice)가 설치되어 있지 않습니다 "
-            f"(이슈 #286). '{os.path.basename(file_path)}' 변환을 건너뜁니다. PDF 로 변환된 "
-            "파일을 입력하거나, 변환기를 포함해 전처리기 이미지를 다시 빌드하세요 (genon/README.md 참고)."
-        )
-        return None
-    try:
-        in_path = Path(file_path).resolve()
-        out_dir = in_path.parent
-        pdf_path = in_path.with_suffix('.pdf')
-
-        env = os.environ.copy()
-        env.setdefault("LANG", "C.UTF-8")
-        env.setdefault("LC_ALL", "C.UTF-8")
-
-        ext = in_path.suffix.lower()
-        if ext in ('.ppt', '.pptx'):
-            convert_arg = "pdf:impress_pdf_Export"
-        elif ext in ('.doc', '.docx'):
-            convert_arg = "pdf:writer_pdf_Export"
-        elif ext in ('.xls', '.xlsx', '.csv'):
-            convert_arg = "pdf:calc_pdf_Export"
-        else:
-            convert_arg = "pdf"
-
-        try:
-            in_path.name.encode('ascii')
-            candidates = [in_path]
-            tmp_dir = None
-        except UnicodeEncodeError:
-            tmp_dir = Path(tempfile.mkdtemp())
-            ascii_name = unicodedata.normalize('NFKD', in_path.stem).encode('ascii', 'ignore').decode('ascii') or "file"
-            ascii_copy = tmp_dir / f"{ascii_name}{in_path.suffix}"
-            shutil.copy2(in_path, ascii_copy)
-            candidates = [ascii_copy, in_path]
-
-        for cand in candidates:
-            cmd = [
-                "soffice", "--headless",
-                "--convert-to", convert_arg,
-                "--outdir", str(out_dir),
-                str(cand)
-            ]
-            proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
-            if proc.returncode == 0 and pdf_path.exists():
-                if tmp_dir:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                return str(pdf_path)
-            _log.warning(f"[convert_to_pdf] stderr: {proc.stderr.strip()}")
-
-        if tmp_dir:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-        return None
-    except Exception as e:
-        _log.error(f"[convert_to_pdf] error: {e}")
-        return None
+    return pc.convert_to_pdf(file_path, libreoffice_only=True)
 
 
 def _get_pdf_path(file_path: str) -> str:
-    """다양한 파일 확장자를 PDF 확장자로 변경하는 공통 함수"""
-    p = Path(file_path)
-    if p.suffix.lower() in CONVERTIBLE_EXTENSIONS:
-        return str(p.with_suffix('.pdf'))
-    return file_path
+    """변환 가능한 확장자면 PDF 경로로 바꾼다(구현은 facade/common/file_probe.py)."""
+    return fp.get_pdf_path(file_path, CONVERTIBLE_EXTENSIONS)
 
-def install_packages(packages):
-    for package in packages:
-        try:
-            __import__(package)
-        except ImportError:
-            _log.warning(f"{package} 패키지가 없습니다. 설치를 시도합니다.")
-            subprocess.run([sys.executable, "-m", "pip", "install", package], check=True)
+install_packages = ld.install_packages
 
 
 # 민감정보 분류(#315): parser 는 청크가 없어 직접 라벨/마스킹은 못 하지만, guardrail_call 시
@@ -610,223 +261,27 @@ def install_packages(packages):
 # TextLoader (from attachment_processor.py)
 # ============================================================
 
-class TextLoader:
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.output_dir = os.path.join('/tmp', str(uuid.uuid4()))
-        os.makedirs(self.output_dir, exist_ok=True)
-
-    def load(self):
-        try:
-            with open(self.file_path, 'rb') as f:
-                raw = f.read()
-            enc = chardet.detect(raw).get('encoding') or ''
-            encodings = [enc] if enc and enc.lower() not in ('ascii', 'unknown') else []
-            encodings += ['utf-8', 'cp949', 'euc-kr', 'iso-8859-1', 'latin-1']
-
-            content = None
-            for e in encodings:
-                try:
-                    content = raw.decode(e)
-                    break
-                except UnicodeDecodeError:
-                    continue
-            if content is None:
-                content = raw.decode('utf-8', errors='replace')
-
-            html = f"<html><meta charset='utf-8'><body><pre>{content}</pre></body></html>"
-            html_path = os.path.join(self.output_dir, 'temp.html')
-            with open(html_path, 'w', encoding='utf-8') as f:
-                f.write(html)
-            pdf_path = _get_pdf_path(self.file_path)
-            if HTML:
-                HTML(html_path).write_pdf(pdf_path)
-                loader = PyMuPDFLoader(pdf_path)
-                return loader.load()
-            return [Document(page_content=content, metadata={'source': self.file_path, 'page': 0})]
-
-        except Exception:
-            for e in ['utf-8', 'cp949', 'euc-kr', 'iso-8859-1']:
-                try:
-                    with open(self.file_path, 'r', encoding=e) as f:
-                        content = f.read()
-                    return [Document(page_content=content, metadata={'source': self.file_path, 'page': 0})]
-                except UnicodeDecodeError:
-                    continue
-            with open(self.file_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
-            return [Document(page_content=content, metadata={'source': self.file_path, 'page': 0})]
-        finally:
-            if os.path.exists(self.output_dir):
-                shutil.rmtree(self.output_dir)
+def _doc_is_html_origin(doc) -> bool:
+    """원본이 HTML 계열인가. 표 헤더 행 수 판정 규칙이 여기서 갈린다."""
+    origin = getattr(doc, "origin", None)
+    mimetype = str(getattr(origin, "mimetype", "") or "").lower()
+    filename = str(getattr(origin, "filename", "") or "").lower()
+    return mimetype in {"text/html", "application/xhtml+xml"} or filename.endswith(
+        (".html", ".htm", ".xhtml"))
 
 
-# ============================================================
-# TabularLoader (from attachment_processor.py)
-# ============================================================
 
-class TabularLoader:
-    def __init__(self, file_path: str, ext: str):
-        packages = ['openpyxl', 'chardet']
-        install_packages(packages)
+class TextLoader(ld.TextLoaderBase):
+    pass
 
-        self.file_path = file_path
-        if ext == ".csv":
-            self.data_dict = self.load_csv_documents(file_path)
-        elif ext == ".xlsx":
-            self.data_dict = self.load_xlsx_documents(file_path)
-        else:
-            _log.warning(f"Inadequate extension for TabularLoader: {ext}")
-            return
-
-    def check_sql_dtypes(self, df):
-        df = df.convert_dtypes()
-        res = []
-        for col in df.columns:
-            dtype = str(df.dtypes[col]).lower()
-            if 'int' in dtype:
-                sql_dtype = 'BIGINT' if '64' in dtype else 'INT'
-            elif 'float' in dtype:
-                sql_dtype = 'FLOAT'
-            elif 'bool' in dtype:
-                sql_dtype = 'BOOLEAN'
-            elif 'date' in dtype:
-                sql_dtype = 'DATE'
-                df[col] = df[col].astype(str)
-            elif 'datetime' in dtype:
-                sql_dtype = 'DATETIME'
-                df[col] = df[col].astype(str)
-            else:
-                lens = df[col].astype(str).str.len()
-                max_len_val = lens.max()
-                max_len = int(0 if pd.isna(max_len_val) else max_len_val) + 10
-                sql_dtype = f'VARCHAR({max_len})'
-            res.append([col, sql_dtype])
-        return df, res
-
-    def process_data_rows(self, data: dict):
-        rows = []
-        for doc in data["documents"]:
-            row = {}
-            if 'int' in data["page_column_type"]:
-                row[data["page_column"]] = int(doc.page_content)
-            elif 'float' in data["page_column_type"]:
-                row[data["page_column"]] = float(doc.page_content)
-            elif 'bool' in data["page_column_type"]:
-                if doc.page_content.lower() == 'true':
-                    row[data["page_column"]] = True
-                elif doc.page_content.lower() == 'false':
-                    row[data["page_column"]] = False
-                else:
-                    raise ValueError(f"Invalid boolean string: {doc.page_content}")
-            else:
-                row[data["page_column"]] = doc.page_content
-            row.update(doc.metadata)
-            rows.append(row)
-        return {"sheet_name": data["sheet_name"], "data_rows": rows, "data_types": data["dtypes"]}
-
-    def load_csv_documents(self, file_path: str, **kwargs: dict):
-        import chardet as _chardet
-        with open(file_path, "rb") as f:
-            raw_file = f.read(10000)
-        enc_type = _chardet.detect(raw_file)['encoding']
-        df = pd.read_csv(file_path, encoding=enc_type, index_col=False)
-        df = df.fillna('null')
-        df, dtypes_str = self.check_sql_dtypes(df)
-
-        for i in range(len(df.columns)):
-            try:
-                col = df.columns[0]
-                col_type = str(df[col].dtype)
-                df = df.astype({col: 'str'})
-                break
-            except:
-                raise ValueError(
-                    f"Any columns cannot be converted into the string type so that can't load LangChain Documents: {dtypes_str}")
-
-        loader = DataFrameLoader(df, page_content_column=col)
-        documents = loader.load()
-        data = {
-            "sheet_name": "table_1",
-            "page_column": col,
-            "page_column_type": col_type,
-            "documents": documents,
-            "dtypes": dtypes_str
-        }
-        return {"data": [self.process_data_rows(data)]}
-
-    def load_xlsx_documents(self, file_path: str, **kwargs: dict):
-        dfs = pd.read_excel(file_path, sheet_name=None)
-        sheets = []
-        for sheet_name, df in dfs.items():
-            df = df.fillna('null')
-            df, dtypes_str = self.check_sql_dtypes(df)
-            for i in range(len(df.columns)):
-                try:
-                    col = df.columns[0]
-                    col_type = str(type(col))
-                    df = df.astype({col: 'str'})
-                    break
-                except:
-                    raise ValueError(
-                        f"Any columns cannot be converted into string type so that can't load LangChain Documents: {dtypes_str}")
-            loader = DataFrameLoader(df, page_content_column=col)
-            documents = loader.load()
-            sheets.append({
-                "sheet_name": sheet_name,
-                "page_column": col,
-                "page_column_type": col_type,
-                "documents": documents,
-                "dtypes": dtypes_str
-            })
-        data_dict: dict = {"data": []}
-        for sheet in sheets:
-            data_dict["data"].append(self.process_data_rows(sheet))
-        return data_dict
 
 
 # ============================================================
 # AudioLoader (from attachment_processor.py)
 # ============================================================
 
-class AudioLoader:
-    def __init__(self, file_path: str, req_url: str, req_data: dict,
-                 chunk_sec: int = 29, tmp_path: str = '.', chunk_overlap_ms: int = 300):
-        self.file_path = file_path
-        self.tmp_path = tmp_path
-        self.chunk_sec = chunk_sec
-        self.chunk_overlap_ms = chunk_overlap_ms
-        self.req_url = req_url
-        self.req_data = req_data
-
-    def split_file_as_chunks(self) -> list:
-        audio = pydub.AudioSegment.from_file(self.file_path)
-        chunk_len = self.chunk_sec * 1000
-        n_chunks = math.ceil(len(audio) / chunk_len)
-        for i in range(n_chunks):
-            start_ms = i * chunk_len
-            overlap_start_ms = start_ms - self.chunk_overlap_ms if start_ms > 0 else start_ms
-            end_ms = start_ms + chunk_len
-            audio_chunk = audio[overlap_start_ms:end_ms]
-            audio_chunk.export(os.path.join(self.tmp_path, "tmp_{}.wav".format(str(i))), format="wav")
-        return glob(os.path.join(self.tmp_path, "*.wav"))
-
-    def transcribe_audio(self, file_path_lst: list):
-        transcribed_text_chunks = []
-
-        def _send_request(filepath: str):
-            files = {'file': (filepath, open(filepath, 'rb'), 'audio/mp3')}
-            response = requests.post(self.req_url, data=self.req_data, files=files)
-            text = response.json().get('text', ', ')
-            transcribed_text_chunks.append({'file_name': os.path.basename(filepath), 'text': text})
-
-        threads = [threading.Thread(target=_send_request, args=(f,)) for f in file_path_lst]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        transcribed_text_chunks.sort(key=lambda x: x['file_name'])
-        return "[AUDIO]" + ' '.join([t['text'] for t in transcribed_text_chunks])
+class AudioLoader(ld.AudioLoaderBase):
+    pass
 
 
 # ============================================================
@@ -848,102 +303,16 @@ class IntelligentDocumentProcessor:
 
         # OCR 엔드포인트는 ocr.paddle.ocr_endpoint 가 정식 위치.
         # 구버전 호환: ocr.ocr_endpoint(상위) / 최상위 ocr_endpoint 도 폴백으로 인식.
-        paddle_cfg = _as_dict(ocr_cfg.get("paddle"))
-        ocr_ep = (
-            paddle_cfg.get("ocr_endpoint")
-            or ocr_cfg.get("ocr_endpoint")
-            or cfg.get("ocr_endpoint", "")
-        )
+        # 해석은 facade/common/pipeline_setup.py 로 모았다(조정 지점은 yaml 의 ocr 섹션).
+        _ocr_rt = ps.resolve_ocr_runtime(cfg, ocr_cfg)
+        ocr_ep = _ocr_rt.endpoint
+        self.ocr_mode = _ocr_rt.mode
+        self._table_cell_ocr_timeout = _ocr_rt.table_cell_ocr_timeout
+        self._glyph_table_cell_threshold = _ocr_rt.glyph_table_cell_threshold
+        self._glyph_document_threshold = _ocr_rt.glyph_document_threshold
 
-        # 테이블 셀 재OCR HTTP timeout (ocr_all_table_cells). 잘못된 값은 60 으로 폴백.
-        table_cell_ocr_timeout = _parse_optional_int(
-            ocr_cfg.get("table_cell_ocr_timeout"), "ocr.table_cell_ocr_timeout"
-        )
-        self._table_cell_ocr_timeout = (
-            table_cell_ocr_timeout if table_cell_ocr_timeout and table_cell_ocr_timeout > 0 else 60
-        )
-
-        # 글리프 기반 auto-OCR 재트리거 임계값.
-        glyph_cfg = _as_dict(ocr_cfg.get("glyph_detection"))
-        glyph_cell_th = _parse_optional_int(
-            glyph_cfg.get("table_cell_threshold"), "ocr.glyph_detection.table_cell_threshold"
-        )
-        self._glyph_table_cell_threshold = (
-            glyph_cell_th if glyph_cell_th and glyph_cell_th > 0 else 1
-        )
-        glyph_doc_th = _parse_optional_int(
-            glyph_cfg.get("document_threshold"), "ocr.glyph_detection.document_threshold"
-        )
-        self._glyph_document_threshold = (
-            glyph_doc_th if glyph_doc_th and glyph_doc_th > 0 else 10
-        )
-        raw_ocr_mode = str(ocr_cfg.get("ocr_mode", cfg.get("ocr_mode", "auto"))).lower().strip()
-        if raw_ocr_mode not in {"auto", "force", "disable"}:
-            _log.warning(f"[IntelligentDocumentProcessor] Unknown ocr_mode '{raw_ocr_mode}', fallback to 'auto'")
-            raw_ocr_mode = "auto"
-        self.ocr_mode = raw_ocr_mode
-
-        layout_model_type_str = str(
-            layout_cfg.get("layout_model_type", cfg.get("layout_model_type", "genos_layout"))
-        ).lower().strip()
-        if layout_model_type_str == LayoutModelType.DOCLING_LAYOUT.value:
-            layout_model_type = LayoutModelType.DOCLING_LAYOUT
-        else:
-            if layout_model_type_str != LayoutModelType.GENOS_LAYOUT.value:
-                _log.warning(
-                    f"[IntelligentDocumentProcessor] Unknown layout_model_type '{layout_model_type_str}', "
-                    f"fallback to '{LayoutModelType.GENOS_LAYOUT.value}'"
-                )
-            layout_model_type = LayoutModelType.GENOS_LAYOUT
-
-        genos_layout_cfg = _as_dict(layout_cfg.get("genos_layout"))
-        layout_ep = genos_layout_cfg.get("endpoint") or cfg.get("layout_endpoint", "")
-        layout_key = genos_layout_cfg.get("api_key") or cfg.get("layout_api_key", "")
-        page_batch_size = genos_layout_cfg.get("page_batch_size", cfg.get("page_batch_size", 32))
-        max_completion_tokens = _parse_optional_int(
-            genos_layout_cfg.get("max_completion_tokens"),
-            "layout.genos_layout.max_completion_tokens",
-        )
-        if max_completion_tokens is None or max_completion_tokens <= 0:
-            max_completion_tokens = 16384
-        try:
-            page_batch_size = int(page_batch_size)
-            if page_batch_size <= 0:
-                raise ValueError
-        except (TypeError, ValueError):
-            _log.warning(
-                f"[IntelligentDocumentProcessor] Invalid page_batch_size '{page_batch_size}', fallback to 32"
-            )
-            page_batch_size = 128
-
-        # DotsOCR VLM 호출/생성 파라미터 (yaml 누락·무효 시 기본값 폴백)
-        layout_model = genos_layout_cfg.get("model") or "dots-mocr"
-        layout_timeout = _parse_optional_int(
-            genos_layout_cfg.get("timeout"), "layout.genos_layout.timeout"
-        )
-        if layout_timeout is None or layout_timeout <= 0:
-            layout_timeout = 1200  # 이슈 #278: per-page hang 방지(GenosLayoutOptions 기본과 통일)
-        layout_retry_count = _parse_optional_int(
-            genos_layout_cfg.get("retry_count"), "layout.genos_layout.retry_count"
-        )
-        if layout_retry_count is None or layout_retry_count < 0:
-            layout_retry_count = 2
-        layout_temperature = _parse_optional_float(
-            genos_layout_cfg.get("temperature"), "layout.genos_layout.temperature"
-        )
-        if layout_temperature is None or layout_temperature < 0:
-            layout_temperature = 0.1
-        layout_top_p = _parse_optional_float(
-            genos_layout_cfg.get("top_p"), "layout.genos_layout.top_p"
-        )
-        if layout_top_p is None or not (0 < layout_top_p <= 1):
-            layout_top_p = 0.9
-        layout_repetition_penalty = _parse_optional_float(
-            genos_layout_cfg.get("repetition_penalty"),
-            "layout.genos_layout.repetition_penalty",
-        )
-        if layout_repetition_penalty is None or layout_repetition_penalty <= 0:
-            layout_repetition_penalty = 1.15
+        # 해석·적용은 facade/common/pipeline_setup.py 로 모았다(조정 지점은 yaml 의 layout 섹션).
+        _layout = ps.resolve_layout_settings(cfg, layout_cfg)
 
         ocr_options = self._build_ocr_options(ocr_cfg, paddle_endpoint=ocr_ep)
         if isinstance(ocr_options, UpstageOcrOptions):
@@ -953,38 +322,13 @@ class IntelligentDocumentProcessor:
 
         self.page_chunk_counts = defaultdict(int)
 
-        device_str = str(pdf_cfg.get("device", "auto")).lower().strip()
-        device = _ACCELERATOR_DEVICE_MAP.get(device_str)
-        if device is None:
-            _log.warning(
-                f"[IntelligentDocumentProcessor] Unknown pdf_pipeline.device '{device_str}', fallback to 'auto'"
-            )
-            device = AcceleratorDevice.AUTO
-
-        num_threads = _parse_optional_int(pdf_cfg.get("num_threads"), "pdf_pipeline.num_threads")
-        if num_threads is None or num_threads <= 0:
-            num_threads = 8
-        accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device)
-
-        images_scale = _parse_optional_int(pdf_cfg.get("images_scale"), "pdf_pipeline.images_scale")
-        if images_scale is None or images_scale <= 0:
-            images_scale = 2
-
-        generate_page_images = _parse_optional_bool(
-            pdf_cfg.get("generate_page_images"), "pdf_pipeline.generate_page_images"
-        )
-        generate_picture_images = _parse_optional_bool(
-            pdf_cfg.get("generate_picture_images"), "pdf_pipeline.generate_picture_images"
-        )
-
-        table_mode_str = str(pdf_cfg.get("table_structure_mode", "accurate")).lower().strip()
-        table_structure_mode = _TABLE_FORMER_MODE_MAP.get(table_mode_str)
-        if table_structure_mode is None:
-            _log.warning(
-                f"[IntelligentDocumentProcessor] Unknown pdf_pipeline.table_structure_mode "
-                f"'{table_mode_str}', fallback to 'accurate'"
-            )
-            table_structure_mode = TableFormerMode.ACCURATE
+        # pdf_pipeline 섹션 해석은 facade/common/pipeline_setup.py 로 모았다.
+        _pdf = ps.resolve_pdf_basics(pdf_cfg)
+        accelerator_options = _pdf.accelerator_options
+        images_scale = _pdf.images_scale
+        generate_page_images = _pdf.generate_page_images
+        generate_picture_images = _pdf.generate_picture_images
+        table_structure_mode = _pdf.table_structure_mode
 
         self.pipe_line_options = PdfPipelineOptions()
         self.pipe_line_options.generate_page_images = (
@@ -997,18 +341,8 @@ class IntelligentDocumentProcessor:
         self.pipe_line_options.ocr_options = ocr_options
         self.pipe_line_options.images_scale = images_scale
 
-        self.pipe_line_options.layout_options.layout_model_type = layout_model_type
-        self.pipe_line_options.layout_options.genos_layout_options.endpoint = layout_ep
-        self.pipe_line_options.layout_options.genos_layout_options.api_key = layout_key
-        self.pipe_line_options.layout_options.genos_layout_options.max_completion_tokens = max_completion_tokens
-        self.pipe_line_options.layout_options.genos_layout_options.model = layout_model
-        self.pipe_line_options.layout_options.genos_layout_options.timeout = layout_timeout
-        self.pipe_line_options.layout_options.genos_layout_options.retry_count = layout_retry_count
-        self.pipe_line_options.layout_options.genos_layout_options.temperature = layout_temperature
-        self.pipe_line_options.layout_options.genos_layout_options.top_p = layout_top_p
-        self.pipe_line_options.layout_options.genos_layout_options.repetition_penalty = layout_repetition_penalty
-
-        docling_settings.perf.page_batch_size = page_batch_size
+        ps.apply_layout_settings(self.pipe_line_options, _layout)
+        docling_settings.perf.page_batch_size = _layout.page_batch_size
 
         self.pipe_line_options.do_table_structure = True
         self.pipe_line_options.table_structure_options.do_cell_matching = True
@@ -1054,6 +388,13 @@ class IntelligentDocumentProcessor:
             )
             md_mode = "docling"
         self._md_cfg = {"processing_mode": md_mode}
+
+        # 비표준 확장자 별칭. formats.extension_aliases 아래에 둔다.
+        #   예) {".parsed": ".md"} — *.parsed 를 마크다운으로 보고 md 분기로 라우팅한다.
+        # 확장자별 분기를 늘리지 않고 설정 한 줄로 새 원천을 받기 위한 장치다.
+        self._ext_aliases = _parse_extension_aliases(formats_cfg)
+        if self._ext_aliases:
+            _log.info(f"[DocumentProcessor] 확장자 별칭: {self._ext_aliases}")
 
         self.simple_pipeline_options = PipelineOptions()
         self.simple_pipeline_options.save_images = False
@@ -1119,11 +460,15 @@ class IntelligentDocumentProcessor:
         self.table_description_enricher = TableDescriptionEnricher(
             self.table_description_options
         )
+        # 텍스트 표 설명. 자체 url/model 이 있으면 custom_fields 의 LLM 사용 여부와 무관하게
+        # 이 실행기가 표 설명을 맡는다(table_text_description 모듈 docstring 참고).
+        self.table_text_description_enricher = TableTextDescriptionEnricher(
+            ec.table_text_description_cfg
+        )
         self.doc_summary_enricher = DocSummaryEnricher(self.doc_summary_options)
         self.custom_fields_cfgs = list(ec.custom_fields_cfgs)
         self.custom_fields_enrichers: list = (
             build_document_custom_fields_enrichers(self.custom_fields_cfgs)
-            if build_document_custom_fields_enrichers is not None else []
         )
 
         # 사용자가 커스텀 metadata 신호(prompt/파일/output_fields/parser)를 하나라도 지정한 경우
@@ -1149,7 +494,7 @@ class IntelligentDocumentProcessor:
                 thinking=ec.metadata.thinking,
                 thinking_dialect=ec.metadata.thinking_dialect,
             )
-            if MetadataEnricher is not None and ec.metadata.do_metadata and ec.metadata.has_custom_metadata
+            if ec.metadata.do_metadata and ec.metadata.has_custom_metadata
             else None
         )
 
@@ -1191,121 +536,13 @@ class IntelligentDocumentProcessor:
 
     @staticmethod
     def _build_ocr_options(ocr_cfg: dict, paddle_endpoint: str):
-        """Build OcrOptions based on ocr.engine key in yaml.
-
-        Returns PaddleOcrOptions or UpstageOcrOptions. Default engine is "paddle".
-        For "upstage", api_key falls back to UPSTAGE_API_KEY env var when empty.
-        Unknown engine values fall back to "paddle" with a warning.
-        """
-        ocr_cfg = ocr_cfg if isinstance(ocr_cfg, dict) else {}
-        ocr_engine = str(ocr_cfg.get("engine", "paddle")).lower().strip()
-        if ocr_engine not in {"paddle", "upstage"}:
-            _log.warning(
-                f"[IntelligentDocumentProcessor] Unknown ocr.engine '{ocr_engine}', fallback to 'paddle'"
-            )
-            ocr_engine = "paddle"
-
-        if ocr_engine == "upstage":
-            upstage_cfg = _as_dict(ocr_cfg.get("upstage"))
-            upstage_api_key = upstage_cfg.get("api_key", "") or os.getenv("UPSTAGE_API_KEY", "")
-
-            # yaml 의 잘못된 값 (예: timeout: "60s") 으로 startup 이 깨지지 않도록
-            # 변환 실패 시 default 로 fallback + warning. 페이지 batch size 등 다른
-            # 정수 파싱 패턴과 동일.
-            raw_timeout = upstage_cfg.get("timeout", 60)
-            try:
-                upstage_timeout = int(raw_timeout)
-                if upstage_timeout <= 0:
-                    raise ValueError
-            except (TypeError, ValueError):
-                _log.warning(
-                    f"[IntelligentDocumentProcessor] Invalid ocr.upstage.timeout '{raw_timeout}', fallback to 60"
-                )
-                upstage_timeout = 60
-
-            raw_text_score = upstage_cfg.get("text_score", 0.5)
-            try:
-                upstage_text_score = float(raw_text_score)
-            except (TypeError, ValueError):
-                _log.warning(
-                    f"[IntelligentDocumentProcessor] Invalid ocr.upstage.text_score '{raw_text_score}', fallback to 0.5"
-                )
-                upstage_text_score = 0.5
-
-            return UpstageOcrOptions(
-                force_full_page_ocr=False,
-                lang=upstage_cfg.get("lang", ["ko", "en"]),
-                api_endpoint=upstage_cfg.get(
-                    "api_endpoint",
-                    "https://api.upstage.ai/v1/document-digitization",
-                ),
-                api_key=upstage_api_key,
-                model=upstage_cfg.get("model", "ocr"),
-                timeout=upstage_timeout,
-                text_score=upstage_text_score,
-            )
-
-        paddle_cfg = _as_dict(ocr_cfg.get("paddle"))
-
-        raw_lang = paddle_cfg.get("lang", ["korean"])
-        if isinstance(raw_lang, list) and raw_lang:
-            paddle_lang = raw_lang
-        else:
-            if raw_lang not in (None, [], ["korean"]):
-                _log.warning(
-                    f"[IntelligentDocumentProcessor] Invalid ocr.paddle.lang '{raw_lang}', fallback to ['korean']"
-                )
-            paddle_lang = ["korean"]
-
-        raw_text_score = paddle_cfg.get("text_score", 0.3)
-        try:
-            paddle_text_score = float(raw_text_score)
-        except (TypeError, ValueError):
-            _log.warning(
-                f"[IntelligentDocumentProcessor] Invalid ocr.paddle.text_score '{raw_text_score}', fallback to 0.3"
-            )
-            paddle_text_score = 0.3
-
-        return PaddleOcrOptions(
-            force_full_page_ocr=False,
-            lang=paddle_lang,
-            ocr_endpoint=paddle_endpoint,
-            text_score=paddle_text_score,
-        )
+        return dops.build_ocr_options(ocr_cfg, paddle_endpoint)
 
     def _create_converters(self):
-        self.converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.pipe_line_options,
-                    backend=PyPdfiumDocumentBackend
-                ),
-            }
-        )
-        self.second_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.pipe_line_options,
-                    backend=PyPdfiumDocumentBackend
-                ),
-            },
-        )
-        self.ocr_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.ocr_pipe_line_options,
-                    backend=DoclingParseV4DocumentBackend
-                ),
-            }
-        )
-        self.ocr_second_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.ocr_pipe_line_options,
-                    backend=PyPdfiumDocumentBackend
-                ),
-            },
-        )
+        """컨버터들을 생성하는 헬퍼 메서드"""
+        (self.converter, self.second_converter,
+         self.ocr_converter, self.ocr_second_converter) = dops.create_converters(
+            self.pipe_line_options, self.ocr_pipe_line_options)
 
     def load_documents_with_docling(self, file_path: str, **kwargs: dict) -> DoclingDocument:
         save_images = kwargs.get('save_images', True)
@@ -1362,125 +599,10 @@ class IntelligentDocumentProcessor:
             raise GenosServiceException("1", e.raw_error_message) from e
 
     def _normalize_runtime_kwargs(self, kwargs: dict) -> dict:
-        """이미지/차트 description 런타임 토글을 정규화한다(전부 0/1 플래그).
-
-        img_desc→image_description.enable, chart_desc(alias chart_convert)→chart.enable,
-        chart_detection(1=auto/0=all), doc_summary→body_summary.enable.
-        미지정 kwarg 는 config(runtime 섹션 또는 base 옵션) 기본값을 따른다.
-        """
-        normalized = dict(kwargs or {})
-        runtime = self._runtime_cfg
-        base = getattr(self, "_base_image_description_options", None)
-
-        img_default = _as_int_flag(runtime.get("img_desc"), 1 if (base and base.enabled) else 0)
-        chart_default = _as_int_flag(
-            runtime.get("chart_desc", runtime.get("chart_convert")),
-            1 if (base and base.chart_enabled) else 0,
-        )
-        detection_default = _as_int_flag(
-            runtime.get("chart_detection"), 1 if (base and base.chart_detection == "auto") else 0
-        )
-        dbase = getattr(self, "_base_doc_summary_options", None)
-        summary_default = _as_int_flag(
-            runtime.get("doc_summary"), 1 if (dbase and dbase.enabled) else 0
-        )
-
-        normalized["img_desc"] = _as_int_flag(normalized.get("img_desc"), img_default)
-        normalized["chart_desc"] = _as_int_flag(
-            normalized.get("chart_desc", normalized.get("chart_convert")), chart_default
-        )
-        normalized["chart_detection"] = _as_int_flag(
-            normalized.get("chart_detection"), detection_default
-        )
-        normalized["doc_summary"] = _as_int_flag(normalized.get("doc_summary"), summary_default)
-
-        # 표 description 런타임 토글(table_desc→enable, table_refine→refine.enable)
-        tbase = getattr(self, "_base_table_description_options", None)
-        table_default = _as_int_flag(
-            runtime.get("table_desc"), 1 if (tbase and tbase.enabled) else 0
-        )
-        refine_default = _as_int_flag(
-            runtime.get("table_refine"), 1 if (tbase and tbase.refine_enabled) else 0
-        )
-        normalized["table_desc"] = _as_int_flag(normalized.get("table_desc"), table_default)
-        normalized["table_refine"] = _as_int_flag(normalized.get("table_refine"), refine_default)
-
-        # TOC 런타임 토글(toc/toc_on alias) — 기본값은 config 의 do_toc_enrichment.
-        # (parser 는 parse-only 라 merge_sections/chunk_mode 는 해당 없음 → 미추가)
-        toc_default = _as_int_flag(
-            runtime.get("toc", runtime.get("toc_on")),
-            1 if getattr(self.enrichment_options, "do_toc_enrichment", False) else 0,
-        )
-        normalized["toc"] = _as_int_flag(
-            normalized.get("toc", normalized.get("toc_on")), toc_default
-        )
-        return normalized
+        return rk.normalize_runtime_kwargs(self, kwargs)
 
     def _configure_runtime_image_mode(self, kwargs: dict):
-        """정규화된 kwargs 로 image_description_options/enricher 를 재구성한다.
-
-        순수 override 계산은 enrichment.image_description.resolve_runtime_image_options 에 위임.
-        """
-        doc_summary = _as_int_flag(kwargs.get("doc_summary"), 0)
-
-        # image description 런타임 재구성 (image base 옵션이 있을 때만)
-        base = getattr(self, "_base_image_description_options", None)
-        if base is not None:
-            img_desc = _as_int_flag(kwargs.get("img_desc"), 0)
-            chart_desc = _as_int_flag(kwargs.get("chart_desc"), 0)
-            chart_detection = _as_int_flag(kwargs.get("chart_detection"), 0)
-            self.image_description_options = resolve_runtime_image_options(
-                base,
-                img_desc=img_desc,
-                chart_desc=chart_desc,
-                chart_detection=chart_detection,
-                classification_available=getattr(
-                    self.pipe_line_options, "do_picture_classification", False
-                ),
-            )
-            self.image_description_enricher = ImageDescriptionEnricher(
-                self.image_description_options
-            )
-            _log.info(
-                "[runtime_feature] image mode enabled=%s img_desc=%s chart_desc=%s detection=%s",
-                self.image_description_options.enabled,
-                img_desc,
-                chart_desc,
-                self.image_description_options.chart_detection,
-            )
-
-        # 표 description 런타임 재구성 (image base 유무와 무관하게 독립 실행)
-        tbase = getattr(self, "_base_table_description_options", None)
-        if tbase is not None:
-            table_desc = _as_int_flag(kwargs.get("table_desc"), 0)
-            table_refine = _as_int_flag(kwargs.get("table_refine"), 0)
-            self.table_description_options = resolve_runtime_table_options(
-                tbase,
-                table_desc=table_desc,
-                table_refine=table_refine,
-            )
-            self.table_description_enricher = TableDescriptionEnricher(
-                self.table_description_options
-            )
-            _log.info(
-                "[runtime_feature] table mode enabled=%s table_desc=%s table_refine=%s",
-                self.table_description_options.enabled,
-                table_desc,
-                table_refine,
-            )
-
-        # doc_summary 런타임 재구성(image/table 공통 컨텍스트 제공)
-        dbase = getattr(self, "_base_doc_summary_options", None)
-        if dbase is not None:
-            self.doc_summary_options = resolve_runtime_doc_summary_options(
-                dbase, doc_summary=doc_summary
-            )
-            self.doc_summary_enricher = DocSummaryEnricher(self.doc_summary_options)
-            _log.info(
-                "[runtime_feature] doc_summary mode enabled=%s doc_summary=%s",
-                self.doc_summary_options.enabled,
-                doc_summary,
-            )
+        rk.configure_runtime_image_mode(self, kwargs)
 
     def _get_or_create_image_description_enricher(self) -> ImageDescriptionEnricher:
         enricher = getattr(self, "image_description_enricher", None)
@@ -1531,154 +653,22 @@ class IntelligentDocumentProcessor:
         return document
 
     def check_glyph_text(self, text: str, threshold: int = 1) -> bool:
-        if not text:
-            return False
-        matches = re.findall(r'GLYPH\w*', text)
-        if len(matches) >= threshold:
-            return True
-        return False
+        return dops.check_glyph_text(text, threshold)
 
     def check_glyphs(self, document: DoclingDocument) -> bool:
-        for item, level in document.iterate_items():
-            if isinstance(item, TextItem) and hasattr(item, 'prov') and item.prov:
-                matches = re.findall(r'GLYPH\w*', item.text)
-                if len(matches) > self._glyph_document_threshold:
-                    return True
-        return False
+        return dops.check_glyphs(document, self._glyph_document_threshold)
 
     def check_empty_text(self, document: DoclingDocument) -> bool:
-        """텍스트 클러스터(박스)는 있는데 그 텍스트가 전부 비어 있는 페이지가 있는지 확인.
-
-        length 폴백(layout_only)이나 텍스트레이어 부재 등으로 박스만 있고 텍스트가
-        안 채워진 페이지를 잡아 강제 OCR 로 보낸다(이슈 #278 B-2).
-        (intelligent_processor.DocumentProcessor.check_empty_text 미러 — /parse↔/run auto-OCR 정합)
-        """
-        from collections import defaultdict
-        page_item_count: dict = defaultdict(int)
-        page_text_len: dict = defaultdict(int)
-        for item, _level in document.iterate_items():
-            if isinstance(item, TextItem) and hasattr(item, 'prov') and item.prov:
-                page_no = item.prov[0].page_no
-                page_item_count[page_no] += 1
-                page_text_len[page_no] += len((item.text or "").strip())
-        for page_no, n_items in page_item_count.items():
-            # 텍스트 아이템이 있는데 그 페이지 텍스트 총량이 0 → 비어있는 페이지
-            if n_items > 0 and page_text_len[page_no] == 0:
-                _log.info(f"[intelligent] page {page_no} 텍스트가 비어있음 → 강제 OCR 필요")
-                return True
-        return False
+        return dops.check_empty_text(document)
 
     def ocr_all_table_cells(self, document: DoclingDocument, pdf_path) -> DoclingDocument:
-        """글리프 깨진 텍스트가 있는 테이블에 대해서만 OCR을 수행합니다."""
-        import io as _io
-        import base64 as _base64
-        from PIL import Image as _Image
-
-        def post_ocr_bytes(img_bytes: bytes, timeout=60) -> dict:
-            HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
-            payload = {"file": _base64.b64encode(img_bytes).decode("ascii"), "fileType": 1, "visualize": False}
-            r = requests.post(self.ocr_endpoint, json=payload, headers=HEADERS, timeout=timeout)
-            if not r.ok:
-                raise RuntimeError(f"OCR HTTP {r.status_code}: {r.text[:500]}")
-            return r.json()
-
-        def extract_ocr_fields(resp: dict):
-            if resp is None:
-                return [], [], []
-            if resp.get("errorCode") not in (0, None):
-                return [], [], []
-            ocr_results = resp.get("result", {}).get("ocrResults", [])
-            if not ocr_results:
-                return [], [], []
-            pruned = ocr_results[0].get("prunedResult", {})
-            if not pruned:
-                return [], [], []
-            rec_texts = pruned.get("rec_texts", [])
-            rec_scores = pruned.get("rec_scores", [])
-            rec_boxes = pruned.get("rec_boxes", [])
-            n = min(len(rec_texts), len(rec_scores), len(rec_boxes))
-            return rec_texts[:n], rec_scores[:n], rec_boxes[:n]
-
-        try:
-            for table_idx, table_item in enumerate(document.tables):
-                if not table_item.data or not table_item.data.table_cells:
-                    continue
-                if not table_item.prov:
-                    continue
-
-                b_ocr = False
-                for cell_idx, cell in enumerate(table_item.data.table_cells):
-                    if self.check_glyph_text(cell.text, threshold=self._glyph_table_cell_threshold):
-                        b_ocr = True
-                        break
-
-                if b_ocr is False:
-                    continue
-
-                # docling 이 이미 렌더해 둔 페이지 이미지(generate_page_images=True)를
-                # 재사용해 셀 영역을 crop 한다. PyMuPDF 재렌더(get_pixmap)는 일부 PDF 에서
-                # 네이티브 크래시(SIGSEGV, worker code 139)를 유발하므로 사용하지 않는다.
-                page_no = table_item.prov[0].page_no
-                page = document.pages.get(page_no)
-                if page is None or page.size is None or page.image is None:
-                    continue
-                page_image = page.image.pil_image
-                if page_image is None:
-                    continue
-                W, H = page_image.size
-
-                for cell_idx, cell in enumerate(table_item.data.table_cells):
-                    try:
-                        if cell.bbox is None:
-                            continue
-
-                        # docling 셀 bbox(BOTTOMLEFT) → 페이지 이미지 픽셀 좌표(TOPLEFT)
-                        crop = (
-                            cell.bbox
-                            .to_top_left_origin(page_height=page.size.height)
-                            .scale_to_size(old_size=page.size, new_size=page.image.size)
-                        )
-                        x0, y0, x1, y1 = crop.as_tuple()
-                        # 정규화 + 페이지 경계 클램프 + degenerate skip
-                        x0, x1 = sorted((x0, x1))
-                        y0, y1 = sorted((y0, y1))
-                        x0 = max(0, min(x0, W)); x1 = max(0, min(x1, W))
-                        y0 = max(0, min(y0, H)); y1 = max(0, min(y1, H))
-                        if (x1 - x0) < 1 or (y1 - y0) < 1:
-                            continue
-
-                        cell_img = page_image.crop((x0, y0, x1, y1))
-
-                        # 아주 작은 셀은 OCR 가독성을 위해 확대(기존 target_height=20, ≤4x)
-                        ch = y1 - y0
-                        zoom = min(max(20.0 / ch, 1.0), 4.0) if ch > 0 else 1.0
-                        if zoom > 1.0:
-                            cell_img = cell_img.resize(
-                                (max(1, round((x1 - x0) * zoom)), max(1, round(ch * zoom))),
-                                _Image.LANCZOS,
-                            )
-
-                        buf = _io.BytesIO()
-                        cell_img.save(buf, format="PNG")
-                        img_data = buf.getvalue()
-
-                        result = post_ocr_bytes(img_data, timeout=self._table_cell_ocr_timeout)
-                        rec_texts, rec_scores, rec_boxes = extract_ocr_fields(result)
-
-                        cell.text = ""
-                        for t in rec_texts:
-                            if len(cell.text) > 0:
-                                cell.text += " "
-                            cell.text += t if t else ""
-                    except Exception as cell_err:
-                        # 한 셀 실패가 나머지 셀/표를 막지 않도록 격리
-                        print(f"OCR cell processing failed (table={table_idx}, cell={cell_idx}): {cell_err}")
-                        continue
-        except Exception as e:
-            print(f"OCR processing failed: {e}")
-            pass
-
-        return document
+        """글리프 깨진 텍스트가 있는 표에 대해서만 셀 단위 재OCR 을 수행한다."""
+        return dops.ocr_all_table_cells(
+            document,
+            ocr_endpoint=self.ocr_endpoint,
+            cell_threshold=self._glyph_table_cell_threshold,
+            timeout=self._table_cell_ocr_timeout,
+        )
 
 
 # ============================================================
@@ -1756,6 +746,15 @@ class DocxDocumentLoader:
 # load_documents() 메서드만 포함
 # ============================================================
 
+def _file_looks_like_text(file_path: str) -> bool:
+    """파일 앞부분이 텍스트로 보이는지. 읽을 수 없으면 False(=텍스트로 단정하지 않음)."""
+    try:
+        with open(file_path, "rb") as f:
+            return _looks_like_text(f.read(512))
+    except OSError:
+        return False
+
+
 class GenericDocumentLoader:
 
     def __init__(self):
@@ -1795,6 +794,16 @@ class GenericDocumentLoader:
             # .md 는 기본적으로 docling 분기에서 처리된다. 여기로 오는 건
             # formats.md.processing_mode=text 인 레거시 경로뿐이다.
             return TextLoader(file_path)
+        elif _file_looks_like_text(file_path):
+            # 모르는 확장자라도 내용이 텍스트면 TextLoader 로 읽는다. Unstructured 는 무거운
+            # 선택 의존이라 오프라인 배포본에는 없을 수 있는데, 그때 ImportError 로 죽는 대신
+            # 최소한 본문은 살린다. 구조(헤딩/표)까지 살리려면 아래 안내대로 별칭을 지정한다.
+            _log.warning(
+                f"[GenericDocumentLoader] 모르는 확장자 '{ext}' — 구조 없는 텍스트로 읽습니다. "
+                "표준 포맷으로 처리하려면 파서 설정의 formats.extension_aliases 에 "
+                f"'{ext}' 별칭을 지정하세요(예: \"{ext}\": \".md\")."
+            )
+            return TextLoader(file_path)
         else:
             return UnstructuredFileLoader(file_path)
 
@@ -1832,7 +841,17 @@ class GenericDocumentLoader:
         return documents
 
     def load_documents(self, file_path: str, **kwargs: dict) -> list:
-        loader = self.get_loader(file_path)
+        try:
+            loader = self.get_loader(file_path)
+        except ImportError as exc:
+            # unstructured 는 선택 의존이라 오프라인 배포본에는 없을 수 있다. 원인과 조치를
+            # 알 수 있게 바꿔 던진다(텍스트 파일은 위에서 TextLoader 로 빠지므로 여기 안 온다).
+            raise GenosServiceException(
+                "1",
+                f"이 형식은 unstructured 패키지가 있어야 처리됩니다({exc}). "
+                f"표준 포맷으로 변환해 올리거나 파서 설정의 formats.extension_aliases 로 "
+                f"처리할 포맷을 지정하세요: {os.path.basename(file_path)}",
+            ) from exc
         ext = os.path.splitext(file_path)[-1].lower()
         try:
             documents = loader.load()
@@ -1891,9 +910,12 @@ class DocumentProcessor:
         cfg = _load_config(config_path)
         self._intel = IntelligentDocumentProcessor(cfg, config_path=config_path)
 
-        # xlsx/csv · md 처리 설정은 intel 프로세서가 동일 config에서 이미 파싱함 → 재사용
+        # xlsx/csv · md · 확장자 별칭 설정은 intel 프로세서가 동일 config에서 이미 파싱함 → 재사용.
+        # _ext_aliases 를 빠뜨리면 formats.extension_aliases 가 설정에 있어도 라우팅이 그것을
+        # 못 읽어(빈 dict) *.parsed 같은 입력이 구조 없는 텍스트로 떨어진다.
         self._xlsx_cfg = self._intel._xlsx_cfg
         self._md_cfg = self._intel._md_cfg
+        self._ext_aliases = self._intel._ext_aliases
         # enrichment.custom_fields 중 tabular_mapping handler를 시작 시 1회 로드한다.
         self._config_dir = self._intel._config_dir
         self._tabular_custom_fields_mappers = self._build_tabular_custom_fields_mappers(
@@ -1947,7 +969,8 @@ class DocumentProcessor:
         self._output_format = self._normalize_output_format(output_cfg.get("format", "json"))
         self._table_format = self._normalize_table_format(output_cfg.get("table_format", "html"))
         # markdown 표 compact(컬럼 정렬 패딩 제거) 여부. 기본 True. html 포맷엔 무관.
-        self._compact_tables = bool(output_cfg.get("compact_tables", True))
+        # 공용 헬퍼를 쓴다 - 다른 facade 와 같은 규칙으로 문자열 "false" 도 off 로 읽는다.
+        self._compact_tables = cp.resolve_compact_tables(output_cfg)
 
         # 민감정보 분류(#315): parser 가 호출 주체. guardrail_call 요청 시 문서 전체를 1회 분류해
         # sensitive_infos 를 파스 출력에 실어 chunking 으로 전달(chunking 은 청크에 적용만 = 병합).
@@ -1960,9 +983,9 @@ class DocumentProcessor:
         self._page_desc_options = PageDescriptionOptions.from_config(ppt_pd_cfg, self._intel._config_dir)
         self._ppt_pdf_converter = None
 
-        # HTML flatten 전처리 모드. docling 은 <iframe srcdoc="..."> 속성 안의 본문을
-        # 읽지 못해 4MB 문서에서 641자만 추출되는 경우가 있다(monimo 크롤 산출물).
-        # auto: 원문 스캔으로 그런 구조적 결함이 감지될 때만 flatten(기본)
+        # HTML flatten 전처리 모드. docling 은 <iframe srcdoc="..."> 속성 안의 본문,
+        # 접힌 아코디언, <li>와 중첩 목록 사이에 div가 낀 구조를 누락할 수 있다.
+        # auto: 원문 스캔/DOM 사전검사로 그런 구조적 결함이 감지될 때만 flatten(기본)
         # always: 항상 flatten  |  off: 전처리 없음(기존 동작)
         html_cfg = _as_dict(formats_cfg.get("html"))
         self._html_flatten_mode = self._normalize_flatten_mode(html_cfg.get("flatten", "auto"))
@@ -1970,6 +993,30 @@ class DocumentProcessor:
         # enrichment.custom_fields 중 json 블록을 가진 설정(= .json 입력에서 본문 텍스트를
         # 꺼낼 key 목록)을 시작 시 1회 로드한다. tabular_mapping 과 같은 패턴.
         self._json_text_specs = self._build_json_text_specs(self._intel.custom_fields_cfgs)
+
+        # 문서 단위 custom_fields의 markdown.front_matter 설정. doc_type별로 원천 YAML의
+        # metadata 승격 필드와 청크 텍스트 제외 필드를 독립 선택한다.
+        self._markdown_front_matter_specs = self._build_markdown_front_matter_specs(
+            self._intel.custom_fields_cfgs
+        )
+
+        # 문서 단위 custom_fields의 markdown.text_fence 설정. PDF 레이아웃 보존용 ```text
+        # 펜스를 docling 변환 전에 논리 단위 단락으로 되돌린다(안 하면 펜스 본문 전체가
+        # CodeItem 하나가 되어 chunk_size 가 무의미해진다).
+        self._markdown_text_fence_specs = self._build_markdown_text_fence_specs(
+            self._intel.custom_fields_cfgs
+        )
+
+        # 문서 단위 custom_fields 의 html.marker_headings 설정. h태그 없이 도형 마커로만 계층을
+        # 표현하는 원천(고객센터 카드 HTML)에서 그 마커 줄을 섹션 헤더로 승격한다. 대상 doc_type
+        # 이 아니면 사유 계산 자체를 켜지 않아 다른 원천의 flatten auto 동작을 건드리지 않는다.
+        self._html_marker_heading_doc_types = self._build_html_marker_heading_doc_types(
+            self._intel.custom_fields_cfgs
+        )
+        # 같은 원문이 md 로도 온다. 판정 규칙은 converters 쪽에서 공유하므로 스위치만 나란히 둔다.
+        self._markdown_marker_heading_doc_types = self._build_marker_heading_doc_types(
+            build_markdown_marker_heading_doc_types, self._intel.custom_fields_cfgs, "markdown"
+        )
 
         # enrichment.custom_fields 중 extractor=json_mapping 설정(= JSON 레코드 → 목표필드
         # 매핑). 문서 모드(json:)보다 우선하며, 레코드마다 청크 메타데이터를 따로 싣는다.
@@ -1991,11 +1038,8 @@ class DocumentProcessor:
 
     @staticmethod
     def _normalize_table_format(value: Any) -> str:
-        fmt = str(value).strip().lower()
-        if fmt not in {"html", "markdown"}:
-            _log.warning(f"[DocumentProcessor] Invalid output.table_format '{value}', fallback to 'html'")
-            return "html"
-        return fmt
+        """output.table_format 설정을 읽는다. auto 는 표마다 구조를 보고 정해진다."""
+        return cp.resolve_table_format_setting({"table_format": value})
 
     @staticmethod
     def _normalize_flatten_mode(value: Any) -> str:
@@ -2027,6 +1071,41 @@ class DocumentProcessor:
         return specs
 
     @staticmethod
+    def _build_markdown_front_matter_specs(custom_fields_cfgs: list) -> list:
+        try:
+            return build_markdown_front_matter_specs(custom_fields_cfgs)
+        except (ValueError, TypeError) as exc:
+            raise GenosServiceException(
+                "1", f"custom_fields markdown.front_matter 설정 오류: {exc}",
+                stage="custom_fields",
+            ) from exc
+
+    @staticmethod
+    def _build_markdown_text_fence_specs(custom_fields_cfgs: list) -> list:
+        try:
+            return build_markdown_text_fence_specs(custom_fields_cfgs)
+        except (ValueError, TypeError) as exc:
+            raise GenosServiceException(
+                "1", f"custom_fields markdown.text_fence 설정 오류: {exc}",
+                stage="custom_fields",
+            ) from exc
+
+    @staticmethod
+    def _build_marker_heading_doc_types(builder, custom_fields_cfgs: list, fmt: str) -> frozenset:
+        try:
+            return builder(custom_fields_cfgs)
+        except (ValueError, TypeError, FileNotFoundError) as exc:
+            raise GenosServiceException(
+                "1", f"custom_fields {fmt} 설정 오류: {exc}", stage="custom_fields"
+            ) from exc
+
+    @classmethod
+    def _build_html_marker_heading_doc_types(cls, custom_fields_cfgs: list) -> frozenset:
+        return cls._build_marker_heading_doc_types(
+            build_html_marker_heading_doc_types, custom_fields_cfgs, "html"
+        )
+
+    @staticmethod
     def _build_tabular_custom_fields_mappers(custom_fields_cfgs: list) -> list:
         """custom_fields 설정 중 extractor=tabular_mapping 만 매퍼로 만든다.
 
@@ -2034,8 +1113,6 @@ class DocumentProcessor:
         **서비스 import 자체가 죽는다**(어느 설정이 문제인지도 드러나지 않는다).
         TypeError 도 잡는다 — `constants: 5` 처럼 dict() 강제 변환이 TypeError 를 내는 경우가 있다.
         """
-        if build_tabular_custom_fields_mappers is None:
-            return []
         try:
             return build_tabular_custom_fields_mappers(custom_fields_cfgs)
         except (ValueError, TypeError, FileNotFoundError) as exc:
@@ -2045,23 +1122,44 @@ class DocumentProcessor:
 
     @staticmethod
     def _build_json_records_mappers(custom_fields_cfgs: list) -> list:
-        """custom_fields 설정 중 extractor=json_mapping 만 매퍼로 만든다. tabular 와 같은 패턴."""
-        if build_json_records_mappers is None:
-            return []
+        """custom_fields 설정 중 JSON 레코드/의미 계열(json_mapping/json_records/json_semantic)을
+        모두 매퍼로 만들어 합친다. tabular 와 같은 패턴이되, 두 빌더에 전체 목록을 그대로
+        넘긴다 — 각 빌더가 자기 extractor 집합(json_records.JSON_RECORD_EXTRACTORS /
+        json_semantic.JSON_SEMANTIC_EXTRACTORS)에 속하는 설정만 스스로 고른다
+        (custom_fields_enricher.py 의 집합 분리 참고). 여기서 미리 걸러줄 필요가 없다.
+        """
         try:
-            return build_json_records_mappers(custom_fields_cfgs)
+            mappers: list = list(build_json_records_mappers(custom_fields_cfgs))
+            mappers.extend(build_semantic_json_mappers(custom_fields_cfgs))
+            return mappers
         except (ValueError, TypeError, FileNotFoundError) as exc:
             raise GenosServiceException(
-                "1", f"custom_fields json_mapping 설정 오류: {exc}", stage="custom_fields"
+                "1", f"custom_fields json_mapping/json_semantic 설정 오류: {exc}", stage="custom_fields"
             ) from exc
 
-    def _json_records_mapper_for(self, runtime_doc_type: Any):
-        """런타임 doc_type 에 매칭되는 json_mapping 매퍼. 없으면 None(다음 경로로 폴백)."""
-        return self._single_json_match(
-            [m for m in self._json_records_mappers if m.matches(runtime_doc_type)],
-            runtime_doc_type,
-            "json_mapping",
-        )
+    def _json_records_mappers_for(self, runtime_doc_type: Any) -> list:
+        """런타임 doc_type 에 매칭되는 json_mapping 매퍼 **목록**. 없으면 빈 목록.
+
+        한 파일에 성격이 다른 배열이 여럿 오는 원천(`faqList` + `noticeList`)을 다루려면
+        매퍼가 여러 개여야 한다. 다만 실수로 같은 설정을 두 번 등록한 것과 구분해야 하므로
+        **`records` 키가 서로 달라야** 의도적인 것으로 본다 — 같거나 둘 다 없으면 어느
+        매퍼가 무엇을 맡는지 알 수 없어 종전처럼 거부한다.
+        """
+        matching = [m for m in self._json_records_mappers if m.matches(runtime_doc_type)]
+        if len(matching) > 1:
+            # 이 목록에는 json_semantic 매퍼도 섞여 있다(빌더 둘의 결과를 합쳐 담는다).
+            # 그쪽은 records_key 가 없으므로 getattr 로 견딘다 — 그리고 키가 None 이면
+            # 무엇을 맡는지 알 수 없으니 아래에서 거부된다(semantic 은 1파일=1대상이라
+            # 다른 매퍼와 섞이는 것 자체가 모호하다).
+            keys = [getattr(m, "records_key", None) for m in matching]
+            if len(set(keys)) != len(keys) or None in keys:
+                raise GenosServiceException(
+                    "1",
+                    f"동일 doc_type 에 json_mapping 설정이 여러 개인데 records 키가 겹칩니다"
+                    f"({runtime_doc_type}, records={keys}). 배열마다 다른 records 키를 주거나"
+                    f" 설정 하나를 지우세요.",
+                )
+        return matching
 
     def _json_text_spec_for(self, runtime_doc_type: Any):
         """런타임 doc_type 에 매칭되는 json 설정. 없으면 None(기존 경로 폴백)."""
@@ -2073,6 +1171,35 @@ class DocumentProcessor:
             runtime_doc_type,
             "json",
         )
+
+    def _markdown_front_matter_spec_for(self, runtime_doc_type: Any):
+        return self._single_json_match(
+            [
+                spec for spec in self._markdown_front_matter_specs
+                if spec.matches(runtime_doc_type)
+            ],
+            runtime_doc_type,
+            "markdown.front_matter",
+        )
+
+    def _markdown_text_fence_spec_for(self, runtime_doc_type: Any):
+        """런타임 doc_type 에 매칭되는 text_fence 설정. 없으면 None(전처리 없이 파싱)."""
+        return self._single_json_match(
+            [
+                spec for spec in self._markdown_text_fence_specs
+                if not spec.doc_types or normalize_doc_type(runtime_doc_type) in spec.doc_types
+            ],
+            runtime_doc_type,
+            "markdown.text_fence",
+        )
+
+    def _html_marker_headings_enabled(self, runtime_doc_type: Any) -> bool:
+        """런타임 doc_type 이 마커 승격 대상인지."""
+        return normalize_doc_type(runtime_doc_type) in self._html_marker_heading_doc_types
+
+    def _markdown_marker_headings_enabled(self, runtime_doc_type: Any) -> bool:
+        """런타임 doc_type 이 md 마커 승격 대상인지."""
+        return normalize_doc_type(runtime_doc_type) in self._markdown_marker_heading_doc_types
 
     @staticmethod
     def _single_json_match(matching: list, runtime_doc_type: Any, label: str):
@@ -2125,6 +1252,12 @@ class DocumentProcessor:
         # 같은 경로로 minio 업로드한다.
         output_path, output_file = os.path.split(artifacts_from or file_path)
         filename, _ = os.path.splitext(output_file)
+        # 확장자가 둘 이상인 입력(X.html.parsed)은 마지막 확장자만 떼면 형제 파일(X.html)과
+        # 이름이 겹친다. _with_pictures_refs 는 그림 유무와 무관하게 이 경로를 mkdir 하므로
+        # 형제가 파일로 있으면 FileExistsError 로 파싱이 죽고, 반대로 먼저 만들면 나중에
+        # 그 형제 파일을 같은 폴더에 내려받을 수 없다. 겹칠 수 없는 이름을 쓴다.
+        if os.path.splitext(filename)[1]:
+            filename = output_file + ".artifacts"
         artifacts_dir = Path(output_path) / filename  # 빈 output_path 가 절대경로(/filename)로 바뀌는 것 방지
         reference_path = None if artifacts_dir.is_absolute() else artifacts_dir.parent
 
@@ -2223,13 +1356,96 @@ class DocumentProcessor:
     # HTML flatten 전처리 / JSON 본문 추출
     # ------------------------------------------------------------------
 
-    def _prepare_html(self, file_path: str, work_dir: str) -> str:
+    @staticmethod
+    def _prepare_markdown(
+        file_path: str, work_dir: str, fm_spec, fence_spec, marker_headings: bool = False
+    ) -> tuple[str, dict]:
+        """Front matter / text_fence 전처리를 적용한 파싱 경로와 enrichment context를 반환.
+
+        둘 중 하나라도 텍스트를 바꿨을 때만 파생 파일을 쓴다. 바뀐 것이 없으면 원본 경로를
+        그대로 돌려주므로 docling 입력은 물론 artifacts 경로도 기존과 동일하다.
+        """
+        context: dict = {}
+        text: str | None = None   # 전처리로 실제로 바뀐 텍스트만 담는다(None = 원본 그대로)
+
+        if fm_spec is not None:
+            try:
+                parsed = fm_spec.parse(file_path)
+            except ValueError as exc:
+                raise GenosServiceException(
+                    "1", str(exc), stage="custom_fields"
+                ) from exc
+            if parsed.found:
+                context = {
+                    "metadata": dict(parsed.metadata),
+                    "prompt_prefix": parsed.prompt_prefix,
+                    "source_fields": list(parsed.source_fields),
+                }
+                text = parsed.filtered_text
+
+        if fence_spec is not None:
+            source = text
+            if source is None:
+                try:
+                    source = Path(file_path).read_text(encoding="utf-8-sig")
+                except (OSError, UnicodeError) as exc:
+                    # 읽을 수 없으면 전처리를 건너뛰고 원본 경로로 파싱한다(기존 동작).
+                    _log.warning(f"[DocumentProcessor] markdown.text_fence 입력 읽기 실패: {exc}")
+                    return file_path, context
+            fenced, converted = fence_spec.apply(source)
+            if converted:
+                _log.info(
+                    f"[DocumentProcessor] markdown.text_fence: {converted}개 펜스 블록을 "
+                    f"단락으로 복원 ({Path(file_path).name})"
+                )
+                text = fenced
+
+        if marker_headings:
+            # text_fence 뒤에 돈다 — 펜스를 단락으로 되돌린 뒤라야 그 안의 마커 줄도 후보가 된다.
+            from genon.preprocessor.converters.md_marker_headings import (
+                promote_markdown_marker_headings,
+            )
+
+            source = text
+            if source is None:
+                try:
+                    source = Path(file_path).read_text(encoding="utf-8-sig")
+                except (OSError, UnicodeError) as exc:
+                    _log.warning(
+                        f"[DocumentProcessor] markdown.marker_headings 입력 읽기 실패: {exc}"
+                    )
+                    return file_path, context
+            promoted, count = promote_markdown_marker_headings(source)
+            if count:
+                _log.info(
+                    f"[DocumentProcessor] markdown.marker_headings: {count}개 마커 줄을 "
+                    f"heading 으로 승격 ({Path(file_path).name})"
+                )
+                text = promoted
+
+        if text is None:
+            return file_path, context
+
+        # 원본과 같은 basename을 유지해 Docling origin.filename이 임시 이름으로 바뀌지 않게 한다.
+        out_path = Path(work_dir) / Path(file_path).name
+        try:
+            out_path.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            raise GenosServiceException(
+                "1", f"Markdown 전처리 파일 생성 실패: {exc}",
+                stage="custom_fields",
+            ) from exc
+        return str(out_path), context
+
+    def _prepare_html(self, file_path: str, work_dir: str, marker_headings: bool = False) -> str:
         """필요 시 HTML 을 flatten 해 새 경로를 돌려준다. 불필요하면 원본 경로 그대로.
 
-        docling 의 HTML 백엔드는 `<iframe srcdoc="...">` 속성값 안의 본문을 읽지 못한다
-        (크롤 산출물 merged.html: 4MB → 641자, 표 0개). 원인이 '속성 안에 escape 된
-        본문'이라는 구조적 사실이라 임계값 없이 원문 스캔으로 판정 가능하고, 정상 HTML
-        에서는 오탐이 없어 기존 동작을 건드리지 않는다.
+        docling 의 HTML 백엔드가 읽지 못하는 iframe srcdoc/escape 본문과, 접힌
+        아코디언·wrapper 안의 중첩 목록을 사전검사한다. 결함이 감지된 문서만 정리해
+        정상 HTML 의 기존 파싱 경로는 유지한다.
+
+        ``marker_headings`` 는 대상 doc_type 일 때만 True 다 — 그때만 도형 마커 소제목을
+        섹션 헤더로 승격하는 사유를 계산·적용한다.
         """
         if self._html_flatten_mode == "off":
             return file_path
@@ -2242,14 +1458,14 @@ class DocumentProcessor:
             _log.warning(f"[parser] html flatten 사전검사 실패(원본으로 진행): {exc}")
             return file_path
 
-        reasons = html_flatten.precheck_html(raw)
+        reasons = html_flatten.precheck_html(raw, detect_marker_headings=marker_headings)
         if self._html_flatten_mode == "auto" and not reasons:
             return file_path
 
         stem = Path(file_path).stem
         try:
             flattened = html_flatten.flatten_html(
-                raw, html_flatten.document_title(raw, stem), reasons
+                raw, html_flatten.document_title(raw, stem), reasons, marker_headings=marker_headings
             )
         except Exception as exc:
             # 전처리 실패가 파싱 자체를 막지 않도록 원본으로 폴백한다.
@@ -2328,11 +1544,18 @@ class DocumentProcessor:
         return enricher
 
     async def _apply_llm_fields(self, mapper, fields_list: list) -> list:
-        """`llm_fields` 선언대로 행/레코드마다 LLM 을 호출해 목표필드를 채운다.
+        """`llm_fields` 선언대로 LLM 을 호출해 목표필드를 채운다.
 
-        건수만큼 호출이 나가므로 spec.concurrency 로 동시 실행을 제한한다.
-        실패는 on_error 정책(null 채움 / 건별 skip)으로 흡수하고 전체를 중단하지 않는다.
+        기본(record 스코프)은 행/레코드마다 호출한다 — 건수만큼 나가므로 spec.concurrency 로
+        동시 실행을 제한하고, 실패는 on_error 정책(null 채움 / 건별 skip)으로 흡수한다.
+
+        `mapper.llm_fields_scope == "document"`(json_semantic)면 문서 1건당 1회만 호출하고
+        결과를 전 섹션에 복사한다 — 섹션(청크) 수만큼 부르면 카드 1장에 10회 넘게 호출되기
+        때문이다(json_semantic 모듈 docstring 참고).
         """
+        if getattr(mapper, "llm_fields_scope", "record") == "document":
+            return await self._apply_llm_fields_document_scope(mapper, fields_list)
+
         for spec in getattr(mapper, "llm_field_specs", ()):
             if not fields_list:
                 break
@@ -2381,7 +1604,40 @@ class DocumentProcessor:
             fields_list = kept
         return fields_list
 
-    async def _parse_json_records(self, file_path: str, mapper, **kwargs) -> dict:
+    async def _apply_llm_fields_document_scope(self, mapper, fields_list: list) -> list:
+        """llm_fields_scope == "document" 인 매퍼용 — spec 당 LLM 을 문서 1회만 호출해
+        결과를 전 섹션(fields_list 전체)에 그대로 복사한다.
+
+        record 스코프처럼 건별 skip 은 의미가 없다(스킵할 "건"이 없다) — 실패 시 on_error 와
+        같은 톤으로 output_fields 를 null 채움해 나머지 필드는 계속 살아남게 한다.
+        """
+        for spec in getattr(mapper, "llm_field_specs", ()):
+            if not fields_list:
+                break
+            enricher = self._llm_field_enricher(spec, mapper)
+            if not enricher.is_configured:
+                _log.warning(
+                    f"[llm_fields] 비활성({spec.label}): url/model 설정이 "
+                    f"비어있어 {spec.output_fields} 를 null 로 둡니다."
+                )
+                for fields in fields_list:
+                    for name in spec.output_fields:
+                        fields.setdefault(name, None)
+                continue
+
+            document_fields = mapper.document_input_fields(fields_list, spec.input_fields)
+            try:
+                result = await enricher.extract_fields_from_text(
+                    spec.build_input_text(document_fields)
+                )
+            except Exception as exc:
+                _log.warning(f"[llm_fields] 문서 단위 LLM 필드 추출 실패({spec.label}): {exc}")
+                result = {name: None for name in spec.output_fields}
+            for fields in fields_list:
+                fields.update(result)
+        return fields_list
+
+    async def _parse_json_records(self, file_path: str, mappers: list, **kwargs) -> dict:
         """JSON 레코드 배열 → 레코드별 목표필드 element(parse-format).
 
         docling 을 거치지 않는다 — 필요한 본문은 지정 필드에서 직접 오고, 청커의 행 기반
@@ -2389,14 +1645,72 @@ class DocumentProcessor:
         """
         payload = self._load_json_payload(file_path)
         doc_type = kwargs.get("doc_type")
-        try:
-            fields_list = mapper.build_fields(payload, doc_type)
-        except ValueError as exc:
-            raise GenosServiceException("1", str(exc), stage="custom_fields") from exc
+        results = []
+        for mapper in mappers:
+            try:
+                # custom_fields 의 html_text/text 변환 표 모양을 docling 경로와 같은 설정으로 맞춘다
+                # (output.table_format: html=<table> / markdown=파이프 표).
+                fields_list = mapper.build_fields(
+                    payload, doc_type,
+                    table_format=getattr(self, "_table_format", "html"),
+                    compact_tables=bool(getattr(self, "_compact_tables", True)),
+                )
+            except ValueError as exc:
+                raise GenosServiceException("1", str(exc), stage="custom_fields") from exc
 
-        fields_list = await self._apply_llm_fields(mapper, fields_list)
-        _log.info(f"[parser] json_mapping 레코드 {len(fields_list)}건 → element")
-        return mapper.to_parse_format(fields_list, doc_type)
+            fields_list = await self._apply_llm_fields(mapper, fields_list)
+            _log.info(
+                f"[parser] json 레코드 {len(fields_list)}건 → element "
+                f"(records={getattr(mapper, 'records_key', None)})"
+            )
+            # json 매퍼의 to_parse_format 은 이미 만들어진 fields 목록을 받는다
+            # (tabular 는 같은 이름이 원시 data_dict 를 받아 이름이 어긋나 있다).
+            results.append(mapper.to_parse_format(fields_list, doc_type))
+        return merge_parse_formats(results)
+
+    async def _parse_tabular_records(
+        self, file_path: str, mappers: list, runtime_doc_type: Any
+    ) -> dict:
+        """엑셀/CSV 를 매퍼 목록으로 매핑해 합친다(매퍼가 하나면 종전과 동일).
+
+        매퍼가 여럿이면 각자 맡을 수 있는 표만 처리한다 — 스키마가 다른 표가 한 파일에
+        섞여 오는 원천 대응이다. 어느 매퍼도 안 맡은 표가 있으면 경고로 드러낸다.
+        조용히 사라지면 "몇 건이 왜 없지"를 나중에 데이터에서 발견하게 된다.
+        """
+        data_dict = self._parse_tabular(file_path)
+        multi = len(mappers) > 1
+        results: list = []
+        # 표 단위로 맡았는지 본다. 건수 총합만 세면 매퍼 A 가 시트1을 맡은 순간 시트2가
+        # 아무에게도 안 맡겨져도 "맡았다"가 되어, 표 하나가 통째로 조용히 사라진다.
+        claimed_pages: set = set()
+        for mapper in mappers:
+            try:
+                fields_list = mapper.build_fields(
+                    data_dict, runtime_doc_type, skip_unmapped=multi,
+                    table_format=getattr(self, "_table_format", "html"),
+                    compact_tables=bool(getattr(self, "_compact_tables", True)),
+                )
+            except (FileNotFoundError, TypeError, ValueError) as exc:
+                raise GenosServiceException("1", str(exc), stage="custom_fields") from exc
+            claimed_pages.update(claimed_row_pages(fields_list))
+            fields_list = await self._apply_llm_fields(mapper, fields_list)
+            _log.info(f"[parser] tabular_mapping 행 {len(fields_list)}건 → element")
+            results.append(mapper.to_parse_format_from_fields(fields_list, runtime_doc_type))
+
+        if multi:
+            sheets = data_dict.get("data", []) or []
+            unclaimed = [
+                str((sheets[page - 1] or {}).get("sheet_name") or f"sheet_{page}")
+                for page in range(1, len(sheets) + 1)
+                if page not in claimed_pages
+            ]
+            if unclaimed:
+                _log.warning(
+                    f"[parser] tabular_mapping 매퍼 {len(mappers)}개 중 어느 것도 맡지 않은 "
+                    f"표가 있습니다(doc_type={runtime_doc_type}): {unclaimed} — 그 표는 청크가 "
+                    f"되지 않습니다. 각 설정의 require.fields 와 alias 를 확인하세요."
+                )
+        return merge_parse_formats(results)
 
     def _parse_json(self, file_path: str, spec, work_dir: str, **kwargs) -> DoclingDocument:
         """JSON 의 지정 key 에서 본문 텍스트(markdown/html)를 꺼내 docling 으로 파싱한다.
@@ -2475,6 +1789,30 @@ class DocumentProcessor:
         )
         return document
 
+    async def _describe_record_tables(self, result: dict, **kwargs) -> dict:
+        """레코드 경로(json/tabular 매핑) 산출물의 표에 설명 블록을 넣는다.
+
+        이 경로들은 docling 문서를 만들지 않고 조기 반환하므로 `_apply_docling_post_enrichment`
+        의 표 설명 스테이지를 타지 않는다. `table_text_description` 에 자체 LLM 연결이 있으면
+        여기서 element 본문의 표를 직접 설명해, custom_fields 의 extractor 종류와 무관하게
+        모든 문서유형이 같은 표 설명을 갖게 한다.
+        """
+        enricher = getattr(self._intel, "table_text_description_enricher", None)
+        if enricher is None or not enricher.wants(**kwargs):
+            return result
+        elements = result.get("elements")
+        if not isinstance(elements, list) or not elements:
+            return result
+        contents = [str(element.get("content") or "") for element in elements]
+        try:
+            described = await enricher.describe_texts(contents, **kwargs)
+        except Exception as exc:
+            _handle_stage_error(exc, "table_text_description")
+            return result
+        for element, content in zip(elements, described):
+            element["content"] = content
+        return result
+
     async def _apply_docling_post_enrichment(self, document: DoclingDocument, **kwargs) -> DoclingDocument:
         """Facade 후처리 enrichment 훅."""
         # #329: error_policy=strict 이면 _handle_stage_error 가 GenosServiceException 으로
@@ -2487,10 +1825,15 @@ class DocumentProcessor:
             document = self._intel.enrich_image_descriptions(document, **kwargs)
         except Exception as exc:
             _handle_stage_error(exc, "image_description")
-        try:
-            document = self._intel.enrich_table_descriptions(document, **kwargs)
-        except Exception as exc:
-            _handle_stage_error(exc, "table_description")
+        # 표 설명(독립 → 융합 → 이미지). 판정은 공용 모듈 한 곳에 있다.
+        document = await apply_table_description_stage(
+            document,
+            custom_fields_enrichers=self._intel.custom_fields_enrichers,
+            standalone=getattr(self._intel, "table_text_description_enricher", None),
+            run_image_stage=self._intel.enrich_table_descriptions,
+            handle_error=_handle_stage_error,
+            kwargs=kwargs,
+        )
         try:
             document = await self._intel.enrich_metadata(document, **kwargs)
         except Exception as exc:
@@ -2567,18 +1910,22 @@ class DocumentProcessor:
         item: TableItem, doc: DoclingDocument, table_format: str = "html",
         compact_tables: bool = True,
     ) -> str:
-        """TableItem을 지정한 포맷(html/markdown)으로 변환."""
+        """TableItem을 지정한 포맷으로 변환. auto 면 그 표의 구조를 보고 고른다.
+
+        청커도 같은 analyze_grid/resolve_table_format 을 쓰므로, 같은 표가 파서 출력과
+        청크에서 다른 형식으로 나가지 않는다.
+        """
+        table_format = ts.resolve_table_format(
+            table_format, ts.analyze_grid(
+                getattr(getattr(item, "data", None), "grid", None),
+                getattr(getattr(item, "data", None), "num_cols", 0),
+                is_html_origin=_doc_is_html_origin(doc),
+            ),
+        )
         try:
             if table_format == "markdown":
-                if compact_tables:
-                    # TableItem.export_to_markdown() 은 compact 옵션이 없어 직접 serializer 구성
-                    # (컬럼 정렬 패딩 제거 → 대형 표 markdown 크기 대폭 축소)
-                    text = MarkdownDocSerializer(
-                        doc=doc,
-                        params=MarkdownParams(compact_tables=True),
-                    ).serialize(item=item).text
-                else:
-                    text = item.export_to_markdown(doc=doc)
+                # compact_tables 는 컬럼 정렬 패딩을 없애 대형 표 markdown 크기를 줄인다.
+                text = export_markdown(doc, item=item, compact_tables=compact_tables)
             else:
                 text = item.export_to_html(doc=doc)
             if text and text.strip():
@@ -2735,7 +2082,7 @@ class DocumentProcessor:
                 continue
 
             try:
-                md_table_raw = item.export_to_markdown(doc=doc)
+                md_table_raw = export_markdown(doc, item=item)
                 html_table = item.export_to_html(doc=doc)
             except Exception:
                 continue
@@ -2767,7 +2114,7 @@ class DocumentProcessor:
             return doc.export_to_html(included_content_layers=layers)
 
         if output_format == "markdown":
-            markdown_text = doc.export_to_markdown(included_content_layers=layers)
+            markdown_text = export_markdown(doc, included_content_layers=layers)
             if table_format == "html":
                 return self._replace_markdown_tables_with_html(doc, markdown_text)
             return markdown_text
@@ -2829,6 +2176,9 @@ class DocumentProcessor:
                 "usage": {"pages": self._docling_page_count(doc)},
             }
         elif output_format == "json":
+            # 표 설명은 아래에서 `[표 설명]` 로 따로 싣는다. docling_core 가 meta 로 이관해 둔
+            # 사본까지 본문에 딸려 나가면 같은 문장이 두 번 실리고 내부 구조체가 노출된다.
+            strip_enricher_meta(doc)
             result = self._docling_to_parse_format(doc, table_format=table_format,
                                                    compact_tables=compact_tables)
             if clear_coordinates:
@@ -2837,6 +2187,7 @@ class DocumentProcessor:
             resp = result
         else:
             pages = self._docling_page_count(doc)
+            strip_enricher_meta(doc)
             content = self._docling_to_content(doc)
             resp = self._content_response(content, pages=pages)
 
@@ -2869,7 +2220,7 @@ class DocumentProcessor:
 
     @staticmethod
     def _tabular_to_parse_format(data_dict: dict) -> dict:
-        """TabularLoader.data_dict → 행별 parse format."""
+        """tabular data_dict(converters.xlsx_processor 산출) → 행별 parse format."""
         from genon.preprocessor.converters.xlsx_processor import tabular_data_to_parse_format
 
         return tabular_data_to_parse_format(data_dict)
@@ -2895,23 +2246,8 @@ class DocumentProcessor:
             "usage": {"pages": num_pages},
         }
 
-
     def setup_logging(self, level_num: int):
-        def get_level_name(level_num: int) -> str:
-            level_map = {5: "DEBUG", 4: "INFO", 3: "WARNING", 2: "ERROR", 1: "CRITICAL", 0: "NOLOG"}
-            return level_map.get(level_num, "INFO")
-        level_name = get_level_name(level_num)
-        print(f"Setting log level to: {level_name}")
-        if level_name == "NOLOG" or not hasattr(logging, level_name):
-            logging.disable(logging.CRITICAL)
-            return
-        level = getattr(logging, level_name.upper())
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            handlers=[logging.StreamHandler()]
-        )
-        logging.getLogger().setLevel(level)
+        rt.setup_logging(level_num)
 
     # ------------------------------------------------------------------
     # 메인 진입점
@@ -2929,9 +2265,21 @@ class DocumentProcessor:
         # #329: LLM 캐시 / error_policy 컨텍스트를 요청 스코프로 설정(/parse 는 body 의
         # workflow_id/run_id 로 스코프 유도). ThreadPool 워커엔 in_current_context 로 전파.
         _cache_token = _set_cache_context(_resolve_cache_context(kwargs))
+        # 확장자 별칭이 적용되면 표준 확장자 이름의 사본으로 파싱한다. 그 임시 디렉터리는
+        # 요청이 끝날 때 정리한다(finally).
+        alias_tmp: tempfile.TemporaryDirectory | None = None
+        # 별칭 사본으로 파싱할 때 artifacts(이미지) 경로 기준이 되는 원본 경로.
+        artifacts_source: str | None = None
         try:
-            ext = os.path.splitext(file_path)[-1].lower()
-            _log.info(f"[DocumentProcessor] file_path={file_path}, ext={ext}")
+            raw_ext = os.path.splitext(file_path)[-1].lower()
+            # __init__ 을 우회해 만든 인스턴스(단위 테스트)도 견디도록 getattr 로 읽는다.
+            ext = _resolve_ext(raw_ext, getattr(self, "_ext_aliases", {}))
+            if ext != raw_ext:
+                _log.info(
+                    f"[DocumentProcessor] file_path={file_path}, ext={raw_ext} -> {ext} (확장자 별칭)"
+                )
+            else:
+                _log.info(f"[DocumentProcessor] file_path={file_path}, ext={ext}")
 
             # 비정상/암호화 파일 사전 감지(이슈 #278/#307): 지원 포맷 매직헤더에 하나도 안 맞고
             # 텍스트도 아니면(=DRM 암호화/손상 바이너리) 파싱/변환 단계의 garbage 처리를 유발하므로
@@ -2942,6 +2290,20 @@ class DocumentProcessor:
                 raise GenosServiceException(
                     "1", f"{bad_reason} 입니다. 정상 문서로 다시 업로드하세요: {os.path.basename(file_path)}"
                 )
+
+            if ext != raw_ext:
+                # docling 은 파일명 확장자로 포맷을 판정하므로 이름을 바꾼 사본을 넘긴다.
+                # 원본 경로는 artifacts_source 로 남겨 media_files 경로를 원본 기준으로 유지한다.
+                try:
+                    alias_tmp = tempfile.TemporaryDirectory(prefix="parser_alias_")
+                    artifacts_source = file_path
+                    file_path = _materialize_alias_copy(file_path, ext, alias_tmp.name)
+                except OSError as exc:
+                    raise GenosServiceException(
+                        "1", f"확장자 별칭 사본 생성 실패: {exc}"
+                    ) from exc
+
+            enrichment_context: dict = {}
 
             if ext in (".wav", ".mp3", ".m4a"):
                 # TODO(#315): PII 마스킹 미적용(보류) — 오디오 전사 텍스트는 별도 논의 후 적용.
@@ -2958,37 +2320,35 @@ class DocumentProcessor:
                     mapper for mapper in self._tabular_custom_fields_mappers
                     if mapper.matches(runtime_doc_type)
                 ]
-                if len(matching_mappers) > 1:
-                    raise GenosServiceException(
-                        "1",
-                        f"동일 doc_type에 tabular custom_fields 설정이 여러 개입니다: {runtime_doc_type}",
-                    )
                 if matching_mappers:
-                    mapper = matching_mappers[0]
-                    data_dict = self._parse_tabular(file_path)
-                    try:
-                        fields_list = mapper.build_fields(data_dict, runtime_doc_type)
-                    except (FileNotFoundError, TypeError, ValueError) as exc:
-                        raise GenosServiceException("1", str(exc), stage="custom_fields") from exc
-                    # 원천에 없는 필드(요약본문·키워드 등)를 행마다 LLM 으로 채운다.
-                    # json_mapping 과 같은 build_fields → LLM → to_parse_format 3단 구성.
-                    fields_list = await self._apply_llm_fields(mapper, fields_list)
-                    _log.info(f"[parser] tabular_mapping 행 {len(fields_list)}건 → element")
-                    return self._normalize_response(
-                        mapper.to_parse_format_from_fields(fields_list, runtime_doc_type)
+                    result = await self._parse_tabular_records(
+                        file_path, matching_mappers, runtime_doc_type
                     )
+                    result = await self._describe_record_tables(result, **kwargs)
+                    return self._normalize_response(result)
                 # docling 모드: MsExcel/Csv 백엔드로 DoclingDocument 생성 후 parse-JSON 직렬화.
+                # 다른 문서 포맷과 같은 후처리 훅을 태운다 — 이 경로를 건너뛰면 xlsx 만
+                # 문서 단위 custom_fields(extractor: llm)·metadata·doc_type 스탬프를
+                # 설정으로 켤 수 없게 된다.
                 if self._xlsx_cfg["processing_mode"] == "docling":
                     from genon.preprocessor.converters.xlsx_processor import build_docling_document
                     doc = build_docling_document(file_path)
-                    return self._normalize_response(self._build_docling_response(doc, **kwargs))
+                    doc = await self._apply_docling_post_enrichment(
+                        doc, _enrichment_context=enrichment_context, **kwargs
+                    )
+                    result = self._build_docling_response(doc, **kwargs)
+                    if enrichment_context.get("metadata"):
+                        result["metadata"] = enrichment_context["metadata"]
+                    return self._normalize_response(result)
                 # tabular 모드(기본): openpyxl 병합셀 처리 → 데이터 행마다 element 하나.
+                # docling 문서를 만들지 않으므로 표 설명만 레코드 경로와 같은 훅으로 넣는다
+                # (custom_fields 매핑 경로와 동일하게 맞춘다).
                 # TODO(#315): PII 마스킹 미적용(보류) — tabular 산출은 별도 논의 후 적용.
-                return self._normalize_response(
-                    self._tabular_to_parse_format(self._parse_tabular(file_path))
+                result = await self._describe_record_tables(
+                    self._tabular_to_parse_format(self._parse_tabular(file_path)),
+                    **kwargs,
                 )
-
-            enrichment_context: dict = {}
+                return self._normalize_response(result)
 
             # .hml(HWPML)은 hwp_sdk 260713+ 에서 지원 — 같은 SDK 경로로 라우팅 (이슈 #323)
             if ext in (".hwp", ".hwpx", ".hml"):
@@ -3016,16 +2376,57 @@ class DocumentProcessor:
                     # html 은 flatten 전처리를 거칠 수 있다(srcdoc 등). 파생 임시 파일은
                     # 파싱 후 정리하고, artifacts 경로는 원본 기준으로 유지한다.
                     with tempfile.TemporaryDirectory(prefix="parser_html_") as work_dir:
-                        parse_path = self._prepare_html(file_path, work_dir)
+                        parse_path = self._prepare_html(
+                            file_path, work_dir,
+                            marker_headings=self._html_marker_headings_enabled(kwargs.get("doc_type")),
+                        )
                         doc = self._parse_docling(
                             parse_path,
-                            artifacts_from=file_path if parse_path != file_path else None,
+                            artifacts_from=artifacts_source or (
+                                file_path if parse_path != file_path else None
+                            ),
                             _enrichment_context=enrichment_context,
                             **kwargs,
                         )
                     self._warn_if_thin_html(file_path, doc)
+                elif ext == ".md":
+                    fm_spec = self._markdown_front_matter_spec_for(kwargs.get("doc_type"))
+                    fence_spec = self._markdown_text_fence_spec_for(kwargs.get("doc_type"))
+                    marker_on = self._markdown_marker_headings_enabled(kwargs.get("doc_type"))
+                    if fm_spec is None and fence_spec is None and not marker_on:
+                        doc = self._parse_docling(
+                            file_path,
+                            artifacts_from=artifacts_source,
+                            _enrichment_context=enrichment_context,
+                            **kwargs,
+                        )
+                    else:
+                        # front matter를 제외하거나 ```text 펜스를 단락으로 되돌린 파생
+                        # Markdown은 임시 파일로만 사용한다. 선택 metadata와 제외된 원문은
+                        # custom-fields 후처리에 별도 전달한다.
+                        with tempfile.TemporaryDirectory(prefix="parser_md_") as work_dir:
+                            parse_path, front_matter_context = self._prepare_markdown(
+                                file_path, work_dir, fm_spec, fence_spec, marker_on
+                            )
+                            markdown_kwargs = dict(kwargs)
+                            markdown_kwargs["_markdown_front_matter"] = front_matter_context
+                            doc = self._parse_docling(
+                                parse_path,
+                                artifacts_from=artifacts_source or (
+                                    file_path if parse_path != file_path else None
+                                ),
+                                _enrichment_context=enrichment_context,
+                                **markdown_kwargs,
+                            )
+                        kwargs = dict(kwargs)
+                        kwargs["_markdown_front_matter"] = front_matter_context
                 else:
-                    doc = self._parse_docling(file_path, _enrichment_context=enrichment_context, **kwargs)
+                    doc = self._parse_docling(
+                        file_path,
+                        artifacts_from=artifacts_source,
+                        _enrichment_context=enrichment_context,
+                        **kwargs,
+                    )
                 doc = await self._apply_docling_post_enrichment(doc, _enrichment_context=enrichment_context, **kwargs)
                 result = self._build_docling_response(doc, **kwargs)
                 if enrichment_context.get("metadata"):
@@ -3040,11 +2441,12 @@ class DocumentProcessor:
             if ext == ".json":
                 # 1순위: 레코드 매핑(json_mapping) — 레코드마다 청크/메타데이터를 따로 만든다.
                 #        docling 을 거치지 않으므로 xlsx 의 tabular 조기 분기와 같은 성격이다.
-                records_mapper = self._json_records_mapper_for(kwargs.get("doc_type"))
-                if records_mapper is not None:
+                records_mappers = self._json_records_mappers_for(kwargs.get("doc_type"))
+                if records_mappers:
                     result = await self._parse_json_records(
-                        file_path, records_mapper, **kwargs
+                        file_path, records_mappers, **kwargs
                     )
+                    result = await self._describe_record_tables(result, **kwargs)
                     return self._normalize_response(result)
 
                 # 2순위: 문서 모드(json: text_fields) — 본문 텍스트를 합쳐 docling 으로 파싱.
@@ -3089,5 +2491,7 @@ class DocumentProcessor:
             docs = self._parse_other(file_path, **kwargs)
             return self._normalize_response(self._langchain_to_parse_format(docs))
         finally:
+            if alias_tmp is not None:
+                alias_tmp.cleanup()
             _log_cache_summary()
             _reset_cache_context(_cache_token)

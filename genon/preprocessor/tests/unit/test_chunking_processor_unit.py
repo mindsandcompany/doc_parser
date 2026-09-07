@@ -41,7 +41,10 @@ def test_parser_docling_output_roundtrip():
     resp = parser._build_docling_response(doc)
 
     assert "document" in resp
-    assert resp["usage"]["pages"] == doc.num_pages()
+    # 페이지 개념이 없는 백엔드(HTML/md)는 num_pages() 가 0 이다. 내용이 있는 문서를
+    # 0페이지로 내보내면 소비계층의 페이지 기반 계산이 무너지므로 1 을 하한으로 센다
+    # (`_docling_page_count`). 진짜 빈 문서만 0 이다.
+    assert resp["usage"]["pages"] == max(doc.num_pages(), 1)
 
     restored = DoclingDocument.model_validate(resp["document"])
     assert [t.text for t in restored.texts] == [t.text for t in doc.texts]
@@ -369,6 +372,10 @@ HEADER_SEP = " > "  # facade 의 _CHUNK_HEADER_SEP 과 같아야 한다(콤마�
 def _chunk(doc_dict, **kwargs):
     cp = pytest.importorskip("facade.chunking_processor")
     chunker = cp.DocumentProcessor()
+    # HEADER 접두는 yaml 설정에 끌려다니지 않게 여기서 못 박는다 - resource_dev 는 개발
+    # 편의로 include_chunk_header 를 꺼둔다(e332b1e5). 헤더가 없어야 하는 케이스는
+    # 호출부에서 include_chunk_header=0 으로 덮어쓴다.
+    kwargs.setdefault("include_chunk_header", 1)
     return asyncio.run(
         chunker(request=None, file_path="/data/monimo_sample.pdf", document=doc_dict, **kwargs)
     )

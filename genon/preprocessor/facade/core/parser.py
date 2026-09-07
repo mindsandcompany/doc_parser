@@ -46,6 +46,7 @@ from docling_core.types.doc import (
 )
 
 from genon.preprocessor.facade.enrichment.custom_fields_enricher import normalize_doc_type
+from genon.preprocessor.converters import delimited_text as dt
 from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
     build_tabular_custom_fields_mappers,
     claimed_row_pages,
@@ -1122,6 +1123,28 @@ class ParserCore:
                 fields.update(result)
         return fields_list
 
+    def _records_payload(self, file_path: str, mappers: list, doc_type):
+        """레코드 매핑의 입력 payload. 원천이 JSON 이 아닐 수도 있다.
+
+        `source.pre.delimited` 를 선언한 설정이면 구분자 텍스트로 읽어 `list[dict]` 를
+        만든다. 그 형태는 `collect_records` 가 `records_at` 없이 그대로 받으므로 이후
+        매핑 과정은 JSON 원천과 완전히 같다.
+
+        선언이 없으면 종전대로 JSON 으로 읽는다 — 기존 doc_type 의 동작은 바뀌지 않는다.
+        """
+        spec = next(
+            (s for s in (getattr(m, "delimited", None) for m in mappers) if s is not None),
+            None,
+        )
+        if spec is None:
+            return self._load_json_payload(file_path, doc_type)
+        try:
+            return dt.read_records(file_path, spec)
+        except OSError as exc:
+            raise GenosServiceException(
+                "1", f"원천을 읽을 수 없습니다: {os.path.basename(file_path)} ({exc})"
+            ) from exc
+
     async def _parse_json_records(self, file_path: str, mappers: list, **kwargs) -> dict:
         """JSON 레코드 배열 → 레코드별 목표필드 element(parse-format).
 
@@ -1129,7 +1152,7 @@ class ParserCore:
         경로가 레코드마다 청크를 만들며 metadata 를 청크 property 로 승격한다.
         """
         doc_type = kwargs.get("doc_type")
-        payload = self._load_json_payload(file_path, doc_type)
+        payload = self._records_payload(file_path, mappers, doc_type)
         results = []
         for mapper in mappers:
             try:

@@ -54,8 +54,8 @@ def validation_policy() -> str:
 # custom_field yaml 안에 적을 값이 아니라 매퍼/enricher 생성자의 인자다.
 WIRING_KEYS = frozenset({
     "enable", "doc_type", "extractor", "config_file", "resource_path",
-    # 아래 두 개는 enricher 가 아니라 parser 의 포맷 전처리가 소비한다.
-    "json", "markdown", "html",
+    # 아래는 enricher 가 아니라 parser 의 포맷 전처리가 소비한다.
+    "json", "markdown", "html", "delimited",
 })
 
 # 레코드형 3종이 공유하는 키(값 조립 → 본문 조립 파이프라인).

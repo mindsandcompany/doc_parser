@@ -66,7 +66,7 @@ SOURCE_KEYS = frozenset({
 })
 BODY_KEYS = frozenset({"fields", "labels", "split", "repeat", "once", "mirror_to"})
 # source.pre 아래 쓸 수 있는 원천 포맷 전처리 블록(파서가 소비한다).
-PRE_KEYS = ("markdown", "html")
+PRE_KEYS = ("markdown", "html", "delimited")
 REQUIRE_KEYS = frozenset({"fields"})
 
 # ── v2 ↔ 내부(v1) 매핑은 **여기 한 벌만** 둔다 ──────────────────────────────

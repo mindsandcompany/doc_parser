@@ -36,6 +36,7 @@ import yaml
 
 _log = logging.getLogger(__name__)
 
+from genon.preprocessor.converters.delimited_text import parse_spec as parse_delimited_spec
 from genon.preprocessor.facade.chunking.rich_cells import collect_subtree_refs
 from genon.preprocessor.facade.chunking.table_html import (
     drop_blank_markdown_rows, render_table,
@@ -473,6 +474,13 @@ class JsonRecordsMapper:
         )
 
         self.records_key: str | None = str(cfg.get("records") or "").strip() or None
+
+        # 원천이 JSON 이 아니라 구분자 텍스트일 때(`source.pre.delimited`). 파서가 이 스펙으로
+        # 레코드 목록을 만들어 payload 로 넘기므로 이 매퍼는 이후 과정을 구분하지 않는다.
+        try:
+            self.delimited = parse_delimited_spec(cfg.get("delimited"))
+        except ValueError as exc:
+            raise ValueError(f"json custom_fields({config_file}) source.pre.{exc}") from exc
 
         key_map = cfg.get("key_map") or {}
         if not isinstance(key_map, dict):

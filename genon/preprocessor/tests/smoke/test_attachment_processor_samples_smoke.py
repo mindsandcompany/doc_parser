@@ -1,3 +1,16 @@
+"""attachment_processor 를 sample_files 전 확장자에 대해 실제로 돌려보는 smoke 테스트.
+
+원래 tests/unit 에 있었으나 unit 계층에 있을 이유가 없어 여기로 옮겼다. 판단 근거는 둘이다.
+
+  - 하는 일이 smoke 다. 실제 문서 변환·PDF 변환·OCR 을 끝까지 돌리고 단정문은
+    "벡터가 1개 이상 나오고 첫 벡터의 text 가 비어 있지 않다" 뿐이다.
+  - 같은 계층의 test_docx_smoke.py / test_pdf_smoke.py 등이 이미 같은 일을 한다.
+    거기서 다루지 않는 확장자(csv, xlsx, txt, json, 이미지)를 이 파일이 채운다.
+
+대상 목록이 sample_files 글롭이라 디렉터리 내용에 따라 수집 개수가 변한다.
+고정된 계약을 검사하고 싶으면 unit 쪽에 단정문 테스트를 따로 두는 편이 맞다.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -72,7 +85,7 @@ def _import_processor():
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
-@pytest.mark.unit
+@pytest.mark.smoke
 @pytest.mark.parametrize("sample_path", _collect_samples(ALL_EXTS), ids=lambda p: p.name)
 def test_vectors_created_for_samples(sample_path: Path):
     # pdf인데 같은 이름의 다른 확장자 파일이 있으면 스킵
@@ -121,7 +134,7 @@ def _has_soffice() -> bool:
     return shutil.which("soffice") is not None
 
 
-@pytest.mark.unit
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     "sample_path",
     _collect_samples(["md", "docx", "ppt", "pptx", "txt", "json", "pdf", "csv", "xlsx", "jpg", "jpeg", "png"]),

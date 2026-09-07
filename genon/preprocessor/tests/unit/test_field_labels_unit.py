@@ -30,10 +30,9 @@ def _load_shipped(name: str) -> dict:
     번역 없이 raw 로 읽으면 v2 파일에서 `text_fields`/`field_labels` 가 빈 값이 되어
     검사가 **조용히 무력해진다** — 통과하지만 아무것도 보지 않는 상태가 된다.
     """
-    from genon.preprocessor.facade.enrichment import config_v2 as cv2
+    from shipped_config import load_shipped
 
-    raw = yaml.safe_load((RESOURCE_DIR / name).read_text(encoding="utf-8")) or {}
-    return cv2.load(raw, label=name)[0]
+    return load_shipped(RESOURCE_DIR / name)
 
 
 # ── build_chunk_text: 항목명 결정 규칙 ───────────────────────────────────────
@@ -189,6 +188,13 @@ def test_doc_prefix_reads_labels_from_document_metadata():
     assert dpx.reserved_prefix_text({}, metadata) == repeated
 
 
+# 값 자체가 무엇인지 말해 주는 필드는 항목명을 붙이지 않는다 - 사이트 운영 설정의 선택이다
+# (커밋 263f53ea). CS_CATEGORY 는 "이용안내 > 상세 이용 조건" 같은 분류 경로라 `분류: ` 를
+# 덧붙여도 정보가 늘지 않는다. 예외를 목록으로 두는 이유는 "라벨을 깜빡 빠뜨린 것"과
+# "일부러 안 붙인 것"을 구분해야 아래 검사가 계속 값을 하기 때문이다.
+_LABEL_EXEMPT_FIELDS = {"CS_CATEGORY"}
+
+
 # ── 실제 출고 설정 ───────────────────────────────────────────────────────────
 
 @pytest.mark.unit
@@ -203,7 +209,8 @@ def test_shipped_configs_name_every_body_field(name):
     labels = cfg.get("field_labels") or {}
     body_fields = cfg.get("text_fields") or []
     assert body_fields, f"{name}: 본문 필드가 비어 검사가 무의미합니다."
-    missing = [f for f in body_fields if f not in labels]
+    missing = [f for f in body_fields
+               if f not in labels and f not in _LABEL_EXEMPT_FIELDS]
     assert not missing, f"{name}: {missing} 에 항목명이 없습니다."
 
 

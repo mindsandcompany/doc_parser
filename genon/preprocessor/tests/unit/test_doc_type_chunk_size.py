@@ -39,18 +39,25 @@ CHUNK_MODE = "split_only"
 # cs_hpp custom_field yaml 의 output_fields 6개를 모두 채운다 — 누락되면 missing_policy 에 걸린다.
 _CS_HPP_CATEGORY = "이용안내 > 상세 이용 조건"
 
+# 접두 구역으로 볼 선두 줄 수. 접두는 `chunk_prefix_fields`(반복) + `first_chunk_fields`
+# (첫 청크 1회) 로 이뤄지고 출고 설정 어디에도 3개를 넘는 조합이 없다. HEADER 라인까지
+# 여유로 덮는 값이다.
+_PREFIX_SCAN_LINES = 4
+
 
 def _chunk_header(text: str) -> str:
-    """청크 선두 HEADER 라인.
+    """청크의 HEADER 라인. 없으면 빈 문자열.
 
-    첫 청크에는 first_chunk_fields(custom_field_cs_hpp.yaml 의 CS_CATEGORY) 접두가 HEADER
-    앞에 한 번 붙는다. 접두를 떼고 봐야 "HEADER 는 청크 맨 앞 한 줄" 계약을 그대로 검사할 수
-    있다.
+    접두(`chunk_prefix_fields` / `first_chunk_fields`)는 HEADER 앞에 붙는다 - 코드가
+    의도한 순서다(chunking_processor 의 compose_vectors: "접두는 헤더 앞이다 - 문서
+    식별이 섹션 경로보다 앞에 와야 한다"). 접두 줄이 몇 개인지는 doc_type 설정이
+    정하므로 특정 값을 떼어내는 대신 HEADER 라인을 찾는다 - 설정이 접두 필드를
+    늘리거나 줄여도 이 헬퍼가 끌려다니지 않는다.
     """
-    body = text
-    if body.startswith(_CS_HPP_CATEGORY + "\n"):
-        body = body[len(_CS_HPP_CATEGORY) + 1:]
-    return body.splitlines()[0] if body else ""
+    for line in text.splitlines():
+        if line.startswith("HEADER: "):
+            return line
+    return ""
 
 
 _CS_HPP_LLM_STUB = json.dumps(
@@ -138,14 +145,19 @@ def _assert_row_path_record_split(rows: list[dict], long_id: str, short_id: str,
         values = {r.get(key) for r in long_rows}
         assert len(values) == 1, f"{long_id} 조각들의 {key} 가 갈렸습니다: {values}"
 
-    # 제목은 metadata 에만 남아서는 안 된다. 각 청크 text 앞에 반복돼 독립 검색 결과로도
+    # 제목은 metadata 에만 남아서는 안 된다. 각 청크 접두에 반복돼 독립 검색 결과로도
     # 무엇에 대한 본문인지 식별할 수 있어야 한다. 출고 설정이 TITLE 에 항목명을 주므로
-    # 접두는 `제목: <TITLE>` 형태다(field_labels).
+    # 접두 줄은 `제목: <TITLE>` 형태다(field_labels).
+    #
+    # 접두 안에서 TITLE 이 몇 번째 줄인지는 설정의 `body.repeat` 순서가 정한다
+    # (cs_sss 는 [CS_CATEGORY, TITLE] 이라 1행이 분류다). 그래서 선두 고정이 아니라
+    # 접두 구역 안에 있는지를 본다 - 설정이 접두 필드 순서를 바꿔도 끌려다니지 않는다.
     title = long_rows[0]["TITLE"]
+    title_lines = {title, f"제목: {title}"}
     assert all(
-        r["text"].startswith(title) or r["text"].startswith(f"제목: {title}")
+        title_lines & set(r["text"].splitlines()[:_PREFIX_SCAN_LINES])
         for r in long_rows
-    ), f"{long_id} 분할 조각 중 TITLE 없이 시작하는 청크가 있습니다"
+    ), f"{long_id} 분할 조각 중 TITLE 접두가 없는 청크가 있습니다"
 
 
 @pytest.mark.unit
@@ -213,11 +225,18 @@ def test_cs_hpp_chunks_respect_chunk_size():
 @pytest.mark.unit
 @pytest.mark.parametrize("chunk_mode", ["split_only", "resize_all"])
 def test_cs_hpp_large_html_table_is_split_by_complete_rows(chunk_mode):
-    """1000자 초과 단일 HTML 표는 태그/행 중간이 아니라 완전한 table 조각으로 나뉜다."""
+    """1000자 초과 단일 HTML 표는 태그/행 중간이 아니라 완전한 table 조각으로 나뉜다.
+
+    ``table_format`` 을 html 로 못 박는다. 출고 기본값은 auto 이고 이 표는 정형 grid 라
+    auto 가 markdown 을 고른다 - 그러면 아래 태그 단정이 전부 무의미해진다. 여기서 보는
+    것은 "html 로 낼 때 조각이 완전한 표인가" 이고, auto 의 형식 선택 자체는
+    test_table_shape_unit.py / test_table_text_variant_chunks.py 가 본다.
+    """
     cp = pytest.importorskip("genon.preprocessor.facade.chunking_processor")
     source = _require("monimo_cs_hpp_large_table_sample.html")
     rows = _parse_and_chunk(
-        source, "cs_hpp", llm_stub=_CS_HPP_LLM_STUB, chunk_mode=chunk_mode
+        source, "cs_hpp", llm_stub=_CS_HPP_LLM_STUB, chunk_mode=chunk_mode,
+        extra_kwargs={"table_format": "html"},
     )
 
     effective = _clamp_chunk_size(CHUNK_SIZE)

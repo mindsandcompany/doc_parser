@@ -22,8 +22,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 pytest.importorskip("httpx")
+pytest.importorskip("docling_core")
 _me = pytest.importorskip("facade.enrichment.metadata_enricher")
 _cf = pytest.importorskip("facade.enrichment.custom_fields_enricher")
+
+from docling_core.types.doc import (  # noqa: E402
+    BoundingBox,
+    DocItemLabel,
+    DoclingDocument,
+    ProvenanceItem,
+    Size,
+)
+from docling_core.types.doc.base import CoordOrigin  # noqa: E402
 
 MetadataEnricher = _me.MetadataEnricher
 CustomFieldsEnricher = _cf.CustomFieldsEnricher
@@ -295,9 +305,25 @@ class TestParserPathTraversalGuard:
 # ── MetadataEnricher._extract_raw_text 페이지 선택 ─────────────────────────────
 
 def _make_paged_doc(num_pages: int):
-    doc = MagicMock()
-    doc.pages = {i: object() for i in range(1, num_pages + 1)}
-    doc.export_to_markdown = MagicMock(side_effect=lambda page_no: f"[{page_no}]")
+    """페이지마다 `PAGE-<n>` 한 줄만 담은 실제 DoclingDocument.
+
+    mock 을 쓰지 않는다. `_extract_raw_text` 는 `common.markdown_export.export_markdown`
+    을 거치는데 그 안에서 `MarkdownDocSerializer` 가 doc 을 pydantic 으로 검증하므로
+    MagicMock 은 애초에 통과하지 못한다. 실제 문서를 쓰면 페이지 선택이 직렬화까지
+    관통해서 검증된다.
+    """
+    doc = DoclingDocument(name="paged")
+    for page_no in range(1, num_pages + 1):
+        doc.add_page(page_no=page_no, size=Size(width=100, height=100))
+        doc.add_text(
+            label=DocItemLabel.TEXT,
+            text=f"PAGE-{page_no}",
+            prov=ProvenanceItem(
+                page_no=page_no,
+                bbox=BoundingBox(l=0, t=0, r=10, b=10, coord_origin=CoordOrigin.TOPLEFT),
+                charspan=(0, 6),
+            ),
+        )
     return doc
 
 
@@ -306,18 +332,18 @@ class TestMetadataExtractRawText:
     def test_default_reads_first_four_pages(self):
         enr = _make_metadata_enricher(pages=None)
         doc = _make_paged_doc(6)
-        text = enr._extract_raw_text(doc)
-        assert text == "[1][2][3][4]"
+        # 페이지별 markdown 을 구분자 없이 이어 붙인다. 5~6 페이지는 읽지 않는다.
+        assert enr._extract_raw_text(doc) == "PAGE-1PAGE-2PAGE-3PAGE-4"
 
     def test_fewer_than_four_pages(self):
         enr = _make_metadata_enricher(pages=None)
         doc = _make_paged_doc(2)
-        assert enr._extract_raw_text(doc) == "[1][2]"
+        assert enr._extract_raw_text(doc) == "PAGE-1PAGE-2"
 
     def test_explicit_pages_respected(self):
         enr = _make_metadata_enricher(pages=[2, 3])
         doc = _make_paged_doc(6)
-        assert enr._extract_raw_text(doc) == "[2][3]"
+        assert enr._extract_raw_text(doc) == "PAGE-2PAGE-3"
 
 
 # ── CustomFieldsEnricher._load_config 경로 해석 ────────────────────────────────

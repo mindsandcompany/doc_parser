@@ -363,10 +363,12 @@ def test_product_markdown_parser_to_chunk_round_trip():
     forbidden = ("source_file:", "source_pages:", "created_at:", "conversion_note:")
     assert len(rows) == 7
     assert all(not any(token in row["text"] for token in forbidden) for row in rows)
-    assert all(row["source_file"] == "1768198211902.pdf" for row in rows)
-    assert all(row["source_pages"] == 9 for row in rows)
+    # front matter 값 중 metadata 로 broadcast 되는 것은 설정이 `fields.<목표>.alias` 로
+    # 선언한 것뿐이다. 사이트 운영 설정(커밋 263f53ea)은 created_at → created_date 와
+    # product_code → PRODUCT_C 만 남기고 source_file / source_pages / author 선언을
+    # 걷어냈다. 그래서 여기서는 남아 있는 선언만 단정한다 — 위 `forbidden` 검사가
+    # "걷어낸 값이 본문으로 새지도 않는다" 를 함께 지킨다.
     assert all(row["created_date"] == 20260112 for row in rows)
-    assert all(row["author"] == "김도연" for row in rows)
     assert all(row["PRODUCT_C"] == "30387" for row in rows)
     assert all(row["GROUP_C"] == "SLF" for row in rows)
     assert all(row["doc_type"] == "product_slf" for row in rows)

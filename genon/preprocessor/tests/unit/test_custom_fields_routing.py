@@ -496,7 +496,10 @@ _DATE_INT_FLEX_FIELDS = {
 # 노출 게이트를 잠정 보류(주석)해 둔 상태도 적재 실패가 아니다.
 # 단, `defaults: {X: null}` 로 명시 선언하면 기본값을 덮어 null 이 들어가므로 아래 두 번째
 # 검사는 그대로 적용한다(예전 `nulls:` 목록이 이 형태로 통합됐다).
-_DB_DEFAULTED_COLUMNS = {"SEARCHABLE_YN"}
+# STATUS 는 사이트 운영 설정(커밋 263f53ea)이 선언을 걷어냈다. 걷어내도 되는 근거는
+# 그 전 설정의 주석 자체다 - `STATUS: "PUBLISHED"  # TB_FAQ 기본값과 동일` 이라, 설정이
+# 주던 값이 테이블 기본값과 같았다. 그래서 미선언이 적재 실패로 이어지지 않는다.
+_DB_DEFAULTED_COLUMNS = {"SEARCHABLE_YN", "STATUS"}
 
 
 
@@ -507,11 +510,9 @@ def _load_shipped(path) -> dict:
     표기(v1/v2)와 무관해야 한다. 매퍼가 하는 것과 같은 번역을 거쳐 한 모양으로 맞춘다 —
     검사마다 v2 키를 따로 읽으면 스키마가 하나 더 늘어나는 셈이 된다.
     """
-    from genon.preprocessor.facade.enrichment import config_v2 as cv2
+    from shipped_config import load_shipped
 
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    normalized, _extractor = cv2.load(loaded, label=str(path.name))
-    return normalized
+    return load_shipped(path)
 
 
 @pytest.mark.unit

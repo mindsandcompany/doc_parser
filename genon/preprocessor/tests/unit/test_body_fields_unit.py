@@ -45,13 +45,9 @@ class TestBodyFieldsSetting:
 @pytest.mark.unit
 def test_cs_hpp_yaml_declares_content_as_body_field():
     """운영·개발 yaml 양쪽에서 CONTENT 가 본문과 같은 값을 받도록 선언돼 있다."""
-    import pathlib
+    from shipped_config import load_shipped_named
 
-    import yaml as _yaml
-
-    base = pathlib.Path(__file__).resolve().parents[2]
     for resource_dir in ("resource", "resource_dev"):
-        cfg = _yaml.safe_load(
-            (base / resource_dir / "custom_field_cs_hpp.yaml").read_text(encoding="utf-8")
-        )
+        # 출고는 v2 표기다. raw 로 읽으면 body_fields 가 None 이 되어 검사가 조용히 무력해진다.
+        cfg = load_shipped_named("custom_field_cs_hpp.yaml", resource_dir)
         assert cp.parse_field_name_list(cfg.get("body_fields")) == ["CONTENT"], resource_dir

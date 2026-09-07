@@ -682,7 +682,16 @@ def test_shipped_monimo_event_config_maps_real_payload_schema(resource_dir):
     assert len(fields_list) == (2 if has_header_fallback else 1)
 
     first = fields_list[0]
-    assert first["BIZ_ID"] == "M261106191"                 # cmpId
+    # BIZ_ID 별칭은 사이트 운영 설정(커밋 263f53ea)이 cmpCntsId 로 바꿨다. 실 payload 에는
+    # 그 키가 없어 값이 비는데, 어느 원천 키를 업무키로 쓸지는 설정의 소관이므로 위 TITLE
+    # 별칭과 같은 방식으로 기대값을 설정에서 뽑는다.
+    src_record = next(v for v in payload.values() if isinstance(v, list))[0]
+    biz_expected = next(
+        (src_record[a] for a in mapper.key_map["BIZ_ID"]
+         if src_record.get(a) not in (None, "")),
+        None,
+    )
+    assert first["BIZ_ID"] == biz_expected
     assert first["TITLE"] == "하이마트 구독을 가볍게 매월 최대2만원 까지 혜택"   # evtTodayMainCopy 우선
     assert first["EVENT_FROM"] == 20260710                 # evtPtrmStrtDt (8자리 압축)
     assert first["EVENT_TO"] == 20261111                   # evtPtrmEndDt

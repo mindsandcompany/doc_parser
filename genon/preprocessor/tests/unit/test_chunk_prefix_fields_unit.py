@@ -97,14 +97,18 @@ class TestChunkerAndProcessorContract:
 @pytest.mark.parametrize(
     "yaml_name,key,expected",
     [
-        ("custom_field_cs_hpp.yaml", "first_chunk_fields", ["CS_CATEGORY"]),
+        # TITLE 은 사이트 운영 설정(263f53ea)이 첫 청크 접두에 함께 넣었다.
+        ("custom_field_cs_hpp.yaml", "first_chunk_fields", ["CS_CATEGORY", "TITLE"]),
         ("custom_field_product_hpp.yaml", "chunk_prefix_fields", ["PRODUCT_NM"]),
     ],
 )
 def test_operational_yaml_declares_prefix_fields(yaml_name, key, expected):
     """운영·개발 yaml 양쪽이 같은 선언을 갖는다."""
+    from shipped_config import load_shipped_named
+
     for resource_dir in ("resource", "resource_dev"):
-        cfg = _yaml.safe_load((_BASE / resource_dir / yaml_name).read_text(encoding="utf-8"))
+        # 출고는 v2 표기다(`body.repeat` / `body.once`). raw 로 읽으면 둘 다 None 이 된다.
+        cfg = load_shipped_named(yaml_name, resource_dir)
         assert cp.parse_field_name_list(cfg.get(key)) == expected, (resource_dir, yaml_name)
 
 

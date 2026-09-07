@@ -63,7 +63,7 @@ CASES = [
     ("monimo_event",  MONIMO / "monimo_event_table_sample.json",       "5열 표 빈 셀 보존"),
     ("monimo_news",   MONIMO / "monimo_news_sample.json",              "json_mapping"),
     ("cs_slf",        MONIMO / "monimo_cs_slf_sample.xlsx",            "tabular_mapping"),
-    ("cs_ssf",        MONIMO / "monimo_cs_ssf_sample.xlsx",            "tabular_mapping"),
+    ("cs_ssf",        MONIMO / "monimo_cs_ssf_sample.dtms",            "|@| 구분 레코드"),
     ("cs_sss",        MONIMO / "monimo_cs_sss_sample.json",            "json_mapping"),
     ("cs_hpp",        MONIMO / "monimo_cs_hpp_sample.html",            "llm(문서 단위)"),
     # 파일명이 점으로 시작하고 본문이 fragment 인 실 원천(#349 재현). rename 금지.
@@ -506,6 +506,47 @@ def check_md_html_table(chunks: list) -> list[str]:
     return problems
 
 
+def check_cs_ssf_delimited(chunks: list) -> list[str]:
+    """|@| 구분 원천의 분류 필드와 표가 청크까지 살아 오는가.
+
+    이 원천은 헤더가 없고 본문 HTML 이 인용 안에서 여러 줄에 걸친다. 레코드 경계 판정이
+    어긋나면 **건수는 맞는데 본문만 잘리는** 형태로 깨지므로(구분자가 없는 이어지는 줄이
+    조용히 버려진다) 건수뿐 아니라 본문 내용까지 본다.
+    """
+    problems: list[str] = []
+    if not chunks:
+        return ["청크가 없습니다"]
+
+    # 분류 4단(대분류/중분류/소분류/제목)이 청크 property 로 승격돼야 검색 필터가 걸린다.
+    if {chunk.get("GROUP_C") for chunk in chunks} != {"SSF"}:
+        problems.append("GROUP_C 가 모든 청크에 SSF 로 실리지 않았습니다")
+    categories = {chunk.get("CS_CATEGORY") for chunk in chunks}
+    if not {"자동차", "화재", "일반"} <= categories:
+        problems.append(f"CS_CATEGORY 가 원천 4건의 값을 담지 못했습니다: {sorted(map(str, categories))}")
+    if "누수" not in {chunk.get("CS_CATEGORY_SUB") for chunk in chunks}:
+        problems.append("CS_CATEGORY_SUB 가 실리지 않았습니다")
+    # 소분류가 빈 원천 1건은 default: null 로 떨어져야 한다(빈 문자열이 아니다).
+    if not any(chunk.get("CS_CATEGORY_SUB") is None for chunk in chunks):
+        problems.append("빈 소분류가 null 로 떨어지지 않았습니다")
+
+    # 인용 안 개행으로 이어진 본문이 실제로 붙어 왔는가. 표 두 번째 행의 문구는 원천에서
+    # 첫 줄보다 한참 뒤에 있어, 경계 판정이 첫 줄에서 끊기면 사라진다.
+    body = "\n".join(chunk.get("text") or "" for chunk in chunks)
+    for phrase in ("상품 판매를 목적으로", "관리 소홀이 명백하거나"):
+        if phrase not in body:
+            problems.append(f"인용 안 개행 뒤의 본문이 유실됐습니다: {phrase!r}")
+    # 이스케이프된 따옴표("")가 원래대로 돌아왔는가.
+    if '"사고사실확인원"' not in body:
+        problems.append("이스케이프된 따옴표가 복원되지 않았습니다")
+
+    # HTML 표가 구조로 파싱됐는가(태그가 본문에 그대로 남으면 실패).
+    if not any(chunk.get("has_table") for chunk in chunks):
+        problems.append("표로 인식된 청크가 없습니다")
+    if re.search(r"<(?:table|tbody|tr|td|span|div)\b", body):
+        problems.append("청크 본문에 HTML 태그가 원문 그대로 남았습니다")
+    return problems
+
+
 EXTRA_CHECKS = {
     ("product_slf", "monimo_product_slf_sample.md"):
         lambda chunks: check_front_matter(chunks) + check_product_attrs_once(chunks),
@@ -518,12 +559,15 @@ EXTRA_CHECKS = {
     ("cs_hpp", ".INC_235488_02_20260626103138.html.parsed"): check_cs_hpp_parsed_ext,
     ("product_hpp", "monimo_product_hpp_rich_table_sample.json"): check_product_hpp_link_labels,
     ("stock_insight", "monimo_stock_insight_sample.xlsx"): check_stock_insight_row_merge,
+    ("cs_ssf", "monimo_cs_ssf_sample.dtms"): check_cs_ssf_delimited,
 }
 
 # 입력 확장자로 extractor 를 고른다. 같은 doc_type 에 블록이 둘인 경우가 있다
 # (faq: xlsx→tabular_mapping / json→json_mapping, product_hpp: md→llm / json→json_semantic).
 EXTRACTOR_BY_SUFFIX = {
     ".xlsx": {"tabular_mapping"},
+    # 구분자 텍스트. 레코드 매핑으로 가고 실제 파싱은 source.pre.delimited 가 한다.
+    ".dtms": {"json_mapping"},
     ".csv": {"tabular_mapping"},
     ".json": {"json_mapping", "json_semantic"},
     ".md": {"llm"},

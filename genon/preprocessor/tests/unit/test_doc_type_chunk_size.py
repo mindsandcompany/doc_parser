@@ -271,7 +271,7 @@ def test_cs_hpp_large_html_table_is_split_by_complete_rows(chunk_mode):
 
 @pytest.mark.unit
 def test_cs_hpp_marker_sections_split_chunk_headers():
-    """cs_hpp 마커 승격 — 도형 마커(◈/▣)가 청커 breadcrumb 의 섹션 경계로 되살아난다.
+    """cs_hpp 마커 승격 — 도형 마커(◈/▣)로만 표현된 소제목이 청커 breadcrumb 의 섹션 경계가 된다.
 
     개선 전(대조군은 test_marker_promotion_is_gated_by_doc_type, doc_type=faq)은
     distinct HEADER 가 2개뿐이라 chunk_size 로만 절단됐다. distinct >= 3 단정이
@@ -293,12 +293,21 @@ def test_cs_hpp_marker_sections_split_chunk_headers():
     # 값 자체는 모든 청크의 metadata 에 그대로 남아 필터 검색이 된다.
     assert all(r.get("CS_CATEGORY") == _CS_HPP_CATEGORY for r in rows)
 
-    assert any("◈ 기본내용 > ▣ 네이버페이 간편결제 이용방법" in h for h in headers)
-    assert any("◈ 예상Q&A" in h for h in headers)
+    # 마커 글리프는 breadcrumb 에 남지 않는다 — 출고 chunking 설정의 text_cleanup 규칙
+    # `{find: "[■◈※☎▶●◆▲☞]\\s*", replace: ""}` 이 승격 뒤에 ◈/◆ 를 장식으로 지운다.
+    # 승격 자체는 정상이다(html_flatten 직후 heading 은 `◈ 기본내용` 이고, 정제를 끄면
+    # breadcrumb 에도 그대로 나온다). 그래서 여기서는 글리프가 아니라 **승격이 만든 구조**를
+    # 본다 — `기본내용` 이 자기 레벨을 갖고 그 아래 `▣ …` 가 매달리는 형태.
+    #
+    # ▣ 는 그 규칙의 문자 집합에 없어 살아남는다. 같은 문서의 형제 마커가 다르게 처리되는
+    # 셈이고, 두 문자 집합(html_flatten._MARKER_CHARS 와 위 규칙)이 ■▶◆◈● 5자에서
+    # 겹치는 것이 그 원인이다. 설정 쪽 판단이 서면 기대값을 다시 조정한다.
+    assert any("기본내용 > ▣ 네이버페이 간편결제 이용방법" in h for h in headers)
+    assert any("예상Q&A" in h for h in headers)
 
-    # 섹션 경계가 실제로 서로 다른 청크를 만든다(◈ 시행일자 청크와 ◈ 예상Q&A 청크가 다르다).
-    start_idx = {i for i, h in enumerate(headers) if "◈ 시행일자" in h}
-    qna_idx = {i for i, h in enumerate(headers) if "◈ 예상Q&A" in h}
+    # 섹션 경계가 실제로 서로 다른 청크를 만든다(시행일자 청크와 예상Q&A 청크가 다르다).
+    start_idx = {i for i, h in enumerate(headers) if "시행일자" in h}
+    qna_idx = {i for i, h in enumerate(headers) if "예상Q&A" in h}
     assert start_idx and qna_idx
     assert start_idx.isdisjoint(qna_idx)
 
@@ -330,7 +339,8 @@ def test_cs_hpp_nospace_marker_sections_split_chunk_headers():
 
     headers = [_chunk_header(r["text"]) for r in rows]
     assert all(h.startswith("HEADER: ") for h in headers)
-    assert any("◆처리방법 > ▣[홈페이지]서비스 신청 및 해지 방법" in h for h in headers)
+    # 위 테스트와 같은 이유로 ◆ 는 breadcrumb 에 남지 않는다(text_cleanup 규칙).
+    assert any("처리방법 > ▣[홈페이지]서비스 신청 및 해지 방법" in h for h in headers)
     assert len(set(headers)) >= 3, f"distinct HEADER 부족: {headers}"
 
 
@@ -381,4 +391,7 @@ def test_marker_promotion_is_gated_by_doc_type():
 
     headers = [r["text"].splitlines()[0] for r in rows]
     assert len(set(headers)) < 3, f"distinct HEADER 가 예상보다 많습니다: {headers}"
-    assert not any("◈" in h for h in headers)
+    # ◈ 로 보면 안 된다 — 승격이 일어나도 text_cleanup 규칙이 지우므로 이 대조군이
+    # "봉인됐다" 와 "승격됐는데 글리프만 지워졌다" 를 구분하지 못한다. ▣ 는 그 규칙을
+    # 타지 않아 승격이 일어났을 때만 breadcrumb 에 나타난다(실측: 봉인 시 0건).
+    assert not any("▣" in h for h in headers)

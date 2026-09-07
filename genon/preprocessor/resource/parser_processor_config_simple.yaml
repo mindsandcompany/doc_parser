@@ -18,6 +18,9 @@ formats:
   # 파싱용 사본을 오른쪽 확장자 이름으로 만들어 넘기므로 이후 처리는 그 포맷과 동일하다.
   extension_aliases:
     ".parsed": ".md"
+    # 고객센터(화재) 구분자 원천. 내용은 |@| 구분 텍스트지만 레코드 매핑 경로를 타야 하므로
+    # json 으로 본다(실제 파싱은 custom_field_cs_ssf.yaml 의 source.pre.delimited 가 한다).
+    ".dtms": ".json"
 
   # 엑셀(xlsx/xlsm), csv는 PDF 변환 없이 처리
   xlsx:
@@ -174,7 +177,7 @@ enrichment:
   - custom_fields:
       enable: true
       doc_type: cs_ssf
-      extractor: tabular_mapping
+      extractor: json_mapping
       config_file: custom_field_cs_ssf.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
   # 고객센터 카드 — html 문서 단위 LLM 추출
   - custom_fields:

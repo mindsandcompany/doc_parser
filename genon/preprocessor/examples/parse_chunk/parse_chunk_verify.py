@@ -80,6 +80,10 @@ CASES = [
     ("product_slf",   MONIMO / "monimo_product_slf_fields_sample.md",
      "코드값·비표준 날짜·브랜드 분리 front matter"),
     ("product_ssf",   MONIMO / "monimo_product_ssf_sample.md",         "llm + markdown front matter"),
+    # 본문 표를 파이프 표가 아니라 HTML <table> 로 쓴 마크다운. md 백엔드가 HTML 블록을
+    # HTML 백엔드로 왕복시켜 TableItem 으로 만드는 경로를 고정한다.
+    ("product_ssf",   MONIMO / "monimo_product_ssf_html_table_sample.md",
+     "본문 표가 HTML <table>"),
     ("product_hpp",   MONIMO / "monimo_product_hpp_wcms_sample.json",  "json_semantic(풀 캡처)"),
     ("product_hpp",   MONIMO / "monimo_product_hpp_sample.json",       "json_semantic(최소)"),
     ("product_hpp",   MONIMO / "monimo_product_hpp_rich_table_sample.json",
@@ -474,10 +478,39 @@ def check_cs_hpp_parsed_ext(chunks: list) -> list[str]:
     return problems
 
 
+def check_md_html_table(chunks: list) -> list[str]:
+    """마크다운 본문의 HTML <table> 이 표로 파싱되고 표기형태 설정을 따르는가.
+
+    md 백엔드는 HTML 블록이 섞인 문서를 export_to_html -> HTML 백엔드로 왕복시킨다. 이
+    왕복이 끊기면 표가 TableItem 이 되지 못하고 태그가 본문에 그대로 실리거나(원문 노출)
+    표 텍스트가 통째로 사라진다. 표기형태(html/markdown)는 output.table_format 이 정하고
+    기본값 auto 는 표 구조를 보고 고르므로, 여기서는 "둘 중 하나로 정상 표기된다"만 본다.
+    두 표기 모두 metadata(text_table_html/text_table_md)에는 항상 실린다.
+    """
+    problems: list[str] = []
+    table_chunks = [c for c in chunks if c.get("has_table")]
+    if len(table_chunks) != 2:
+        problems.append(f"표 청크 2건 기대, 실제 {len(table_chunks)}건(HTML 표 파싱 실패)")
+    for idx, chunk in enumerate(table_chunks):
+        text = chunk.get("text") or ""
+        if "<table" not in text and "| - |" not in text:
+            problems.append(f"표 청크 {idx} 가 html/markdown 어느 표기도 아닙니다")
+        for field in ("text_table_html", "text_table_md"):
+            if not (chunk.get(field) or "").strip():
+                problems.append(f"표 청크 {idx} 의 '{field}' 가 비었습니다")
+    # 병합 셀 표의 값이 표기형태와 무관하게 남아 있어야 한다(왕복 중 셀 소실 회귀).
+    joined = "\n".join(c.get("text") or "" for c in chunks)
+    for cell in ("최대 3천만원", "항공기 4시간 이상 지연", "담보별 보험금 지급사유와 지급금액"):
+        if cell not in joined:
+            problems.append(f"표 내용 '{cell}' 이 청크에 없습니다")
+    return problems
+
+
 EXTRA_CHECKS = {
     ("product_slf", "monimo_product_slf_sample.md"):
         lambda chunks: check_front_matter(chunks) + check_product_attrs_once(chunks),
     ("product_ssf", "monimo_product_ssf_sample.md"): check_product_attrs_once,
+    ("product_ssf", "monimo_product_ssf_html_table_sample.md"): check_md_html_table,
     ("product_hpp", "monimo_product_hpp_sample.json"): check_annual_fee_once,
     ("card", "card01.flat.html"): check_card_annual_fee,
     ("product_hpp", "monimo_product_hpp_wcms_sample.json"): check_product_hpp_table_format,

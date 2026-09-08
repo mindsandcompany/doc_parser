@@ -1889,7 +1889,7 @@ doc_type 이 동작해야 한다면 아래 파일에 **같은 블록을 각각**
 |---|---|
 | 새 **extractor 종류** 추가 (예: 정규식 기반 추출기) | `facade/enrichment/custom_fields_enricher.py` 의 `DOCUMENT_CUSTOM_FIELD_EXTRACTORS` / `TABULAR_CUSTOM_FIELD_EXTRACTORS` / `JSON_CUSTOM_FIELD_EXTRACTORS` 집합 + 해당 빌더 함수 |
 | 새 **값 변환기** 추가 (예: 금액 파싱) | `facade/enrichment/field_transforms.py` 에 함수 작성 후 `VALUE_TRANSFORMS` 에 등록. 그러면 `transforms` 에서 이름으로 바로 쓸 수 있습니다 |
-| 새 **element category** 추가 | `chunking_processor.py` 의 `row_categories` 리터럴이 **두 군데**에 있습니다(`_chunk_custom_fields_rows` 와 `_chunk_parse_format`). **둘 다** 고쳐야 합니다 |
+| 새 **element category** 추가 | 코드 수정이 아니라 `chunking_processor.py` 의 `ROW_CATEGORIES` 에 이름을 더하면 됩니다(예: `ROW_CATEGORIES = ChunkerCore.ROW_CATEGORIES | {"crm_row"}`) |
 
 > 새 category 를 만들기보다 **`custom_fields_row` 를 그대로 재사용**하는 쪽이 안전합니다.
 > 청커는 `doc_type` 을 전혀 보지 않고 `category` 로만 분기하므로, 기존 category 를 쓰면 청킹 쪽은

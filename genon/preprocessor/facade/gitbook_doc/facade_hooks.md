@@ -11,8 +11,8 @@
 
 | 파일 | 줄수 | 고칠 자리 |
 |---|---:|---|
-| `facade/parser_processor.py` | 92 | `ROUTES` · `pre_source` · `post_parse` |
-| `facade/chunking_processor.py` | 100 | `GenOSVectorMeta` · `GenosSmartChunker` · `pre_chunk` · `post_chunk` |
+| `facade/parser_processor.py` | 101 | `ROUTES` · `pre_source` · `post_parse` |
+| `facade/chunking_processor.py` | 113 | `GenOSVectorMeta` · `GenosSmartChunker` · `ROW_CATEGORIES` · `pre_chunk` · `post_chunk` |
 
 처리 본체는 `facade/core/` 에 있고 **열어 볼 일이 없습니다.** 열어야 했다면 그건 훅이
 부족하다는 뜻이니 알려 주세요.
@@ -25,6 +25,41 @@
 ```
 
 `__call__` 을 열어 보면 이 순서가 그대로 적혀 있습니다.
+
+## 네 훅에 공통인 두 가지
+
+### 요청 파라미터는 `**kwargs` 로 받습니다
+
+훅 시그니처 끝에 `**kwargs` 를 붙이면 요청의 `params` 가 그대로 들어옵니다. 부서·언어·
+원천시스템처럼 **요청마다 달라지는 값**은 이 통로로만 받으세요.
+
+```python
+    def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
+        if kwargs.get("tenant") == "CARD":
+            ...
+```
+
+`self` 에 담아 두면 안 됩니다. 프로세서는 **인스턴스 하나가 모든 요청을 받습니다.**
+`__call__` 에서 `self._tenant = ...` 로 담고 `post_parse` 에서 읽으면, 그 사이의 `await`
+에서 다른 요청이 끼어들어 값이 섞입니다.
+
+`**kwargs` 를 안 붙인 기존 훅은 인자가 늘지 않습니다 — 그대로 두어도 동작합니다.
+
+### 훅은 `async def` 로 써도 됩니다
+
+사내 API 조회처럼 외부 호출이 필요하면 `async def` 로 바꾸고 `await` 하세요. core 가
+코루틴을 알아서 기다립니다.
+
+```python
+    async def post_parse(self, ext, doc_type, result, **kwargs):
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{MASTER_API}/dept/{kwargs.get('dept_cd')}")
+        tb.set_chunk_metadata(result, {"DEPT_NM": resp.json()["name"]})
+        return result
+```
+
+**동기 함수 안에서 외부 호출을 하지 마세요.** 서버가 요청 하나를 처리하는 동안 다른
+문서의 요청까지 함께 멈춥니다(이벤트 루프가 막힙니다).
 
 ## pre_source — 원천을 파싱 입력으로 바꾼다
 
@@ -41,7 +76,7 @@
 `doc_type` 은 소문자로 정규화되어 옵니다 — `"MyType"` 으로 비교하면 영영 안 맞습니다.
 
 ```python
-    def pre_source(self, ext, doc_type, data, work_dir=None):
+    def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
         # JSONL/NDJSON — json.loads 가 실패하면 원문 str 로 옵니다.
         if ext == ".json" and isinstance(data, str):
             return {"rows": [json.loads(ln) for ln in data.splitlines() if ln.strip()]}
@@ -64,7 +99,7 @@
     ROUTES = (((".xml",), "route_json"),        # 표 맨 앞에 두 줄
               ((".tsv",), "route_tabular")) + (... 기존 표 그대로 ...)
 
-    def pre_source(self, ext, doc_type, data, work_dir=None):
+    def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
         if ext == ".xml" and doc_type == "monimo_event":
             events = [{c.tag: c.text for c in ev}
                       for ev in ET.parse(data).getroot().find("eventList")]
@@ -101,7 +136,7 @@
 ## post_parse — 산출을 손본다
 
 ```python
-    def post_parse(self, ext, doc_type, result):
+    def post_parse(self, ext, doc_type, result, **kwargs):
         result["elements"]   # 레코드/표 경로 산출 (list[dict])
         result["document"]   # docling 경로 산출   (dict)
         return result
@@ -116,6 +151,22 @@ API 라 그 값은 호출자용 정보로 끝납니다. `tb.set_chunk_metadata()
             tb.FIRST_CHUNK_FIELDS_KEY: ["PRODUCT_NM"],   # 첫 청크에만 붙일 필드
         })
 ```
+
+## 코드가 아니라 값으로 바꾸는 것들 — 청킹
+
+훅을 쓰기 전에 이쪽부터 보세요. 한 줄이면 끝나는 것들입니다.
+
+| 하고 싶은 것 | 바꿀 것 | 자리 |
+|---|---|---|
+| 청크 앞 `HEADER:` 라벨을 다른 말로 / 없애기 | `GenosSmartChunker.CHUNK_HEADER_PREFIX` (빈 문자열이면 경로만) | `chunking_processor.py` |
+| 섹션 경로 구분자 | `CHUNK_HEADER_SEP` · `CHUNK_PATH_SEP` · `CHUNK_PATH_MAX_LEAVES` | 〃 |
+| 파서가 만든 **새 category** 를 행 1개 = 청크 1개로 처리 | `ROW_CATEGORIES` 에 이름 추가 | 〃 |
+| 1024 보다 작은 청크 만들기 | `chunking.min_chunk_size` (0 이면 보정 안 함) | `chunking_processor_config.yaml` |
+
+`CHUNK_HEADER_PREFIX` 는 청크 크기 산정과 실제 부착이 같은 값을 보므로 여기만 바꾸면
+됩니다. `min_chunk_size` 는 docling 경로의 하한이라, 임베딩 모델의 입력 길이가 짧아
+더 잘게 나눠야 하는 사이트에서 낮춥니다. **둘 다 청크 본문·경계가 바뀌므로 재색인이
+필요합니다.**
 
 ## pre_chunk / post_chunk — 청킹 쪽
 

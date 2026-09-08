@@ -36,7 +36,11 @@ from dataclasses import replace
 from typing import Any, Callable, Optional
 
 from .table_description import TABLE_RETRIEVAL_LABEL
-from .table_text_context import TableTextDescriptionOptions, TableTextTarget
+from .table_text_context import (
+    TableTextDescriptionOptions,
+    TableTextTarget,
+    merge_table_text_description,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -173,58 +177,109 @@ class TableTextDescriptionEnricher:
     두 경로의 산출물이 어긋나지 않는다.
     """
 
-    def __init__(self, cfg: dict | None = None):
+    def __init__(self, cfg: dict | None = None, overrides: dict | None = None):
         self._cfg = dict(cfg or {})
         self._options = TableTextDescriptionOptions.from_config(self._cfg)
-        self._runner: Any = None
+        # doc_type -> 문서유형 YAML 오버라이드. 요청마다 doc_type 이 하나이므로 해석 결과를
+        # doc_type 키로 캐시한다(프로세서는 싱글턴이라 요청 간 재사용된다).
+        self._overrides = {
+            str(key).strip().lower(): value
+            for key, value in (overrides or {}).items()
+            if isinstance(value, dict) and value
+        }
+        self._cfg_cache: dict[str, dict] = {}
+        self._options_cache: dict[str, TableTextDescriptionOptions] = {}
+        self._runners: dict[str, Any] = {}
 
     @property
     def options(self) -> TableTextDescriptionOptions:
+        """공통 옵션. 문서유형을 아는 자리에서는 `options_for(doc_type)` 를 쓴다."""
         return self._options
+
+    def _doc_type(self, kwargs: dict) -> str:
+        """이 요청의 doc_type. 오버라이드가 없는 문서유형은 공통 설정("")으로 접는다.
+
+        접지 않으면 문서유형마다 같은 설정의 runner 가 따로 만들어져, 설정이 같은데도
+        인스턴스가 갈린다.
+        """
+        doc_type = str(kwargs.get("doc_type") or "").strip().lower()
+        return doc_type if doc_type in self._overrides else ""
+
+    def config_for(self, doc_type: str = "") -> dict:
+        """공통 설정 위에 문서유형 오버라이드를 얹은 설정(문서유형 우선)."""
+        key = doc_type if doc_type in self._overrides else ""
+        if key not in self._cfg_cache:
+            override = self._overrides.get(key)
+            self._cfg_cache[key] = (
+                merge_table_text_description(self._cfg, override) if override else self._cfg
+            )
+        return self._cfg_cache[key]
+
+    def options_for(self, doc_type: str = "") -> TableTextDescriptionOptions:
+        key = doc_type if doc_type in self._overrides else ""
+        if key not in self._options_cache:
+            self._options_cache[key] = TableTextDescriptionOptions.from_config(
+                self.config_for(key)
+            )
+        return self._options_cache[key]
 
     @property
     def is_configured(self) -> bool:
         """자체 LLM 연결이 채워져 있는지. 비어 있으면 융합 경로에만 의존한다."""
-        return bool(self._cfg.get("url") and self._cfg.get("model"))
+        return self.is_configured_for("")
+
+    def is_configured_for(self, doc_type: str = "") -> bool:
+        cfg = self.config_for(doc_type)
+        return bool(cfg.get("url") and cfg.get("model"))
 
     def wants(self, **kwargs: Any) -> bool:
         """이번 요청에서 독립 표 설명을 수행할지.
 
         판정 축은 융합 경로(`CustomFieldsEnricher.wants_table_descriptions`)와 같다 —
         런타임 플래그 우선, 프롬프트 없으면 하지 않음, `prefer_image` 면 이미지 경로에 양보.
-        여기에 "자체 연결이 있는가"가 하나 더 붙는다.
+        여기에 "자체 연결이 있는가"와 "문서유형 YAML 이 무엇을 말하는가"가 붙는다.
+
+        문서유형 오버라이드는 설정값(`enable`)만 덮는다. 런타임 플래그(`table_text_desc`)는
+        요청자가 명시한 뜻이므로 계속 설정보다 우선한다.
         """
-        if not self.is_configured:
+        doc_type = self._doc_type(kwargs)
+        if not self.is_configured_for(doc_type):
             return False
-        if self._options.conflict_policy == "prefer_image":
+        options = self.options_for(doc_type)
+        if options.conflict_policy == "prefer_image":
             return False
         runtime = kwargs.get("table_text_desc")
-        wanted = self._options.enabled if runtime is None else _as_bool(runtime)
+        wanted = options.enabled if runtime is None else _as_bool(runtime)
         if not wanted:
             return False
-        if not self._prompt_available():
+        if not self._prompt_available(doc_type):
             _log.warning(
                 "표 설명을 요청했지만 table_text_description.prompt_template_file 설정이 없어 건너뜁니다."
             )
             return False
         return True
 
-    def _prompt_available(self) -> bool:
+    def _prompt_available(self, doc_type: str = "") -> bool:
+        cfg = self.config_for(doc_type)
         return bool(
-            self._cfg.get("prompt_template_file")
-            or self._cfg.get("prompt_file")
-            or self._cfg.get("prompt_template")
-            or self._cfg.get("prompt")
+            cfg.get("prompt_template_file")
+            or cfg.get("prompt_file")
+            or cfg.get("prompt_template")
+            or cfg.get("prompt")
         )
 
-    def _get_runner(self) -> Any:
-        """표 전용 CustomFieldsEnricher(lazy). 추출 필드가 없어 표 설명만 만든다."""
-        if self._runner is not None:
-            return self._runner
+    def _get_runner(self, doc_type: str = "") -> Any:
+        """표 전용 CustomFieldsEnricher(lazy). 추출 필드가 없어 표 설명만 만든다.
+
+        문서유형마다 설정(모델·프롬프트·rag)이 다를 수 있으므로 doc_type 별로 만들어 캐시한다.
+        """
+        key = doc_type if doc_type in self._overrides else ""
+        if key in self._runners:
+            return self._runners[key]
         from .custom_fields_enricher import CustomFieldsEnricher
 
-        cfg = self._cfg
-        self._runner = CustomFieldsEnricher(
+        cfg = self.config_for(key)
+        self._runners[key] = CustomFieldsEnricher(
             api_key=str(cfg.get("api_key") or ""),
             url=str(cfg.get("url") or ""),
             model=str(cfg.get("model") or ""),
@@ -238,11 +293,11 @@ class TableTextDescriptionEnricher:
             output_fields=[],
             table_text_description=cfg,
         )
-        return self._runner
+        return self._runners[key]
 
     async def enrich(self, document: Any, **kwargs: Any) -> Any:
         """문서의 텍스트 표에 설명 annotation 을 붙인다. 실패해도 문서는 그대로 돌려준다."""
-        await self._get_runner().describe_tables_only(document, **kwargs)
+        await self._get_runner(self._doc_type(kwargs)).describe_tables_only(document, **kwargs)
         return document
 
     async def describe_texts(self, texts: list[str], **kwargs: Any) -> list[str]:
@@ -252,7 +307,8 @@ class TableTextDescriptionEnricher:
         예산이 허락하는 만큼 묶어 호출하므로, 레코드가 많아도 호출 수는 표 총량에만 비례한다.
         실패하면 원문을 그대로 돌려준다 — 표 설명은 부가 기능이고 본문 적재를 막으면 안 된다.
         """
-        options = self._options
+        doc_type = self._doc_type(kwargs)
+        options = self.options_for(doc_type)
         plans: list[tuple[int, list[TableTextTarget]]] = []
         all_targets: list[TableTextTarget] = []
         for index, text in enumerate(texts):
@@ -270,7 +326,9 @@ class TableTextDescriptionEnricher:
             return list(texts)
 
         try:
-            described = await self._get_runner().describe_table_targets(all_targets, **kwargs)
+            described = await self._get_runner(doc_type).describe_table_targets(
+                all_targets, **kwargs
+            )
         except Exception as exc:
             _log.warning(f"[table_text_description] 레코드 표 설명 실패(원문 유지): {exc}")
             return list(texts)
@@ -314,7 +372,8 @@ async def apply_table_description_stage(
     """
     if standalone is not None and standalone.wants(**kwargs):
         kwargs["_table_text_desc_owned"] = True
-        if standalone.options.conflict_policy == "error" and kwargs.get("table_desc"):
+        options = standalone.options_for(standalone._doc_type(kwargs))
+        if options.conflict_policy == "error" and kwargs.get("table_desc"):
             handle_error(
                 ValueError("텍스트 표 설명과 이미지 표 설명이 동시에 활성화되었습니다."),
                 "table_description",

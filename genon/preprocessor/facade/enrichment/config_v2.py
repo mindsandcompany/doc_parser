@@ -53,6 +53,9 @@ KIND_TO_EXTRACTOR = {
 
 TOP_LEVEL_KEYS = frozenset({
     SCHEMA_KEY, "source", "fields", "require", "filter", "body", "llm",
+    # 프로세서 공통 표 설명의 문서유형별 오버라이드. 값 매핑이 아니라 기능 스위치라
+    # v1/v2 표기가 같다 — 개념을 하나 더 만들지 않는다.
+    "table_text_description",
 })
 
 # 필드 스펙 안에 쓸 수 있는 키. 값은 **항상 dict** 다 — 리스트/스칼라 단축형을 받지 않는다.
@@ -211,6 +214,9 @@ def normalize(cfg: dict, *, label: str = "custom_fields") -> tuple[dict, str]:
         if kind not in ("rows", "records"):
             raise ConfigV2Error(f"{label}: filter 는 kind: rows/records 전용입니다.")
         out["filter"] = cfg["filter"]
+    # 표 설명 오버라이드는 kind 와 무관하다 — 표는 문서형이든 레코드 본문이든 생긴다.
+    if cfg.get("table_text_description") is not None:
+        out["table_text_description"] = cfg["table_text_description"]
     return out, extractor
 
 

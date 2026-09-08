@@ -225,7 +225,8 @@ class DoclingRuntimeBase:
         # 텍스트 표 설명. 자체 url/model 이 있으면 custom_fields 의 LLM 사용 여부와 무관하게
         # 이 실행기가 표 설명을 맡는다(table_text_description 모듈 docstring 참고).
         self.table_text_description_enricher = TableTextDescriptionEnricher(
-            ec.table_text_description_cfg
+            ec.table_text_description_cfg,
+            getattr(ec, "table_text_description_overrides", None),
         )
         self.doc_summary_enricher = DocSummaryEnricher(self.doc_summary_options)
         # 원본 설정 목록을 남긴다. 파싱 라우팅(json_text / front_matter / json_records 등)이

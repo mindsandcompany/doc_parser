@@ -56,6 +56,10 @@ WIRING_KEYS = frozenset({
     "enable", "doc_type", "extractor", "config_file", "resource_path",
     # 아래는 enricher 가 아니라 parser 의 포맷 전처리가 소비한다.
     "json", "markdown", "html", "delimited",
+    # 표 설명은 extractor 가 읽는 키가 아니라 프로세서 공통 기능의 문서유형별 오버라이드다.
+    # 표는 extractor 종류와 무관하게 생기므로(레코드 본문 안의 <table> 포함) 전 extractor 가
+    # 받는다. 예전에는 llm 에만 허용해, 레코드 매핑 문서유형은 표 설명을 끌 수단이 없었다.
+    "table_text_description",
 })
 
 # 레코드형 3종이 공유하는 키(값 조립 → 본문 조립 파이프라인).
@@ -91,7 +95,7 @@ EXTRACTOR_KEYS: dict[str, frozenset[str]] = {
         "url", "api_key", "model", "max_tokens", "temperature", "timeout",
         "system_prompt", "user_prompt", "system_prompt_file", "user_prompt_file", "prompt",
         "output_fields", "constants", "defaults", "parser", "pages", "variables", "template",
-        "thinking", "thinking_dialect", "table_text_description",
+        "thinking", "thinking_dialect",
         "front_matter_map", "value_map", "transforms", "derive",
         "body_fields", "chunk_prefix_fields", "first_chunk_fields", "field_labels",
     }),

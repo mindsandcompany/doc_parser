@@ -190,6 +190,48 @@ def _merge_table_text_description_config(
     return merged_cfgs
 
 
+def build_table_text_description_overrides(
+    custom_fields_cfgs: list[dict], config_dir: Path
+) -> dict[str, dict]:
+    """doc_type -> 표 설명 오버라이드 맵.
+
+    독립 실행기(`TableTextDescriptionEnricher`)는 프로세서 공통 설정 하나만 갖고 있어
+    문서유형을 가릴 수 없었다. 표는 extractor 종류와 무관하게 생기므로(레코드 본문 안의
+    `<table>` 포함) 등록된 모든 문서유형의 config_file 에서 이 블록만 뽑아 온다.
+
+    우선순위는 융합 경로와 같다 — 등록 블록 < config_file. 공통값과의 병합은 실행기가
+    요청 시점에 `merge_table_text_description` 으로 한 번 더 한다.
+    같은 doc_type 이 여러 번 등록되면(예: faq 의 xlsx/json 두 경로) key 단위로 겹쳐 쌓는다.
+    """
+    from .custom_fields_enricher import load_custom_fields_config, normalize_doc_type
+    from . import config_v2 as cv2
+
+    overrides: dict[str, dict] = {}
+    for entry in custom_fields_cfgs or []:
+        doc_type = normalize_doc_type(entry.get("doc_type"))
+        if not doc_type:
+            continue
+        local = _as_dict(entry.get("table_text_description"))
+        config_file = str(entry.get("config_file") or "").strip()
+        if config_file:
+            try:
+                loaded = load_custom_fields_config(
+                    config_file, entry.get("resource_path") or str(config_dir)
+                )
+                normalized, _ = cv2.load(loaded, label=f"custom_fields({config_file})")
+                local = merge_table_text_description(
+                    local, _as_dict(normalized.get("table_text_description"))
+                )
+            except Exception as exc:  # noqa: BLE001
+                # 설정 오류는 enricher 생성 시 제대로 보고된다. 여기서 기동을 막지 않는다.
+                _log.debug(f"[table_text_description] {config_file} 오버라이드 읽기 실패: {exc}")
+        if local:
+            overrides[doc_type] = merge_table_text_description(
+                overrides.get(doc_type), local
+            )
+    return overrides
+
+
 # ── Sub-dataclasses ───────────────────────────────────────────────────────────
 
 @dataclass
@@ -274,6 +316,8 @@ class EnrichmentConfig:
     image_description_cfg: dict
     table_description_cfg: dict
     table_text_description_cfg: dict
+    # doc_type -> 표 설명 오버라이드. 독립 실행기가 문서유형을 가리는 근거다.
+    table_text_description_overrides: dict
     custom_fields_cfgs: list
     api_url: str
     api_key: str
@@ -477,6 +521,9 @@ class EnrichmentConfig:
             image_description_cfg=image_desc_cfg,
             table_description_cfg=table_desc_cfg,
             table_text_description_cfg=_with_resource_path(table_text_desc_cfg, config_dir),
+            table_text_description_overrides=build_table_text_description_overrides(
+                custom_fields_cfgs, config_dir
+            ),
             custom_fields_cfgs=custom_fields_cfgs,
             api_url="",
             api_key="",
@@ -658,6 +705,9 @@ class EnrichmentConfig:
             image_description_cfg=_as_dict(cfg.get("image_description")),
             table_description_cfg=_as_dict(cfg.get("table_description")),
             table_text_description_cfg=_with_resource_path(table_text_desc_cfg, config_dir),
+            table_text_description_overrides=build_table_text_description_overrides(
+                cf_list, config_dir
+            ),
             custom_fields_cfgs=cf_list,
             api_url=global_url,
             api_key=global_key,

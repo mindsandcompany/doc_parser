@@ -35,14 +35,33 @@ _SEARCH_TERM_CHARS = 20
 _TABLE_ENTRY_SCAFFOLD_CHARS = 120
 
 
+def canonical_enable_key(cfg: dict | None) -> dict:
+    """`enable`/`enabled` 두 철자를 내부 표기 `enabled` 하나로 모은다.
+
+    한 dict 안에 둘 다 있으면 `enable` 이 이긴다(`from_config` 와 같은 순서). 내부 표기를
+    `enabled` 로 두는 것은 `enrichment_config` 가 공통 블록에 이미 그렇게 하기 때문이다 —
+    두 곳이 다른 철자로 모으면 융합 사본과 공통 설정이 어긋난다.
+
+    이 정규화가 없으면 키 단위 병합에서 두 철자가 **각각 살아남아**, 공통이 `enable: true`
+    일 때 문서유형의 `enabled: false` 가 조용히 무시된다(사용자 yaml 은 `enable` 을 쓴다).
+    """
+    if not isinstance(cfg, dict):
+        return {}
+    if "enable" not in cfg:
+        return dict(cfg)
+    merged = dict(cfg)
+    merged["enabled"] = merged.pop("enable")
+    return merged
+
+
 def merge_table_text_description(common: dict | None, local: dict | None) -> dict:
     """프로세서 공통 설정 위에 문서유형 설정을 key 단위로 얹는다(문서유형 우선).
 
     `rag` 하위도 통째로 교체하지 않고 key 단위로 병합해, 문서유형에서 한 항목만 바꿔도
     나머지 공통값이 살아 있게 한다.
     """
-    base = dict(common) if isinstance(common, dict) else {}
-    override = dict(local) if isinstance(local, dict) else {}
+    base = canonical_enable_key(common)
+    override = canonical_enable_key(local)
     merged = {**base, **override}
     base_rag = base.get("rag") if isinstance(base.get("rag"), dict) else {}
     override_rag = override.get("rag") if isinstance(override.get("rag"), dict) else {}

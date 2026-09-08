@@ -30,7 +30,7 @@ _UNSET = object()
 
 
 def _make_config(tmp_path: Path, module_name: str, chunk_size, chunk_mode=_UNSET,
-                 include_chunk_header=_UNSET) -> str:
+                 include_chunk_header=_UNSET, min_chunk_size=_UNSET) -> str:
     """출고 config 를 복사하고 chunking.chunk_size(및 옵션 chunk_mode/include_chunk_header)만 덮어쓴다.
 
     config 는 자신과 같은 디렉터리에서 prompt_*.md 등 형제 파일을 참조하므로 resource/ 를 통째로
@@ -56,6 +56,11 @@ def _make_config(tmp_path: Path, module_name: str, chunk_size, chunk_mode=_UNSET
             cfg["chunking"].pop("include_chunk_header", None)
         else:
             cfg["chunking"]["include_chunk_header"] = include_chunk_header
+    if min_chunk_size is not _UNSET:
+        if min_chunk_size is None:
+            cfg["chunking"].pop("min_chunk_size", None)
+        else:
+            cfg["chunking"]["min_chunk_size"] = min_chunk_size
     out = tmp_path / _DEFAULT_CONFIG[module_name]
     out.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
     return str(out)
@@ -216,3 +221,34 @@ def test_include_chunk_header_default_and_override(tmp_path, module_name):
     assert proc._include_chunk_header is True
     # 잘못된 kwargs 값 → yaml 값(True) 유지
     assert _spy_split(mod, proc, include_chunk_header="bogus")["include_chunk_header"] is True
+
+
+# ---------------------------------------------------------------------------
+# chunking.min_chunk_size — docling 경로 하한 (#363 09)
+#   임베딩 모델의 입력 길이가 짧은 사이트는 1024 보다 작은 청크를 만들 수 있어야 한다.
+#   core 상수였을 때는 배포본을 고치는 수밖에 없었다.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_yaml_min_chunk_size_is_loaded(tmp_path):
+    proc = _init_processor(
+        "chunking_processor",
+        _make_config(tmp_path, "chunking_processor", 300, min_chunk_size=256))
+    assert proc._min_chunk_size == 256
+
+
+@pytest.mark.unit
+def test_min_chunk_size_default_is_unchanged(tmp_path):
+    """미지정이면 종전 하한 그대로다(기존 사이트의 청크가 바뀌면 안 된다)."""
+    proc = _init_processor(
+        "chunking_processor",
+        _make_config(tmp_path, "chunking_processor", 300, min_chunk_size=None))
+    assert proc._min_chunk_size == 1024
+
+
+@pytest.mark.unit
+def test_min_chunk_size_zero_disables_the_floor(tmp_path):
+    proc = _init_processor(
+        "chunking_processor",
+        _make_config(tmp_path, "chunking_processor", 300, min_chunk_size=0))
+    assert proc._min_chunk_size == 0

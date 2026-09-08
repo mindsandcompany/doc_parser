@@ -4,7 +4,8 @@
 # 청킹 본체는 facade/core/chunker.py 에 있고 열어 볼 일이 없다.
 #
 #   GenOSVectorMeta    적재 DB 컬럼. 청크 1건 = 1행.
-#   GenosSmartChunker  청킹 동작 옵션과 헤더 구분자.
+#   GenosSmartChunker  청킹 동작 옵션과 헤더 구분자·접두.
+#   ROW_CATEGORIES     행 1개 = 청크 1개로 볼 element category.
 #   pre_chunk          파서 산출을 청킹 직전에 손볼 때.
 #   post_chunk         완성된 청크를 손볼 때.
 #
@@ -68,6 +69,9 @@ class GenosSmartChunker(sc.SmartChunkerBase):
     CHUNK_PATH_SEP = " | "
     # 다경로 청크의 리프 최대 개수. 초과분은 "… 외 N개"(실측: hwp 71경로 → 3,239자).
     CHUNK_PATH_MAX_LEAVES = 5
+    # 경로 앞에 붙는 라벨. 빈 문자열이면 경로만 붙는다. 크기 산정과 실제 부착이
+    # 같은 값을 보므로 여기만 바꾸면 된다.
+    CHUNK_HEADER_PREFIX = "HEADER: "
 
 
 class DocumentProcessor(ChunkerCore):
@@ -79,23 +83,29 @@ class DocumentProcessor(ChunkerCore):
     VECTOR_META = GenOSVectorMeta
     CHUNKER = GenosSmartChunker
 
+    # 행 1개 = 청크 1개로 처리할 element category. 파서가 만드는 이름과 짝이다.
+    # 사이트가 자기 category 를 쓴다면 여기에 더한다(청커는 doc_type 을 보지 않는다).
+    ROW_CATEGORIES = ChunkerCore.ROW_CATEGORIES
+
     async def __call__(self, request: Request, file_path: str = "", **kwargs):
         """① 입력 판별 → ② pre_chunk → ③ 분할·벡터 조합 → ④ post_chunk"""
         src = self.load_input(file_path, **kwargs)
-        src.data = self.pre_chunk(src.kind, src.data, **kwargs)
+        src.data = await self.run_pre_chunk(src.kind, src.data, **kwargs)
         vectors = await self.chunk(request, file_path, src, **kwargs)
-        return self.post_chunk(vectors, **kwargs)
+        return await self.run_post_chunk(vectors, **kwargs)
 
     def pre_chunk(self, kind, data, **kwargs):
         """[전처리] 분할 직전. 받은 형 그대로 돌려준다.
         kind=="parse" 면 data 는 list[dict], "docling" 이면 DoclingDocument 를
-        **직렬화한 dict** 다 — 본문은 data["texts"][i]["text"] 로 닿는다."""
+        **직렬화한 dict** 다 — 본문은 data["texts"][i]["text"] 로 닿는다.
+        kwargs 는 요청 파라미터다. 외부 조회가 필요하면 `async def` 로 바꿔 쓴다."""
         return data
 
     def post_chunk(self, vectors, **kwargs):
         """[후처리] 응답 직전. list[GenOSVectorMeta] 를 손본다(필드 추가·청크 제거).
         본문을 고쳤거나 청크를 버렸으면 toolbox.refresh_stats(vectors) 를 부른다 —
-        안 부르면 n_char 와 청크 순번이 옛 값으로 남는다."""
+        안 부르면 n_char 와 청크 순번이 옛 값으로 남는다.
+        pre_chunk 와 같이 kwargs 와 `async def` 를 쓸 수 있다."""
         return vectors
 
 

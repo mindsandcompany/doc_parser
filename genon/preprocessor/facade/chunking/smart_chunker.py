@@ -91,6 +91,8 @@ class SmartChunkerBase(BaseChunker):
     TABLE_DESCRIPTION_MODE: ClassVar[str] = "full"
 
     # 헤더 경로 구분자. facade 모듈 상수를 파생 클래스가 실어 준다.
+    # CHUNK_HEADER_PREFIX 는 경로 앞에 붙는 라벨이다. 빈 문자열이면 경로만 붙는다.
+    CHUNK_HEADER_PREFIX: ClassVar[str] = hp.DEFAULT_HEADER_PREFIX
     CHUNK_HEADER_SEP: ClassVar[str] = " > "
     CHUNK_PATH_SEP: ClassVar[str] = " | "
     CHUNK_PATH_MAX_LEAVES: ClassVar[int] = 5
@@ -823,7 +825,8 @@ class SmartChunkerBase(BaseChunker):
         """
         return self.chunk_prefix_text + hp.build_header_line(
             headings, include_header,
-            self.CHUNK_HEADER_SEP, self.CHUNK_PATH_SEP, self.CHUNK_PATH_MAX_LEAVES)
+            self.CHUNK_HEADER_SEP, self.CHUNK_PATH_SEP, self.CHUNK_PATH_MAX_LEAVES,
+            self.CHUNK_HEADER_PREFIX)
 
     def _header_line_for(self, h_short: list[dict]) -> str:
         """그룹의 header_short 정보로 청크 선두 헤더 라인을 만든다(크기 산정용).

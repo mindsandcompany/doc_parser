@@ -122,6 +122,7 @@ from genon.preprocessor.facade.common import runtime as rt
 from genon.preprocessor.facade.common import file_probe as fp
 from genon.preprocessor.facade.common import pdf_convert as pc
 from genon.preprocessor.facade.common import format_alias as fa
+from genon.preprocessor.facade.common import hooks as hk
 from genon.preprocessor.converters import xlsx_processor as xp
 from genon.preprocessor.facade.common.docling_runtime import DoclingRuntimeBase
 from genon.preprocessor.facade.common.doc_meta import strip_enricher_meta
@@ -454,7 +455,7 @@ class ParserCore:
     # 배포되는 facade 가 덮어쓴다. 기본 구현은 받은 값을 그대로 돌려주므로
     # 덮어쓰지 않으면 산출이 착수 전과 같다.
 
-    def pre_source(self, ext, doc_type, data, work_dir=None):
+    def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
         """[전처리] 파싱 직전. 원천을 파싱 입력으로 바꾼다.
 
         data 의 형은 ext 가 정하고, 같은 형으로 돌려준다.
@@ -463,23 +464,36 @@ class ParserCore:
           그 밖           str(파일 경로)                    파생 파일은 work_dir 에
         건드릴 것이 없으면 data 를 **그대로** 돌려준다 — 받은 객체를 그대로 돌려주면
         core 는 파생 입력을 만들지 않고 원본 경로를 유지한다.
+
+        `**kwargs` 는 요청 파라미터(params)다. 선언하지 않아도 되고, 선언하면 부서·언어
+        같은 요청 단위 값을 받는다. `async def` 로 써도 된다(core 가 await 한다).
         """
         return data
 
-    def post_parse(self, ext, doc_type, result):
+    def post_parse(self, ext, doc_type, result, **kwargs):
         """[후처리] 응답 확정 직전. 청킹으로 넘어가기 전 마지막 자리.
 
           result["elements"]   레코드/표 경로 산출 (list[dict])
           result["document"]   docling 경로 산출   (dict)
           result["metadata"]   문서 단위 메타      (dict)
+
+        pre_source 와 같이 `**kwargs`(요청 파라미터)와 `async def` 를 쓸 수 있다.
         """
         return result
+
+    async def run_post_parse(self, ext, doc_type, result, /, **kwargs):
+        """post_parse 훅 호출부. facade 의 __call__ 이 부른다.
+
+        요청 파라미터 전달과 async 훅 await 를 여기서 처리하므로 facade 는 한 줄이다.
+        """
+        return await hk.call_hook(
+            self.post_parse, ext, doc_type, result, request_kwargs=kwargs)
 
     # 훅을 덮어썼는지 본다. 안 덮어썼으면 원천을 읽는 비용조차 치르지 않는다.
     def _pre_source_active(self) -> bool:
         return type(self).pre_source is not ParserCore.pre_source
 
-    def _hook_pre_source(self, ext, kwargs, data, work_dir=None):
+    async def _hook_pre_source(self, ext, kwargs, data, work_dir=None):
         """훅을 부르고 (값, 바뀌었는지) 를 돌려준다.
 
         받은 객체를 그대로 돌려주면 '안 바뀜' 으로 본다. 그래야 훅을 정의만 하고
@@ -487,7 +501,10 @@ class ParserCore:
         """
         if not self._pre_source_active():
             return data, False
-        out = self.pre_source(ext, normalize_doc_type(kwargs.get("doc_type")), data, work_dir)
+        out = await hk.call_hook(
+            self.pre_source, ext, normalize_doc_type(kwargs.get("doc_type")), data, work_dir,
+            request_kwargs=kwargs,
+        )
         return out, out is not data
 
     def resolve_ext(self, file_path: str) -> str:
@@ -969,7 +986,7 @@ class ParserCore:
                 f"있을 수 있습니다: {os.path.basename(file_path)}"
             )
 
-    def _load_json_payload(self, file_path: str, doc_type: Any = None) -> Any:
+    async def _load_json_payload(self, file_path: str, doc_type: Any = None, /, **kwargs) -> Any:
         """`.json` 입력을 읽는다. 읽기/파싱 실패는 입력 오류로 즉시 종료.
 
         **여기가 JSON 정규화 훅이다.** `.json` 두 경로(레코드 모드 `_parse_json_records`,
@@ -998,13 +1015,15 @@ class ParserCore:
         except ValueError as exc:
             # 깨진 JSON 은 훅에 원문 str 을 넘겨 구제 기회를 준다(JSONL 등).
             # 훅이 없거나 손대지 않으면 종전대로 입력 오류로 끝난다.
-            payload, changed = self._hook_pre_source(".json", {"doc_type": doc_type}, text)
+            payload, changed = await self._hook_pre_source(
+                ".json", {**kwargs, "doc_type": doc_type}, text)
             if not changed:
                 raise GenosServiceException(
                     "1", f"JSON 파일을 읽을 수 없습니다: {os.path.basename(file_path)} ({exc})"
                 ) from exc
             return payload
-        payload, _ = self._hook_pre_source(".json", {"doc_type": doc_type}, payload)
+        payload, _ = await self._hook_pre_source(
+            ".json", {**kwargs, "doc_type": doc_type}, payload)
         return payload
 
     def _llm_field_enricher(self, spec, mapper):
@@ -1127,7 +1146,7 @@ class ParserCore:
                 fields.update(result)
         return fields_list
 
-    def _records_payload(self, file_path: str, mappers: list, doc_type):
+    async def _records_payload(self, file_path: str, mappers: list, doc_type, /, **kwargs):
         """레코드 매핑의 입력 payload. 원천이 JSON 이 아닐 수도 있다.
 
         `source.pre.delimited` 를 선언한 설정이면 구분자 텍스트로 읽어 `list[dict]` 를
@@ -1141,7 +1160,7 @@ class ParserCore:
             None,
         )
         if spec is None:
-            return self._load_json_payload(file_path, doc_type)
+            return await self._load_json_payload(file_path, doc_type, **kwargs)
         try:
             return dt.read_records(file_path, spec)
         except OSError as exc:
@@ -1156,7 +1175,7 @@ class ParserCore:
         경로가 레코드마다 청크를 만들며 metadata 를 청크 property 로 승격한다.
         """
         doc_type = kwargs.get("doc_type")
-        payload = self._records_payload(file_path, mappers, doc_type)
+        payload = await self._records_payload(file_path, mappers, doc_type, **kwargs)
         results = []
         for mapper in mappers:
             try:
@@ -1225,7 +1244,7 @@ class ParserCore:
                 )
         return merge_parse_formats(results)
 
-    def _parse_json(self, file_path: str, spec, work_dir: str, **kwargs) -> DoclingDocument:
+    async def _parse_json(self, file_path: str, spec, work_dir: str, **kwargs) -> DoclingDocument:
         """JSON 의 지정 key 에서 본문 텍스트(markdown/html)를 꺼내 docling 으로 파싱한다.
 
         항목별 <h2> 섹션을 가진 단일 HTML 로 병합해 docling 을 1회만 호출한다. 파싱
@@ -1234,7 +1253,7 @@ class ParserCore:
         """
         from genon.preprocessor.converters.json_text import json_payload_to_html
 
-        payload = self._load_json_payload(file_path, kwargs.get("doc_type"))
+        payload = await self._load_json_payload(file_path, kwargs.get("doc_type"), **kwargs)
         stem = Path(file_path).stem
         try:
             merged_html = json_payload_to_html(payload, spec, stem)
@@ -1485,7 +1504,8 @@ class ParserCore:
         # 격자 훅. 세 갈래(레코드 매핑 / docling / tabular)가 모두 여기를 지난다.
         # 훅을 안 덮어썼으면 openpyxl 로 읽는 비용조차 치르지 않는다.
         with tempfile.TemporaryDirectory(prefix="parser_xlsx_") as work_dir:
-            sheets_with_merges, changed = self._hook_tabular_sheets(file_path, work_dir, **kwargs)
+            sheets_with_merges, changed = await self._hook_tabular_sheets(
+                file_path, work_dir, **kwargs)
             if changed and self._xlsx_cfg["processing_mode"] == "docling":
                 # docling 백엔드는 파일을 요구한다. 격자가 바뀐 경우에만 파생본을 쓴다.
                 file_path = xp.sheets_to_xlsx(
@@ -1493,7 +1513,7 @@ class ParserCore:
             return await self._route_tabular_inner(
                 file_path, ctx, runtime_doc_type, matching_mappers, sheets_with_merges, **kwargs)
 
-    def _hook_tabular_sheets(self, file_path: str, work_dir: str, **kwargs):
+    async def _hook_tabular_sheets(self, file_path: str, work_dir: str, **kwargs):
         """pre_source(.xlsx) 를 격자로 부른다. (격자, 바뀌었는지) 를 돌려준다.
 
         훅에는 병합셀이 이미 펴진 `{시트명: 2차원 행}` 을 넘기고, 돌려받은 것은
@@ -1510,7 +1530,7 @@ class ParserCore:
             _log.debug(f"[parser] xlsx 격자 훅 건너뜀({type(exc).__name__}): {file_path}")
             return None, False
         plain = {name: rows for name, (rows, _m) in original.items()}
-        hooked, changed = self._hook_pre_source(".xlsx", kwargs, plain, work_dir)
+        hooked, changed = await self._hook_pre_source(".xlsx", kwargs, plain, work_dir)
         if not changed:
             # 이미 읽었으니 그대로 넘겨 중복 읽기를 없앤다. 같은 함수의 산출이라 동일하다.
             return original, False
@@ -1573,7 +1593,7 @@ class ParserCore:
             except OSError:
                 _raw = None
             if _raw is not None:
-                _new, _changed = self._hook_pre_source(ext, kwargs, _raw)
+                _new, _changed = await self._hook_pre_source(ext, kwargs, _raw)
                 if _changed:
                     hook_tmp = tempfile.TemporaryDirectory(prefix="parser_hook_")
                     artifacts_source = artifacts_source or file_path
@@ -1664,7 +1684,7 @@ class ParserCore:
         json_spec = self._json_text_spec_for(kwargs.get("doc_type"))
         if json_spec is not None:
             with tempfile.TemporaryDirectory(prefix="parser_json_") as work_dir:
-                doc = self._parse_json(
+                doc = await self._parse_json(
                     file_path, json_spec, work_dir,
                     _enrichment_context=ctx["enrichment_context"], **kwargs,
                 )
@@ -1749,7 +1769,8 @@ class ParserCore:
             # 각 라우트가 자기 자리에서 부르므로 여기서는 제외한다.
             if ext not in _DATA_HOOK_EXTS and self._pre_source_active():
                 hook_tmp = tempfile.TemporaryDirectory(prefix="parser_hookpath_")
-                new_path, changed = self._hook_pre_source(ext, kwargs, file_path, hook_tmp.name)
+                new_path, changed = await self._hook_pre_source(
+                    ext, kwargs, file_path, hook_tmp.name)
                 if changed:
                     artifacts_source = artifacts_source or file_path
                     file_path = new_path

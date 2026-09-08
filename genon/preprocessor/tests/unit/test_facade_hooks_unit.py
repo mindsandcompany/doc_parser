@@ -30,15 +30,17 @@ def _bare(cls):
 # pre_source 게이트 — 안 건드리면 파생 입력을 만들지 않는다
 # ---------------------------------------------------------------------------
 
-def test_untouched_hook_reports_no_change():
+@pytest.mark.asyncio
+async def test_untouched_hook_reports_no_change():
     """core 기본 구현 그대로면 '비활성' 이고 값도 그대로다."""
     proc = _bare(core_parser.ParserCore)
     data = {"a": 1}
     assert proc._pre_source_active() is False
-    assert proc._hook_pre_source(".json", {}, data) == (data, False)
+    assert await proc._hook_pre_source(".json", {}, data) == (data, False)
 
 
-def test_passthrough_override_is_active_but_reports_no_change():
+@pytest.mark.asyncio
+async def test_passthrough_override_is_active_but_reports_no_change():
     """출고 템플릿처럼 그대로 돌려주는 훅은 활성이지만 '안 바뀜' 이다.
 
     이 구분이 산출 동일성을 지킨다 — 활성이어도 같은 객체를 돌려주면 core 는
@@ -47,10 +49,11 @@ def test_passthrough_override_is_active_but_reports_no_change():
     proc = _bare(parser_facade.DocumentProcessor)
     data = {"a": 1}
     assert proc._pre_source_active() is True
-    assert proc._hook_pre_source(".json", {}, data) == (data, False)
+    assert await proc._hook_pre_source(".json", {}, data) == (data, False)
 
 
-def test_reshaping_hook_reports_change():
+@pytest.mark.asyncio
+async def test_reshaping_hook_reports_change():
     class _P(parser_facade.DocumentProcessor):
         def pre_source(self, ext, doc_type, data, work_dir=None):
             if doc_type == "nested":
@@ -59,17 +62,18 @@ def test_reshaping_hook_reports_change():
 
     proc = _bare(_P)
     src = {"groups": [{"items": [1, 2]}, {"items": [3]}]}
-    out, changed = proc._hook_pre_source(".json", {"doc_type": "nested"}, src)
+    out, changed = await proc._hook_pre_source(".json", {"doc_type": "nested"}, src)
     assert changed is True and out == {"items": [1, 2, 3]}
     # 대상 doc_type 이 아니면 손대지 않는다 — 게이팅이 없으면 모든 JSON 이 바뀐다.
-    assert proc._hook_pre_source(".json", {"doc_type": "other"}, src) == (src, False)
+    assert await proc._hook_pre_source(".json", {"doc_type": "other"}, src) == (src, False)
 
 
 # ---------------------------------------------------------------------------
 # .json 입구 — 훅이 실제로 그 자리에서 불린다
 # ---------------------------------------------------------------------------
 
-def test_json_payload_hook_is_called_at_the_single_entry(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_json_payload_hook_is_called_at_the_single_entry(tmp_path: Path):
     src = tmp_path / "a.json"
     src.write_text(json.dumps({"groups": [{"items": [1]}, {"items": [2]}]}), encoding="utf-8")
 
@@ -77,10 +81,11 @@ def test_json_payload_hook_is_called_at_the_single_entry(tmp_path: Path):
         def pre_source(self, ext, doc_type, data, work_dir=None):
             return {"items": [i for g in data["groups"] for i in g["items"]]}
 
-    assert _bare(_P)._load_json_payload(str(src), "any") == {"items": [1, 2]}
+    assert await _bare(_P)._load_json_payload(str(src), "any") == {"items": [1, 2]}
 
 
-def test_broken_json_reaches_the_hook_as_raw_text(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_broken_json_reaches_the_hook_as_raw_text(tmp_path: Path):
     """JSONL 처럼 json.loads 가 실패하는 원천은 원문 str 로 훅에 온다."""
     src = tmp_path / "a.json"
     src.write_text('{"v":1}\n{"v":2}\n', encoding="utf-8")
@@ -90,18 +95,20 @@ def test_broken_json_reaches_the_hook_as_raw_text(tmp_path: Path):
             assert isinstance(data, str)
             return {"rows": [json.loads(ln) for ln in data.splitlines() if ln.strip()]}
 
-    assert _bare(_P)._load_json_payload(str(src), "any") == {"rows": [{"v": 1}, {"v": 2}]}
+    assert await _bare(_P)._load_json_payload(str(src), "any") == {"rows": [{"v": 1}, {"v": 2}]}
 
 
-def test_broken_json_without_hook_still_fails(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_broken_json_without_hook_still_fails(tmp_path: Path):
     """훅이 손대지 않으면 종전대로 입력 오류다(하위호환)."""
     src = tmp_path / "a.json"
     src.write_text("{not json", encoding="utf-8")
     with pytest.raises(core_parser.GenosServiceException):
-        _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src), "any")
+        await _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src), "any")
 
 
-def test_raw_control_char_in_string_is_read(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_raw_control_char_in_string_is_read(tmp_path: Path):
     """문자열 안의 날 제어문자는 core 가 흡수한다 — 인코딩과 같은 층의 문제다.
 
     CMS 원천이 HTML 본문을 escape 없이 JSON 문자열에 담아 보내면 strict 모드의
@@ -115,15 +122,16 @@ def test_raw_control_char_in_string_is_read(tmp_path: Path):
     src = tmp_path / "a.json"
     src.write_text(body, encoding="utf-8", newline="")
 
-    payload = _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src), "any")
+    payload = await _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src), "any")
     assert payload["htmlList"][0]["feeUrl"] == html
 
 
-def test_cp949_json_is_read_without_customer_code(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_cp949_json_is_read_without_customer_code(tmp_path: Path):
     """인코딩은 core 가 흡수한다 — 훅은 구조 문제만 다룬다."""
     src = tmp_path / "a.json"
     src.write_bytes(json.dumps({"n": "한글"}, ensure_ascii=False).encode("cp949"))
-    assert _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src)) == {"n": "한글"}
+    assert await _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src)) == {"n": "한글"}
 
 
 # ---------------------------------------------------------------------------
@@ -256,21 +264,23 @@ def test_injected_grid_reaches_load_tables(tmp_path: Path):
     assert [t["headers"] for t in tables] == [["진짜", "헤더"]]
 
 
-def test_grid_hook_is_skipped_when_the_workbook_cannot_be_read():
+@pytest.mark.asyncio
+async def test_grid_hook_is_skipped_when_the_workbook_cannot_be_read():
     """원본을 못 읽으면 훅을 건너뛰고 (None, False) 다.
 
     여기서 먼저 죽으면 오류 메시지와 시점이 종전과 달라진다 — 실제 오류는
     아래 파싱 경로가 낸다.
     """
     proc = _bare(parser_facade.DocumentProcessor)
-    assert proc._hook_tabular_sheets("없는파일.xlsx", "/tmp") == (None, False)
+    assert await proc._hook_tabular_sheets("없는파일.xlsx", "/tmp") == (None, False)
 
 
-def test_unchanged_grid_is_reused_to_avoid_a_second_read(tmp_path: Path):
+@pytest.mark.asyncio
+async def test_unchanged_grid_is_reused_to_avoid_a_second_read(tmp_path: Path):
     """훅이 손대지 않아도 이미 읽은 격자를 넘긴다 — 같은 함수 산출이라 동일하다."""
     src = xp.sheets_to_xlsx({"S": [["a", "b"], ["1", "2"]]}, str(tmp_path))
     proc = _bare(parser_facade.DocumentProcessor)
-    sheets, changed = proc._hook_tabular_sheets(src, str(tmp_path))
+    sheets, changed = await proc._hook_tabular_sheets(src, str(tmp_path))
     assert changed is False
     assert sheets == xp._load_sheets_with_merges(src)
 
@@ -308,3 +318,186 @@ def test_reserved_chunk_keys_are_exposed():
     assert tb.BODY_FIELDS_KEY == "body_fields"
     assert tb.CHUNK_PREFIX_FIELDS_KEY == "chunk_prefix_fields"
     assert tb.FIELD_LABELS_KEY == "field_labels"
+
+
+# ---------------------------------------------------------------------------
+# 훅 계약 — 요청 파라미터 전달과 async 훅 (#363 09)
+#
+# 두 가지를 동시에 지켜야 한다.
+#   · **kwargs 를 선언한 훅은 요청 파라미터를 받는다 (부서·언어처럼 요청마다 달라지는 값을
+#     self 에 두면 싱글턴 프로세서에서 요청끼리 섞인다)
+#   · **kwargs 를 선언하지 않은 기존 훅은 인자가 늘지 않는다 (고객이 보관한 patch 가
+#     릴리스 갱신에서 깨지면 안 된다)
+# ---------------------------------------------------------------------------
+
+hooks_mod = pytest.importorskip("genon.preprocessor.facade.common.hooks")
+
+
+def test_hook_without_var_keyword_receives_nothing_extra():
+    def old_style(ext, doc_type, data, work_dir=None):
+        return data
+
+    assert hooks_mod.hook_kwargs(old_style, {"doc_type": "t", "tenant": "A"}) == {}
+
+
+def test_hook_with_var_keyword_receives_request_params_only():
+    """자리로 이미 받는 이름(doc_type)은 빼야 중복 인자로 죽지 않는다."""
+    def new_style(ext, doc_type, data, work_dir=None, **kwargs):
+        return data
+
+    got = hooks_mod.hook_kwargs(
+        new_style, {"doc_type": "t", "tenant": "A", "_sensitive_infos": [1]})
+    assert got == {"tenant": "A"}   # 내부 배관용 키(_로 시작)도 넘기지 않는다
+
+
+@pytest.mark.asyncio
+async def test_pre_source_receives_request_params(tmp_path: Path):
+    src = tmp_path / "a.json"
+    src.write_text(json.dumps({"v": 1}), encoding="utf-8")
+    seen = {}
+
+    class _P(parser_facade.DocumentProcessor):
+        def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
+            seen.update(kwargs)
+            return data
+
+    await _bare(_P)._hook_pre_source(".json", {"doc_type": "t", "tenant": "A"}, {"v": 1})
+    assert seen == {"tenant": "A"}
+
+
+@pytest.mark.asyncio
+async def test_json_path_also_passes_request_params(tmp_path: Path):
+    """.json 은 훅 호출부가 따로라 doc_type 만 넘기던 자리다 — 여기도 같아야 한다."""
+    src = tmp_path / "a.json"
+    src.write_text(json.dumps({"v": 1}), encoding="utf-8")
+    seen = {}
+
+    class _P(parser_facade.DocumentProcessor):
+        def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
+            seen.update(kwargs)
+            return data
+
+    await _bare(_P)._load_json_payload(str(src), "t", tenant="A")
+    assert seen == {"tenant": "A"}
+
+
+@pytest.mark.asyncio
+async def test_legacy_pre_source_signature_still_works():
+    """**kwargs 없는 기존 훅도 그대로 불린다(하위호환)."""
+    class _P(parser_facade.DocumentProcessor):
+        def pre_source(self, ext, doc_type, data, work_dir=None):
+            return {"reshaped": True}
+
+    out, changed = await _bare(_P)._hook_pre_source(
+        ".json", {"doc_type": "t", "tenant": "A"}, {"v": 1})
+    assert (out, changed) == ({"reshaped": True}, True)
+
+
+@pytest.mark.asyncio
+async def test_async_pre_source_is_awaited():
+    """사내 API 조회처럼 외부 호출이 필요한 훅을 동기로 쓰면 이벤트 루프가 막힌다."""
+    class _P(parser_facade.DocumentProcessor):
+        async def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
+            return {"awaited": True}
+
+    out, changed = await _bare(_P)._hook_pre_source(".json", {"doc_type": "t"}, {"v": 1})
+    assert (out, changed) == ({"awaited": True}, True)
+
+
+@pytest.mark.asyncio
+async def test_async_post_parse_is_awaited():
+    class _P(parser_facade.DocumentProcessor):
+        async def run(self, request, file_path, **kwargs):
+            return {"elements": [], "metadata": {}}
+
+        async def post_parse(self, ext, doc_type, result, **kwargs):
+            result["metadata"]["tenant"] = kwargs.get("tenant")
+            return result
+
+    proc = _bare(_P)
+    proc._ext_aliases = {}
+    out = await proc(None, "/x/a.md", doc_type="T", tenant="A")
+    assert out["metadata"]["tenant"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_async_chunk_hooks_are_awaited():
+    class _P(chunker_facade.DocumentProcessor):
+        async def pre_chunk(self, kind, data, **kwargs):
+            return data + [{"content": kwargs.get("tenant", "")}]
+
+        async def post_chunk(self, vectors, **kwargs):
+            return vectors[:1]
+
+        async def chunk(self, request, file_path, src, **kwargs):
+            return [el["content"] for el in src.data]
+
+    proc = _bare(_P)
+    proc.setup_logging = lambda *_a, **_k: None
+    proc._log_level = 4
+    proc._gr_cfg = type("C", (), {"masking_enabled": False})()
+
+    out = await proc(None, "", document={"elements": [{"content": "a"}]}, tenant="A")
+    assert out == ["a"]     # post_chunk 가 잘라낸 결과 — pre_chunk 는 "A" 를 더했다
+
+
+# ---------------------------------------------------------------------------
+# 사이트가 바꾸는 값이 facade 에 있는가 (#363 09)
+# ---------------------------------------------------------------------------
+
+hp = pytest.importorskip("genon.preprocessor.facade.chunking.header_path")
+
+
+def test_header_prefix_comes_from_the_chunker_class():
+    """접두는 구분자와 같은 축이다 — core 상수가 아니라 청커 클래스가 정한다."""
+    class _C(chunker_facade.GenosSmartChunker):
+        CHUNK_HEADER_PREFIX = "섹션: "
+
+    line = core_chunker._build_header_line(["A > B"], True, _C)
+    assert line == "섹션: A > B\n"
+    # 빈 문자열이면 경로만 붙는다.
+    class _N(chunker_facade.GenosSmartChunker):
+        CHUNK_HEADER_PREFIX = ""
+    assert core_chunker._build_header_line(["A > B"], True, _N) == "A > B\n"
+
+
+def test_header_prefix_default_is_unchanged():
+    """출고 기본값은 종전 그대로다(기존 색인과 어긋나면 안 된다)."""
+    assert hp.DEFAULT_HEADER_PREFIX == "HEADER: "
+    assert core_chunker._build_header_line(
+        ["A > B"], True, chunker_facade.GenosSmartChunker) == "HEADER: A > B\n"
+
+
+def test_size_estimation_uses_the_same_prefix():
+    """크기 산정과 실제 부착이 다른 문자열을 보면 청크가 chunk_size 를 넘는다."""
+    class _C(chunker_facade.GenosSmartChunker):
+        CHUNK_HEADER_PREFIX = "섹션: "
+
+    chunker = _C.model_construct(chunk_prefix_text="")
+    assert chunker._header_line(["A > B"], True) == core_chunker._build_header_line(
+        ["A > B"], True, _C)
+
+
+def test_min_chunk_size_is_configurable():
+    """docling 경로 하한. 임베딩 입력이 짧은 사이트는 낮춰야 한다."""
+    assert core_chunker._clamp_chunk_size(300) == 1024          # 기본 하한
+    assert core_chunker._clamp_chunk_size(300, 256) == 300      # 낮춘 하한
+    assert core_chunker._clamp_chunk_size(300, 0) == 300        # 보정 안 함
+    assert core_chunker._clamp_chunk_size(0, 256) == 0          # 0=분할 안 함은 그대로
+
+
+def test_row_categories_are_extendable_from_the_facade():
+    """새 category 를 만들 때 core 두 곳을 고치던 것을 facade 한 줄로 바꾼다."""
+    assert "custom_fields_row" in chunker_facade.DocumentProcessor.ROW_CATEGORIES
+
+    class _P(chunker_facade.DocumentProcessor):
+        ROW_CATEGORIES = frozenset(chunker_facade.DocumentProcessor.ROW_CATEGORIES) | {"crm_row"}
+
+    proc = _bare(_P)
+    routed = {}
+    proc._chunk_custom_fields_rows = lambda els, **kw: routed.setdefault("rows", len(els))
+    proc._text_variant_options = lambda **kw: {}
+    proc._text_cleanup = "off"
+    proc._text_cleanup_rules = ()
+    proc._chunk_parse_format([{"category": "crm_row", "content": "a"}])
+    assert routed == {"rows": 1}

@@ -66,9 +66,9 @@ class DocumentProcessor(ParserCore):
         ext = self.resolve_ext(file_path)
         doc_type = self.resolve_doc_type(**kwargs)
         result = await self.run(request, file_path, **kwargs)
-        return self.post_parse(ext, doc_type, result)
+        return await self.run_post_parse(ext, doc_type, result, **kwargs)
 
-    def pre_source(self, ext, doc_type, data, work_dir=None):
+    def pre_source(self, ext, doc_type, data, work_dir=None, **kwargs):
         """[전처리] 파싱 직전. 원천을 파싱 입력으로 바꾼다.
 
         data 의 형은 ext 가 정하고, 같은 형으로 돌려준다.
@@ -78,15 +78,21 @@ class DocumentProcessor(ParserCore):
           그 밖           str(파일 경로)                    파생 파일은 work_dir 에
         건드릴 것이 없으면 data 를 **그대로** 돌려준다.
         엑셀은 pandas·polars DataFrame 이나 list[dict] 로 돌려줘도 된다.
+
+        kwargs 는 요청 파라미터(params)다 — 부서·언어처럼 요청마다 달라지는 값은
+        self 에 두지 말고 여기서 받는다(프로세서 한 개가 모든 요청을 받는다).
+        외부 조회가 필요하면 `async def` 로 바꿔 쓴다.
         """
         return data
 
-    def post_parse(self, ext, doc_type, result):
+    def post_parse(self, ext, doc_type, result, **kwargs):
         """[후처리] 응답 확정 직전. 청킹으로 넘어가기 전 마지막 자리.
 
           result["elements"]   레코드/표 경로 산출 (list[dict])
           result["document"]   docling 경로 산출   (dict)
           result["metadata"]   문서 단위 메타      (dict)
+
+        pre_source 와 같이 kwargs(요청 파라미터)와 `async def` 를 쓸 수 있다.
         """
         return result
 

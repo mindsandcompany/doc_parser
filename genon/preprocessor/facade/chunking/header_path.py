@@ -96,7 +96,11 @@ def render_header_paths(headings, sep: str, path_sep: str, max_leaves: int) -> s
     return sep.join(common) + sep + "(" + body + ")"
 
 
-def build_header_line(headings, include_header: bool, sep: str, path_sep: str, max_leaves: int) -> str:
+DEFAULT_HEADER_PREFIX = "HEADER: "
+
+
+def build_header_line(headings, include_header: bool, sep: str, path_sep: str, max_leaves: int,
+                      prefix: str = DEFAULT_HEADER_PREFIX) -> str:
     """청크 선두에 실제로 붙을 `HEADER: <경로들>\n` 문자열.
 
     headings 의 원소 하나가 하나의 완전한 경로(`부모 > 자식`)다. 경로가 여러 개면
@@ -105,10 +109,13 @@ def build_header_line(headings, include_header: bool, sep: str, path_sep: str, m
         1개        : `상품 안내 > 우대금리 조건`
         여러 개    : `상품 안내 > (우대금리 조건 | 가입 제한 | 수수료 안내)`
         상한 초과  : `제1장 총칙 > (제1조 | 제2조 … 외 68개)`
+
+    `prefix` 는 청커 클래스의 CHUNK_HEADER_PREFIX 다. 구분자와 같은 축(사이트가 바꾸는 값)
+    이므로 인자로 받는다. 빈 문자열이면 경로만 붙는다.
     """
     if not include_header or not headings:
         return ""
-    return "HEADER: " + render_header_paths(headings, sep, path_sep, max_leaves) + "\n"
+    return prefix + render_header_paths(headings, sep, path_sep, max_leaves) + "\n"
 
 
 # markdown 헤딩 줄. 레코드 본문(custom_fields 의 text/html_text 렌더링)에서 섹션 제목을 찾는다.

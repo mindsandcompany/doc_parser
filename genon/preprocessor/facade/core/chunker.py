@@ -15,7 +15,7 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Optional, Any, List, Tuple
+from typing import Optional, Any, ClassVar, List, Tuple
 
 from fastapi import Request
 
@@ -52,10 +52,13 @@ def _build_header_line(headings, include_header: bool, chunker_cls) -> str:
     return hp.build_header_line(
         headings, include_header,
         chunker_cls.CHUNK_HEADER_SEP, chunker_cls.CHUNK_PATH_SEP,
-        chunker_cls.CHUNK_PATH_MAX_LEAVES)
+        chunker_cls.CHUNK_PATH_MAX_LEAVES,
+        # 접두어도 구분자와 같은 축이다(사이트가 바꾸는 값). 속성이 없는 청커도
+        # 견디도록 getattr 로 읽는다.
+        getattr(chunker_cls, "CHUNK_HEADER_PREFIX", hp.DEFAULT_HEADER_PREFIX))
 
-def _clamp_chunk_size(size):
-    return cp.clamp_chunk_size(size, _MIN_CHUNK_SIZE)
+def _clamp_chunk_size(size, minimum: int | None = None):
+    return cp.clamp_chunk_size(size, _MIN_CHUNK_SIZE if minimum is None else minimum)
 
 def _load_config(config_path: str) -> dict:
     return cp.load_config(config_path, strict=True)
@@ -103,6 +106,7 @@ from genon.preprocessor.facade.enrichment.field_transforms import (
     serialize_metadata_value_for_output,
 )
 from genon.preprocessor.facade.chunking import text_norm as tn
+from genon.preprocessor.facade.common import hooks as hk
 
 try:
     import semchunk
@@ -255,6 +259,12 @@ class ChunkerCore:
     # IS_CHUNKER 는 배포되는 facade 가 선언한다 — main.py 가 그 속성으로 /chunker
     # 전용임을 식별한다. core 는 그 표식을 갖지 않는다.
 
+    # 행 기반 청킹으로 보낼 element category. 파서가 만든 이름과 짝이며, 사이트가
+    # 자기 category 를 쓰면 facade 에서 늘린다(청커는 doc_type 을 보지 않고 이 값만 본다).
+    # faq_row 는 이전 파서 산출물을 다시 청킹할 수 있게 남긴 하위호환 이름이다.
+    ROW_CATEGORIES: ClassVar[frozenset] = frozenset(
+        {"tabular_row", "custom_fields_row", "faq_row"})
+
     # 사이트마다 달라지는 두 가지. 배포되는 facade 가 **반드시** 정한다(#363 08).
     # core 에 기본값을 두지 않는 이유는 사본이 둘이 되면 조용히 어긋나기 때문이다.
     #   VECTOR_META  적재 DB 컬럼 스키마
@@ -300,6 +310,12 @@ class ChunkerCore:
 
         # 청크 최대 크기(GenosSmartChunker.max_tokens) 기본값. kwargs 의 chunk_size 가 우선.
         self._chunk_size = _parse_optional_int(chunking_cfg.get("chunk_size"), "chunking.chunk_size")
+
+        # 청크 크기 하한(chunking.min_chunk_size, 기본 1024). docling 경로에서 chunk_size 가
+        # 이보다 작으면 이 값으로 올린다. 임베딩 모델의 입력이 짧은 사이트는 낮춰서 쓴다.
+        # 0 이하이면 보정하지 않는다(설정한 chunk_size 를 그대로 쓴다).
+        _min_size = _parse_optional_int(chunking_cfg.get("min_chunk_size"), "chunking.min_chunk_size")
+        self._min_chunk_size = _MIN_CHUNK_SIZE if _min_size is None else max(_min_size, 0)
 
         # 청킹 모드: "split_only"(기본, chunk_size 초과 청크만 분할) | "resize_all"(모든 청크를 chunk_size 에 맞게 병합/분할)
         self._chunk_mode = str(chunking_cfg.get("chunk_mode", "split_only")).strip().lower()
@@ -375,7 +391,9 @@ class ChunkerCore:
         chunk_size = _parse_optional_int(kwargs.get('chunk_size'), 'chunk_size')
         if chunk_size is None:
             chunk_size = self._chunk_size
-        chunk_size = _clamp_chunk_size(chunk_size)
+        # __init__ 을 우회해 만든 인스턴스(단위 테스트)도 견디도록 getattr 로 읽는다.
+        chunk_size = _clamp_chunk_size(
+            chunk_size, getattr(self, "_min_chunk_size", _MIN_CHUNK_SIZE))
         # chunk_mode 우선순위: kwargs > yaml(chunking.chunk_mode) > "split_only"
         chunk_mode = str(kwargs.get('chunk_mode') or self._chunk_mode).strip().lower()
         if chunk_mode not in {"split_only", "resize_all"}:
@@ -881,9 +899,7 @@ class ChunkerCore:
         가진다. 이를 청크 extra 필드로 부착하고 text/인덱스/reg_date 등 표준 필드를 채운다.
         intelligent 의 tabular(build_tabular_vectors)와 동일한 "행=청크" 의미다.
         """
-        # faq_row는 기존 parser 산출물 JSON을 다시 청킹할 수 있도록 계속 허용한다.
-        row_categories = {"tabular_row", "custom_fields_row", "faq_row"}
-        rows = [el for el in elements if el.get("category") in row_categories]
+        rows = [el for el in elements if el.get("category") in self.ROW_CATEGORIES]
         if not rows:
             raise GenosServiceException(1, "chunk length is 0")
         # 행 element 가 하나라도 있으면 이 경로로 오므로, 섞여 온 비-행 element 는 버려진다.
@@ -1014,8 +1030,8 @@ class ChunkerCore:
 
         # 0) 행 기반 tabular/custom_fields 가드. faq_row는 이전 산출물 하위 호환용이다.
         non_empty_all = [el for el in elements if isinstance(el, dict)]
-        row_categories = {"tabular_row", "custom_fields_row", "faq_row"}
-        if non_empty_all and any(el.get("category") in row_categories for el in non_empty_all):
+        if non_empty_all and any(
+                el.get("category") in self.ROW_CATEGORIES for el in non_empty_all):
             return self._chunk_custom_fields_rows(non_empty_all, **kwargs)
 
         # 1) audio 가드 — parser 전사 결과는 content 가 "[AUDIO]" 접두사로 시작한다.
@@ -1097,12 +1113,25 @@ class ChunkerCore:
 
           kind == "docling"   data = DoclingDocument (또는 그 dict)
           kind == "parse"     data = list[dict]  (레코드/표 경로 elements)
+
+        `**kwargs` 는 요청 파라미터(params)다. `async def` 로 써도 된다(core 가 await 한다).
         """
         return data
 
     def post_chunk(self, vectors, **kwargs):
-        """[후처리] 응답 직전. list[VECTOR_META] 를 손본다."""
+        """[후처리] 응답 직전. list[VECTOR_META] 를 손본다.
+
+        pre_chunk 와 같이 `**kwargs`(요청 파라미터)와 `async def` 를 쓸 수 있다.
+        """
         return vectors
+
+    async def run_pre_chunk(self, kind, data, /, **kwargs):
+        """pre_chunk 훅 호출부. facade 의 __call__ 이 부른다."""
+        return await hk.call_hook(self.pre_chunk, kind, data, request_kwargs=kwargs)
+
+    async def run_post_chunk(self, vectors, /, **kwargs):
+        """post_chunk 훅 호출부. facade 의 __call__ 이 부른다."""
+        return await hk.call_hook(self.post_chunk, vectors, request_kwargs=kwargs)
 
     async def chunk(self, request: Request, file_path: str, src: "ChunkInput", **kwargs):
         """분할과 벡터 조합. 입력 판별은 load_input 이 이미 끝냈다."""

@@ -101,6 +101,24 @@ def test_broken_json_without_hook_still_fails(tmp_path: Path):
         _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src), "any")
 
 
+def test_raw_control_char_in_string_is_read(tmp_path: Path):
+    """문자열 안의 날 제어문자는 core 가 흡수한다 — 인코딩과 같은 층의 문제다.
+
+    CMS 원천이 HTML 본문을 escape 없이 JSON 문자열에 담아 보내면 strict 모드의
+    json.loads 가 "Invalid control character" 로 거부한다. 실측: 카드 상품 원천의
+    htmlList[0].feeUrl 안에 연회비 표 HTML 이 통째로 들어 있었다.
+    """
+    html = '<h4 class="tit">\n\t국내외겸용\r</h4>'
+    body = json.dumps({"htmlList": [{"feeUrl": html}]}, ensure_ascii=False)
+    # 이스케이프를 원문으로 되돌려 원천이 오는 상태를 그대로 만든다.
+    body = body.replace("\\n", "\n").replace("\\t", "\t").replace("\\r", "\r")
+    src = tmp_path / "a.json"
+    src.write_text(body, encoding="utf-8", newline="")
+
+    payload = _bare(parser_facade.DocumentProcessor)._load_json_payload(str(src), "any")
+    assert payload["htmlList"][0]["feeUrl"] == html
+
+
 def test_cp949_json_is_read_without_customer_code(tmp_path: Path):
     """인코딩은 core 가 흡수한다 — 훅은 구조 문제만 다룬다."""
     src = tmp_path / "a.json"

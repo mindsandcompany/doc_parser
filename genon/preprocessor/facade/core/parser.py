@@ -990,7 +990,11 @@ class ParserCore:
                 "1", f"JSON 파일을 읽을 수 없습니다: {os.path.basename(file_path)} ({exc})"
             ) from exc
         try:
-            payload = json.loads(text)
+            # strict=False: 문자열 안의 날 제어문자(줄바꿈·탭·CR)를 허용한다.
+            # CMS 가 뽑아낸 HTML 본문을 escape 없이 JSON 문자열에 담아 보내는 원천이 있다
+            # (실측: 카드 상품 원천의 htmlList[0].feeUrl). 구조 오류는 그대로 거부되므로
+            # 지금 읽히는 문서의 산출은 바뀌지 않고, 지금 실패하는 입력만 읽히게 된다.
+            payload = json.JSONDecoder(strict=False).decode(text)
         except ValueError as exc:
             # 깨진 JSON 은 훅에 원문 str 을 넘겨 구제 기회를 준다(JSONL 등).
             # 훅이 없거나 손대지 않으면 종전대로 입력 오류로 끝난다.

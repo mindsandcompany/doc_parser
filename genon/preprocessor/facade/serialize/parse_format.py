@@ -296,6 +296,48 @@ def content_response(content: str, pages: int = 0) -> dict:
     }
 
 
+def make_elements(items, category: str = "paragraph") -> list:
+    """본문 목록을 parse-format element 목록으로 만든다(커스텀 route 용).
+
+    `id` · `coordinates` · `page` 같은 배관 필드를 채워 주므로 호출부는 본문만 준다.
+    `items` 의 원소는 문자열이거나 dict 다.
+
+        "본문"                                          페이지 1, 기본 category
+        {"content": "본문", "page": 2}                  페이지 지정
+        {"content": "...", "category": "custom_fields_row",
+         "metadata": {...}}                             행 1개 = 청크 1개 경로로 보낸다
+
+    dict 의 다른 키(`metadata` · `splittable` · `chunk_prefix`)는 그대로 실린다.
+    라우트는 이것을 `{"elements": ...}` 로 감싸 돌려주면 된다 — 나머지 응답 키는
+    core 가 채운다.
+    """
+    elements = []
+    for idx, item in enumerate(items):
+        if isinstance(item, str):
+            item = {"content": item}
+        elif not isinstance(item, dict):
+            raise TypeError(
+                f"make_elements 의 원소는 str 이거나 dict 여야 합니다: {type(item).__name__}")
+        page = item.get("page", 1)
+        try:
+            page = int(page)
+        except (TypeError, ValueError):
+            page = 1
+        element = {
+            "category": item.get("category", category),
+            "content": str(item.get("content", "") or ""),
+            "coordinates": item.get("coordinates", []),
+            "id": idx,
+            "page": page,
+        }
+        # 배관 필드 말고 호출부가 실은 것(metadata 등)은 그대로 넘긴다.
+        for key, value in item.items():
+            if key not in element:
+                element[key] = value
+        elements.append(element)
+    return elements
+
+
 def audio_to_parse_format(text: str) -> dict:
     """전사 텍스트 → parse format."""
     return {

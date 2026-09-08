@@ -7,6 +7,8 @@ intelligent_processor 의 created_date 전용 코드를 일반화한 모듈이�
 docling 타입은 타입 힌트 용도로만 참조하므로 TYPE_CHECKING 으로 import 한다.
 
 신규 변환기/보조추출은 함수 작성 후 VALUE_TRANSFORMS / FALLBACK_STRATEGIES 에 등록만 하면 된다.
+사이트 전용 변환기는 이 파일을 고치지 말고 전처리기 파일에서 register_transform 으로 등록한다
+(배포본은 릴리스 단위로 통째 갱신되므로 여기 넣은 것은 갱신 때 사라진다).
 """
 from __future__ import annotations
 
@@ -556,6 +558,31 @@ RENDERER_TRANSFORMS = frozenset({"html_text", "text"})
 
 ALL_TRANSFORM_NAMES = tuple(sorted({*VALUE_TRANSFORMS, *PARAM_TRANSFORMS}))
 assert not (set(VALUE_TRANSFORMS) & set(PARAM_TRANSFORMS)), "변환기 이름이 겹칩니다"
+
+
+def register_transform(name: str, fn: Callable[[Any], Any]) -> None:
+    """사이트 전용 값 변환기를 등록한다. yaml 의 `transforms:` 가 이름으로 쓴다.
+
+    금액 파싱이나 사번 → 부서명처럼 이 저장소에 둘 수 없는 변환은 전처리기 파일에서
+    등록한다(모듈 최상위에 한 번). 설정으로 하던 변환과 **같은 파이프라인**을 타므로
+    `value_map` · `derive` 와 순서가 어긋나지 않는다.
+
+        tb.register_transform("won_to_int", lambda v: int(str(v).replace(",", "")))
+
+    인자를 받는 변환기(PARAM_TRANSFORMS)는 yaml 이 인자를 실어 보내는 기구라 이 통로로
+    등록하지 않는다 — 인자가 필요하면 클로저로 감싸 인자 없는 함수로 만든다.
+    """
+    key = str(name).strip()
+    if not key:
+        raise ValueError("변환기 이름이 비어 있습니다.")
+    if key in PARAM_TRANSFORMS:
+        raise ValueError(f"이미 있는 인자형 변환기와 이름이 겹칩니다: {key}")
+    if not callable(fn):
+        raise TypeError(f"변환기는 호출 가능해야 합니다: {key}")
+    VALUE_TRANSFORMS[key] = fn
+    # 오류 메시지의 "사용 가능" 목록이 등록분까지 반영되게 다시 만든다.
+    global ALL_TRANSFORM_NAMES
+    ALL_TRANSFORM_NAMES = tuple(sorted({*VALUE_TRANSFORMS, *PARAM_TRANSFORMS}))
 FALLBACK_STRATEGIES: dict[str, Callable[["DoclingDocument"], Any]] = {
     "doc_text_scan": extract_created_date_from_document_text,
 }

@@ -28,6 +28,14 @@ from genon.preprocessor.facade.enrichment.field_transforms import (
     transform_truncate as truncate,
 )
 
+# ── 사이트 전용 값 변환기 등록 ──────────────────────────────────────────────
+# 전처리기 파일 최상위에서 한 번 부르면 yaml 의 transforms: 가 이름으로 쓴다.
+from genon.preprocessor.facade.enrichment.field_transforms import register_transform
+
+# ── 라우트 산출 조립 ────────────────────────────────────────────────────────
+# ROUTES 에 자기 route_* 를 만들었을 때 응답 element 를 만드는 데 쓴다.
+from genon.preprocessor.facade.serialize.parse_format import make_elements
+
 # ── 엑셀·CSV ────────────────────────────────────────────────────────────────
 from genon.preprocessor.converters.xlsx_processor import (
     load_sheets,      # 파일 -> {시트명: 2차원 행}. 병합셀은 펴진 상태
@@ -133,6 +141,7 @@ def refresh_stats(vectors, reindex: bool = True):
 __all__ = [
     "json_to_markdown", "strip_inline_html", "date_int", "date_int_flex", "html_text",
     "regex_extract", "regex_sub", "text", "text_norm", "to_int", "truncate",
+    "register_transform", "make_elements",
     "load_sheets", "load_tables",
     "collect_text_fields", "detect_format",
     "render_plain_text", "render_table", "sanitize_table_html",

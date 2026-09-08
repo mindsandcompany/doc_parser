@@ -501,3 +501,111 @@ def test_row_categories_are_extendable_from_the_facade():
     proc._text_cleanup_rules = ()
     proc._chunk_parse_format([{"category": "crm_row", "content": "a"}])
     assert routed == {"rows": 1}
+
+
+# ---------------------------------------------------------------------------
+# 코드를 꽂는 자리 — 커스텀 라우트와 변환기 등록 (#363 09 A군)
+#
+# 셋 다 "이미 되는데 문서가 없던 것" 이라, 배선이 조용히 끊겨도 골든은 통과한다.
+# 그래서 계약을 직접 단정한다.
+# ---------------------------------------------------------------------------
+
+def test_make_elements_fills_plumbing_fields():
+    els = tb.make_elements(["첫 줄", {"content": "둘째", "page": 2}])
+    assert [e["id"] for e in els] == [0, 1]
+    assert [e["page"] for e in els] == [1, 2]
+    assert all(e["category"] == "paragraph" and e["coordinates"] == [] for e in els)
+
+
+def test_make_elements_passes_row_metadata_through():
+    """행 1개 = 청크 1개 경로로 보내려면 category 와 metadata 가 그대로 실려야 한다."""
+    els = tb.make_elements(
+        [{"content": "본문", "metadata": {"ORDER_NO": "A1"}}], category="custom_fields_row")
+    assert els[0]["category"] == "custom_fields_row"
+    assert els[0]["metadata"] == {"ORDER_NO": "A1"}
+    # 그 category 가 실제로 행 경로로 라우팅된다.
+    assert els[0]["category"] in chunker_facade.DocumentProcessor.ROW_CATEGORIES
+
+
+def test_make_elements_rejects_unknown_item_type():
+    with pytest.raises(TypeError):
+        tb.make_elements([object()])
+
+
+def _routable(cls):
+    """라우팅만 태우는 최소 인스턴스. 파싱 배관(enrichment)은 쓰지 않는다."""
+    proc = _bare(cls)
+    proc.setup_logging = lambda *_a, **_k: None
+    proc._log_level = 4
+    proc._ext_aliases = {}
+    proc._intel = type("_I", (), {
+        "_normalize_runtime_kwargs": staticmethod(lambda kw: kw),
+        "_configure_runtime_image_mode": staticmethod(lambda kw: None),
+    })()
+    return proc
+
+
+@pytest.mark.asyncio
+async def test_facade_can_define_its_own_route(tmp_path: Path):
+    """ROUTES 는 메서드 이름만 갖는다 — 핸들러를 facade 파일에 둘 수 있다."""
+    src = tmp_path / "app.log"
+    src.write_text("a\nb\n", encoding="utf-8")
+
+    class _P(parser_facade.DocumentProcessor):
+        ROUTES = (((".log",), "route_log"),) + parser_facade.DocumentProcessor.ROUTES
+
+        async def route_log(self, file_path, ext, ctx, **kwargs):
+            lines = [l for l in tb.read_text_with_fallback(file_path).splitlines() if l.strip()]
+            return {"elements": tb.make_elements(lines)}
+
+    out = await _routable(_P)(None, str(src))
+    assert [e["content"] for e in out["elements"]] == ["a", "b"]
+    # 나머지 응답 키는 core 가 채운다 — 라우트는 elements 만 만들면 된다.
+    assert out["usage"] == {"pages": 0} and out["content"] == ""
+
+
+@pytest.mark.asyncio
+async def test_route_returning_none_falls_through(tmp_path: Path):
+    """폴스루가 살아 있어야 '이 조건일 때만 내가 처리' 가 가능하다."""
+    src = tmp_path / "app.log"
+    src.write_text("x\n", encoding="utf-8")
+
+    class _P(parser_facade.DocumentProcessor):
+        ROUTES = (((".log",), "route_mine"), (None, "route_fallback"))
+
+        async def route_mine(self, file_path, ext, ctx, **kwargs):
+            return None
+
+        async def route_fallback(self, file_path, ext, ctx, **kwargs):
+            return {"elements": tb.make_elements(["fallback"])}
+
+    out = await _routable(_P)(None, str(src))
+    assert out["elements"][0]["content"] == "fallback"
+
+
+def test_register_transform_reaches_the_yaml_pipeline():
+    """등록한 변환기를 yaml transforms: 가 이름으로 쓴다(같은 파이프라인)."""
+    tcf = pytest.importorskip("genon.preprocessor.facade.enrichment.tabular_custom_fields")
+    ft = pytest.importorskip("genon.preprocessor.facade.enrichment.field_transforms")
+
+    tb.register_transform("won_to_int_test", lambda v: int(str(v).replace(",", "")))
+    try:
+        fields = {"AMT": "1,200"}
+        tcf.apply_transforms(fields, tcf.compile_transforms({"AMT": ["won_to_int_test"]}, label="t"))
+        assert fields == {"AMT": 1200}
+        # 오류 메시지의 "사용 가능" 목록도 등록분을 반영한다.
+        assert "won_to_int_test" in ft.ALL_TRANSFORM_NAMES
+    finally:
+        ft.VALUE_TRANSFORMS.pop("won_to_int_test", None)
+
+
+def test_register_transform_rejects_bad_input():
+    ft = pytest.importorskip("genon.preprocessor.facade.enrichment.field_transforms")
+    with pytest.raises(ValueError):
+        tb.register_transform("", lambda v: v)
+    with pytest.raises(TypeError):
+        tb.register_transform("not_callable", "x")
+    # 인자형 변환기와 이름이 겹치면 설정이 어느 쪽을 부르는지 모호해진다.
+    existing = next(iter(ft.PARAM_TRANSFORMS))
+    with pytest.raises(ValueError):
+        tb.register_transform(existing, lambda v: v)

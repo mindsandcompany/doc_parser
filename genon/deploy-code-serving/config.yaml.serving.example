@@ -37,6 +37,21 @@ envs:
 - key: PRESIGNED_DOWNLOAD_MAX_CONCURRENCY
   value: '2'
   is_secret: false
+# /preprocess_intelligent_url(Gena 드라이브 적재) 전용 지능형 설정 덮어쓰기.
+# 비우면 resource/intelligent_gena_processor_config.yaml 값(dev 엔드포인트)을 그대로 쓴다.
+# prod 배포 시 dots.ocr 서빙 주소를 반드시 지정한다. 값이 있는 키만 yaml 을 덮어쓴다.
+- key: GENA_LAYOUT_ENDPOINT          # dots.ocr chat/completions URL (layout.genos_layout.endpoint)
+  value: ''
+  is_secret: false
+- key: GENA_LAYOUT_API_KEY           # dots.ocr Bearer 키(k8s 내부 호출이면 빈 값)
+  value: ''
+  is_secret: true
+- key: GENA_OCR_ENDPOINT             # PaddleOCR URL (ocr.paddle.ocr_endpoint). ocr_mode=disable 인 동안 미사용
+  value: ''
+  is_secret: false
+- key: GENA_OCR_MODE                 # disable(1단계) | auto | force
+  value: ''
+  is_secret: false
 service_router_id: 79
 auth_key_id:
   dev: 1873

@@ -184,6 +184,80 @@ def _cfg(name: str) -> str:
     return str(RESOURCE_DIR / f"{name}_processor_config.yaml")
 
 
+# ── Gena(AI 드라이브 적재) 전용 지능형 설정 ──────────────────────────────────
+# resource/intelligent_gena_processor_config.yaml 은 1단계(OCR/레이아웃만, enrichment off) 설정이다.
+# 같은 브랜치가 dev/prod 코드서빙에 그대로 배포되므로 환경 종속값(dots.ocr/Paddle 엔드포인트)은
+# 코드서빙 envs 로 덮어쓸 수 있게 한다. GENA_* 가 하나도 없으면 yaml 을 그대로 쓴다.
+_GENA_ENV_OVERRIDES = {
+    'GENA_LAYOUT_ENDPOINT': ('layout', 'genos_layout', 'endpoint'),
+    'GENA_LAYOUT_API_KEY': ('layout', 'genos_layout', 'api_key'),
+    'GENA_OCR_ENDPOINT': ('ocr', 'paddle', 'ocr_endpoint'),
+    'GENA_OCR_MODE': ('ocr', 'ocr_mode'),
+}
+
+
+def _absolutize_file_refs(node, base_dir: Path) -> None:
+    """`*_file` 키의 상대 경로 값을 base_dir 기준 절대 경로로 바꾼다(실제 존재하는 파일만).
+
+    facade 는 프롬프트/커스텀필드 파일을 config 파일이 있는 디렉터리 기준으로 찾는다.
+    설정 사본을 다른 디렉터리에 쓰면 그 해석이 깨지므로 미리 절대 경로로 고정한다.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if (isinstance(value, str) and str(key).endswith('_file')
+                    and value and not os.path.isabs(value)):
+                candidate = base_dir / value
+                if candidate.is_file():
+                    node[key] = str(candidate)
+            else:
+                _absolutize_file_refs(value, base_dir)
+    elif isinstance(node, list):
+        for item in node:
+            _absolutize_file_refs(item, base_dir)
+
+
+def _materialize_gena_config(source_path: str, env=None) -> str:
+    """GENA_* 환경변수가 있으면 값을 덮어쓴 yaml 사본을 임시 디렉터리에 만들어 그 경로를 돌려준다.
+
+    덮어쓸 값이 없으면 원본 경로를 그대로 돌려주고 파일을 읽지도 않는다(기동 비용·테스트 격리).
+    """
+    env = os.environ if env is None else env
+    overrides = {
+        path: str(env[name]).strip()
+        for name, path in _GENA_ENV_OVERRIDES.items()
+        if str(env.get(name) or '').strip()
+    }
+    if not overrides:
+        return source_path
+
+    import yaml
+
+    with open(source_path, 'r', encoding='utf-8') as f:
+        cfg = yaml.safe_load(f) or {}
+    if not isinstance(cfg, dict):
+        raise ValueError(f'Gena intelligent config 는 매핑이어야 합니다: {source_path}')
+    for path, value in overrides.items():
+        node = cfg
+        for key in path[:-1]:
+            child = node.get(key)
+            if not isinstance(child, dict):
+                child = {}
+                node[key] = child
+            node = child
+        node[path[-1]] = value
+    _absolutize_file_refs(cfg, Path(source_path).resolve().parent)
+
+    out_dir = tempfile.mkdtemp(prefix='gena_intelligent_cfg_')
+    out_path = os.path.join(out_dir, os.path.basename(source_path))
+    with open(out_path, 'w', encoding='utf-8') as f:
+        yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
+    logger.info(
+        '[gena] intelligent config overrides applied: '
+        + ', '.join(sorted('.'.join(p) for p in overrides))
+    )
+    return out_path
+
+
 # 프로세서는 모듈 로딩 시 1회만 생성해 재사용한다(요청마다 재생성하면 config/토크나이저/
 # 파이프라인 초기화 비용이 반복됨). 각 프로세서는 resource/<name>_processor_config.yaml 을 로드한다.
 attachment_processor = AttachmentDocumentProcessor(config_path=_cfg("attachment"))    # 첨부용
@@ -191,6 +265,10 @@ intelligent_processor = IntelligentDocumentProcessor(config_path=_cfg("intellige
 convert_processor = ConvertDocumentProcessor(config_path=_cfg("convert"))             # 변환용
 parser_processor = ParserDocumentProcessor(config_path=_cfg("parser"))               # 파싱 전용(/parser)
 chunking_processor = ChunkingDocumentProcessor(config_path=_cfg("chunking"))         # 청킹 전용(/chunker)
+# Gena AI 드라이브 적재용(지능형 1단계). 출고 intelligent 인스턴스와 분리해 Gena 설정만 독립 조정한다.
+intelligent_gena_processor = IntelligentDocumentProcessor(
+    config_path=_materialize_gena_config(_cfg("intelligent_gena"))
+)
 
 
 def _request_deadline_seconds(params: dict):
@@ -382,34 +460,46 @@ async def preprocess_attachment(
     return await _run('preprocess_attachment', attachment_processor, request, file_path, params)
 
 
-# /preprocess_attachment 의 presigned URL 변형: 원격 파일을 임시 경로에 스트리밍 저장한 뒤
-# 동일한 attachment_processor 를 호출하므로 파싱·청킹·벡터 메타 생성 결과가 동일하다.
-@app.post('/preprocess_attachment_url')
-async def preprocess_attachment_url(
+def _safe_presigned_file_name(file_name: str) -> str:
+    """presigned 요청의 file_name 을 basename 으로 정리하고 검증한다. 확장자가 파서의 형식 라우팅 기준이다."""
+    safe_name = os.path.basename(file_name or '')
+    if not safe_name or safe_name in {'.', '..'}:
+        raise ValueError('file_name 이 비어있습니다.')
+    if len(safe_name.encode('utf-8')) > 255:
+        raise ValueError('file_name 이 너무 깁니다.')
+    if not os.path.splitext(safe_name)[1]:
+        raise ValueError('file_name 에 파일 확장자가 필요합니다.')
+    return safe_name
+
+
+async def _preprocess_from_presigned_url(
+        tag: str,
+        processor,
         request: Request,
-        presigned_url: str = Body(..., embed=True),
-        file_name: str = Body(..., embed=True),
-        params: dict = Body(default_factory=dict),
+        presigned_url: str,
+        file_name: str,
+        params: dict,
+        *,
+        tmp_prefix: str,
 ):
+    """presigned URL 공용 흐름: 검증 → 임시 경로에 스트리밍 다운로드 → processor 실행 → 임시 파일 정리.
+
+    /preprocess_attachment_url 과 /preprocess_intelligent_url 이 processor 만 달리해 공유한다.
+    원본 파일명(확장자)을 보존해 저장하므로 각 processor 의 형식 라우팅은 file_path 호출과 동일하다.
+    """
     try:
         if not isinstance(params, dict):
             raise ValueError('params 는 JSON 객체여야 합니다.')
-        safe_name = os.path.basename(file_name or '')
-        if not safe_name or safe_name in {'.', '..'}:
-            raise ValueError('file_name 이 비어있습니다.')
-        if len(safe_name.encode('utf-8')) > 255:
-            raise ValueError('file_name 이 너무 깁니다.')
-        if not os.path.splitext(safe_name)[1]:
-            raise ValueError('file_name 에 파일 확장자가 필요합니다.')
+        safe_name = _safe_presigned_file_name(file_name)
     except (ValueError, TypeError) as e:
         return _error_response(
-            'preprocess_attachment_url',
+            tag,
             os.path.basename(file_name or ''),
             e,
             error_code=ERROR_CODE_INPUT,
         )
 
-    tmp_dir = tempfile.mkdtemp(prefix='attachment_url_')
+    tmp_dir = tempfile.mkdtemp(prefix=tmp_prefix)
     tmp_path = os.path.join(tmp_dir, safe_name)
 
     async def _download_and_preprocess():
@@ -417,17 +507,8 @@ async def preprocess_attachment_url(
             presigned_url,
             tmp_path,
         )
-        logger.info(
-            f'[preprocess_attachment_url] Downloaded: "{safe_name}" '
-            f'({downloaded_bytes} bytes)'
-        )
-        return await _run(
-            'preprocess_attachment_url',
-            attachment_processor,
-            request,
-            tmp_path,
-            params,
-        )
+        logger.info(f'[{tag}] Downloaded: "{safe_name}" ({downloaded_bytes} bytes)')
+        return await _run(tag, processor, request, tmp_path, params)
 
     try:
         # 기존 _run 내부 deadline은 processor 구간만 감싼다. URL 엔드포인트에서는
@@ -440,12 +521,9 @@ async def preprocess_attachment_url(
             timeout=request_deadline,
         )
     except PresignedDownloadTimeout as e:
-        logger.error(
-            f'[preprocess_attachment_url] Download timeout: "{safe_name}" '
-            f'({e})'
-        )
+        logger.error(f'[{tag}] Download timeout: "{safe_name}" ({e})')
         return _error_response(
-            'preprocess_attachment_url',
+            tag,
             safe_name,
             e,
             error_code=ERROR_CODE_TIMEOUT,
@@ -458,12 +536,9 @@ async def preprocess_attachment_url(
             if seconds is not None
             else '전체 요청 제한 시간을 초과했습니다.'
         )
-        logger.error(
-            f'[preprocess_attachment_url] Request timeout: "{safe_name}" '
-            f'({timeout_error})'
-        )
+        logger.error(f'[{tag}] Request timeout: "{safe_name}" ({timeout_error})')
         return _error_response(
-            'preprocess_attachment_url',
+            tag,
             safe_name,
             timeout_error,
             error_code=ERROR_CODE_TIMEOUT,
@@ -471,18 +546,58 @@ async def preprocess_attachment_url(
         )
     except Exception as e:
         logger.error(
-            f'[preprocess_attachment_url] Error processing downloaded file: '
-            f'"{safe_name}"\n'
+            f'[{tag}] Error processing downloaded file: "{safe_name}"\n'
             f'{traceback.format_exc()}\n'
         )
         return _error_response(
-            'preprocess_attachment_url',
+            tag,
             safe_name,
             e,
             stage='download',
         )
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+# /preprocess_attachment 의 presigned URL 변형: 원격 파일을 임시 경로에 스트리밍 저장한 뒤
+# 동일한 attachment_processor 를 호출하므로 파싱·청킹·벡터 메타 생성 결과가 동일하다.
+@app.post('/preprocess_attachment_url')
+async def preprocess_attachment_url(
+        request: Request,
+        presigned_url: str = Body(..., embed=True),
+        file_name: str = Body(..., embed=True),
+        params: dict = Body(default_factory=dict),
+):
+    return await _preprocess_from_presigned_url(
+        'preprocess_attachment_url',
+        attachment_processor,
+        request,
+        presigned_url,
+        file_name,
+        params,
+        tmp_prefix='attachment_url_',
+    )
+
+
+# Gena AI 드라이브 적재용: presigned URL → 지능형(1단계 설정: dots.ocr 레이아웃/OCR, enrichment off)
+# 으로 파싱·청킹까지만 수행한다. 임베딩과 Weaviate 적재는 호출자(Gena)가 한다.
+# 설정은 resource/intelligent_gena_processor_config.yaml (환경변수 GENA_* 로 엔드포인트 덮어쓰기 가능).
+@app.post('/preprocess_intelligent_url')
+async def preprocess_intelligent_url(
+        request: Request,
+        presigned_url: str = Body(..., embed=True),
+        file_name: str = Body(..., embed=True),
+        params: dict = Body(default_factory=dict),
+):
+    return await _preprocess_from_presigned_url(
+        'preprocess_intelligent_url',
+        intelligent_gena_processor,
+        request,
+        presigned_url,
+        file_name,
+        params,
+        tmp_prefix='intelligent_url_',
+    )
 
 
 @app.post('/preprocess_intelligent')

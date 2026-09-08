@@ -1,0 +1,219 @@
+# Gena(AI 드라이브 적재) 전용 지능형 전처리기 설정 — 1단계(속도 우선, OCR/레이아웃만).
+#
+# main.py 의 /preprocess_intelligent_url 이 이 파일로 별도 인스턴스를 만든다.
+# 출고용 intelligent_processor_config.yaml 과 분리한 이유: develop 이 출고 설정을 계속 바꾸므로
+# Gena 값을 거기에 넣으면 병합마다 충돌한다. 스키마(키 구조)는 출고 파일과 동일하게 유지한다.
+#
+# 소비자(Gena genos-agents preprocessor)는 청크의 text 와 i_page 만 쓰고 임베딩·Weaviate 적재를
+# 자체 수행한다. title/created_date/media_files 등 부가 필드는 버리거나 읽지 않으므로,
+# 그 필드를 만드는 LLM/VLM enrichment 는 1단계에서 전부 끈다.
+#
+# 단계별 도입 계획(각 항목은 아래 해당 키만 바꾸면 된다):
+#   1단계(현재): dots.ocr 레이아웃 + 텍스트 추출, enrichment 0건, 그림 crop 없음, PPT 1슬라이드=1청크
+#   2단계: formats.ppt.page_description.enable → true (슬라이드 덱 스크린샷 의미 보완)
+#   3단계: ocr.ocr_mode → auto (Paddle 서빙 확보 + check_document 의 LLM 의존 수정 후)
+#   4단계: pdf_pipeline.generate_picture_images → true + 요청 img_desc=1 (Gena 이미지 저장 경로 마련 후)
+#   보류: enrichment.toc / metadata — Gena 가 해당 필드를 쓰기 시작할 때까지 off
+#
+# 환경별 엔드포인트: 아래 값은 dev 기준(resource_dev 와 동일). prod 배포 시 코드서빙 envs 로
+#   GENA_LAYOUT_ENDPOINT / GENA_LAYOUT_API_KEY / GENA_OCR_ENDPOINT / GENA_OCR_MODE 를 주입하면
+#   main.py 가 기동 시 이 파일 값을 덮어쓴다(genon/deploy-code-serving/config.yaml.serving.example 참고).
+
+defaults:
+  # 5=DEBUG, 4=INFO, 3=WARNING, 2=ERROR, 1=CRITICAL, 0=NOLOG
+  log_level: 4
+
+formats:
+  # 엑셀(xlsx/xlsm), csv 는 PDF 변환 없이 처리(출고 설정과 동일).
+  xlsx:
+    processing_mode: "docling"
+    tabular:
+      header_row: 0
+      multi_table: false
+
+  # PPT(ppt/pptx): 페이지 기반 청킹(1 슬라이드 = 1 청크). chunk_mode=resize_all 일 때만 연속 슬라이드 병합.
+  ppt:
+    # 1단계 off. dots.ocr 레이아웃이 슬라이드 텍스트를 이미 읽으므로(이미지 전용 pptx 21/21 추출 확인)
+    # 슬라이드당 VLM 1회가 추가되는 이 기능은 2단계에서 켠다.
+    page_description:
+      enable: false
+      url: "http://llmops-gateway-api-service:8080/rep/serving/<IMAGE_DESCRIPTION_SERVING_ID>/v1/chat/completions"
+      api_key: ""
+      model: "model"
+      timeout: 360
+      concurrency: 16
+      prompt_template_file: prompt_page_image_description_default.md
+
+ocr:
+  # 1단계 disable: 단일 패스. 스캔 문서 텍스트는 dots.ocr 레이아웃 VLM 이 채운다.
+  # auto 로 올리려면 (1) Paddle 서빙 도달 가능, (2) check_document 가 LLM 없을 때 "품질 양호"를
+  # 돌려주도록 수정(또는 toc/metadata 중 하나 on) 두 조건이 필요하다. 조건 없이 auto 로 두면
+  # 판정 LLM 부재로 모든 문서가 두 번 파싱된다.
+  ocr_mode: "disable" # "auto" | "force" | "disable"
+
+  engine: "paddle"
+  table_cell_ocr_timeout: 60
+
+  paddle:
+    # dev PaddleOCR(ocr_mode 가 disable 인 동안은 호출되지 않음). prod 는 GENA_OCR_ENDPOINT 로 주입.
+    ocr_endpoint: "http://192.168.73.172:48080/ocr"
+    text_score: 0.3
+
+  glyph_detection:
+    table_cell_threshold: 1
+    document_threshold: 10
+
+  upstage:
+    api_endpoint: "https://api.upstage.ai/v1/document-digitization"
+    api_key: ""
+    model: "ocr"
+    timeout: 60
+    text_score: 0.5
+
+layout:
+  # 지능형의 핵심. dots.ocr VLM 이 레이아웃 박스와 텍스트를 함께 낸다(페이지당 1회 호출).
+  layout_model_type: "genos_layout" # "genos_layout"(default) or "docling_layout"
+  genos_layout:
+    # dev dots.ocr(resource_dev 와 동일). prod 는 GENA_LAYOUT_ENDPOINT / GENA_LAYOUT_API_KEY 로 주입.
+    endpoint: "http://192.168.75.174:26001/v1/chat/completions"
+    api_key: ""
+    page_batch_size: 128
+    max_completion_tokens: 16384
+    model: "dots-mocr"
+    timeout: 1200
+    retry_count: 2
+    temperature: 0.1
+    top_p: 0.9
+    repetition_penalty: 1.15
+    length_fallback_enabled: true
+    fallback_dpi: 200
+    table_fallback_enabled: true
+
+pdf_pipeline:
+  num_threads: 8
+  device: "auto"
+  images_scale: 2
+  # 페이지 이미지를 결과 문서에 보관하지 않는다(대용량 문서 메모리 절감). 레이아웃/표 인식은
+  # 변환 중 필요 시 자체 렌더하므로 영향 없다. page_description/table_image 를 켜면 코드가 자동으로 true 강제.
+  generate_page_images: false
+  # 1단계 off: Gena 는 media_files 를 읽지 않고 minio 업로드도 GenOS 헤더가 없어 skip 되므로
+  # crop 한 PNG 는 만들자마자 삭제된다. 4단계(img_desc)에서 true 로 되돌린다.
+  generate_picture_images: false
+  table_structure_mode: "accurate"
+
+table_image:
+  enable: false
+
+output:
+  # 청크 내 표 표현. Gena 임베딩 토큰 절감이 필요하면 "auto"(병합 셀만 html) 검토.
+  table_format: "html"   # "html"(default) | "markdown" | "auto"
+  compact_tables: true
+  table_row_serialization: false
+  table_text_formats: []
+
+# enrichment: 1단계 전부 off. url 은 출고 파일과 같은 플레이스홀더를 유지한다(비활성 항목은 호출되지 않음).
+enrichment:
+  - toc:
+      enable: false
+      url: "http://llmops-gateway-api-service:8080/rep/serving/<ENRICHMENT_SERVING_ID>/v1/chat/completions"
+      api_key: ""
+      model: "model"
+      temperature: 0.0
+      top_p: 0.00001
+      seed: 33
+      max_tokens: 10000
+      precheck:
+        enabled: true
+        max_context_tokens: 128000
+        completion_reserved_tokens: 12000
+      repetition_penalty: 1.1
+      system_prompt_file: prompt_toc_default_system.md
+      user_prompt_file: prompt_toc_default_user.md
+      split:
+        enabled: false
+        pages_per_chunk: 100
+        page_overlap: 1
+        carryover_max_tokens: 1500
+
+  - metadata:
+      enable: false
+      url: "http://llmops-gateway-api-service:8080/rep/serving/<ENRICHMENT_SERVING_ID>/v1/chat/completions"
+      api_key: ""
+      model: "model"
+      max_tokens: 10000
+      temperature: 0.0
+      timeout: 3600
+      pages: [1,4]
+      output_fields: [created_date, authors]
+      parser:
+        type: json
+      system_prompt_file: prompt_metadata_default_system.md
+      user_prompt_file: prompt_metadata_default_user.md
+      precheck:
+        enabled: true
+        max_context_tokens: 128000
+        completion_reserved_tokens: 12000
+
+  - doc_summary:
+      enable: false
+      url: "http://llmops-gateway-api-service:8080/rep/serving/<ENRICHMENT_SERVING_ID>/v1/chat/completions"
+      api_key: ""
+      model: "model"
+      prompt_file: prompt_doc_summary.md
+      max_chars: 6000
+
+  - image_description:
+      enable: false
+      url: "http://llmops-gateway-api-service:8080/rep/serving/<IMAGE_DESCRIPTION_SERVING_ID>/v1/chat/completions"
+      api_key: ""
+      model: "model"
+      concurrency: 16
+      before_items: 3
+      after_items: 2
+      max_context_chars: 1500
+      prompt_template_file: prompt_image_description_default.md
+      chart:
+        enable: false
+        detection: auto
+        chart_prompt_file: prompt_chart_description_default.md
+
+  - table_description:
+      enable: false
+      url: "http://llmops-gateway-api-service:8080/rep/serving/<IMAGE_DESCRIPTION_SERVING_ID>/v1/chat/completions"
+      api_key: ""
+      model: "model"
+      concurrency: 8
+      before_items: 3
+      after_items: 2
+      max_context_chars: 1500
+      prompt_template_file: prompt_table_description_default.md
+      refine:
+        enable: false
+        prompt_file: prompt_table_refine_combined.md
+
+# 청킹(GenosSmartChunker) 설정
+chunking:
+  # Gena 는 요청마다 chunk_size(기본 1000)를 보내므로 이 값은 폴백. 0 초과 시 최소 1024 로 보정된다.
+  chunk_size: 10000
+  # split_only: 섹션마다 청크(PPT 는 1 슬라이드 = 1 청크 유지). 문서 유형별 병합이 필요하면
+  # Gena 가 요청에 chunk_mode=1(resize_all)을 실어 보내는 쪽으로 A/B 한다(재배포 불필요).
+  chunk_mode: split_only
+  table_as_chunk: true
+  # "HEADER: <섹션 경로>" 접두. Gena filecard description 첫 줄에 노출되는 것이 문제가 되면 false 검토.
+  include_chunk_header: true
+  # 청크 텍스트 정제(RAG 검색용). off(기본) | safe. 필요 시 safe 로 올린다(재색인 필요).
+  text_cleanup: off
+  tokenizer_type: "char"
+  tokenizer_path: "/models/doc_parser_models/sentence-transformers-all-MiniLM-L6-v2"
+  tokenizer_id: "sentence-transformers/all-MiniLM-L6-v2"
+
+models:
+  artifacts_path: ""
+
+# PII 마스킹(#315). on/off 는 요청 kwargs(guardrail_call, 기본 off). 1단계 미사용.
+guardrail:
+  url: ""
+  workflow_id:
+  api_key: ""
+  timeout: 60
+  masking_enabled: false

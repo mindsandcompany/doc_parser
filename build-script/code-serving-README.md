@@ -146,7 +146,9 @@ Authorization: Bearer {auth_key}
 | `GET` | `/health` | 헬스 체크 | `{"status":"ok"}` |
 | `POST` | `/preprocess` | 적재용(지능형) | `/preprocess_intelligent` 하위호환 별칭 |
 | `POST` | `/preprocess_attachment` | 첨부용 | |
+| `POST` | `/preprocess_attachment_url` | 첨부용 (presigned URL 입력) | 본문 `{presigned_url, file_name, params}`. 전처리기가 직접 다운로드 |
 | `POST` | `/preprocess_intelligent` | 적재용(지능형) | |
+| `POST` | `/preprocess_intelligent_url` | Gena 드라이브 적재용(지능형 1단계, presigned URL 입력) | 설정 `resource/intelligent_gena_processor_config.yaml`, 엔드포인트는 `GENA_*` env 로 덮어쓰기 |
 | `POST` | `/preprocess_convert` | 변환용 | |
 | `POST` | `/parser` | 문서 파싱 → DoclingDocument JSON | `IS_PARSER` 지원 전처리기 필요 |
 | `POST` | `/chunker` | 파싱 결과 JSON → 청크 리스트 | `IS_CHUNKER` 지원 전처리기 필요 |

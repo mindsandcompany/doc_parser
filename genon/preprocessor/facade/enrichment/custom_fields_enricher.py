@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import inspect
 import json
 import logging
 import re
@@ -19,6 +20,7 @@ from genon.preprocessor.facade.common import config_parse as cp
 from genon.preprocessor.facade.enrichment import config_schema as cs
 
 from .base_enricher import BaseEnricher
+from . import plugin_loader
 from .field_transforms import store_metadata_in_document
 from .prompt_files import read_prompt_file
 from .prompt_template import PromptTemplate
@@ -48,7 +50,9 @@ _DEFAULT_CUSTOM_FIELDS_SYSTEM_PROMPT = (
 # extractor 이름은 종류마다 **하나씩만** 받는다. 예전에는 document_llm/tabular/
 # column_mapping/json_records 별칭이 함께 있었는데, 출고 설정 어디에도 쓰이지 않으면서
 # "무엇을 써야 하나"라는 질문만 만들었다(설정 개념 수를 줄인다는 원칙).
-DOCUMENT_CUSTOM_FIELD_EXTRACTORS = {"llm"}
+# 문서 단위로 필드를 만드는 extractor. 값을 만드는 주체만 다르고(LLM / 고객 파이썬)
+# 그 뒤의 값 파이프라인·출력 필드·문서 저장은 완전히 같은 경로를 쓴다.
+DOCUMENT_CUSTOM_FIELD_EXTRACTORS = {"llm", "python"}
 TABULAR_CUSTOM_FIELD_EXTRACTORS = {"tabular_mapping"}
 # json_mapping/json_records(JsonRecordsMapper)와 json_semantic(SemanticJsonMapper)은 서로 다른
 # 빌더(json_records.build_json_records_mappers / json_semantic.build_semantic_json_mappers)로
@@ -312,6 +316,8 @@ class CustomFieldsEnricher(BaseEnricher):
         doc_type: str | list[str] | None = None,
         extractor: str = "llm",
         table_text_description: dict | None = None,
+        file: str = "",
+        callable: str = "",
     ):
         cfg = self._load_config(config_file, resource_path)
         # 모르는 키는 지금까지 조용히 무시됐다 — `output_field`(오타)처럼 한 글자만 틀려도
@@ -409,6 +415,16 @@ class CustomFieldsEnricher(BaseEnricher):
         ).strip().lower()
         self._doc_types = normalize_doc_types(doc_type)
         self._extractor = str(extractor or "llm").strip().lower()
+        # extractor: python — 값을 만드는 것이 LLM 이 아니라 고객 함수다. 로딩 규칙은
+        # parser.type=python 과 같은 모듈을 쓴다. 기동 시 불러 오설정을 요청 전에 드러낸다.
+        self._extract_callable = None
+        if self._extractor == "python":
+            self._extract_callable = plugin_loader.load_callable(
+                self._parser_base_dir,
+                file or cfg.get("file") or "",
+                callable or cfg.get("callable") or "extract",
+                label=f"custom_fields({config_file}) extractor: python",
+            )
         self._table_description_options = self._resolve_table_text_description_options(
             merge_table_text_description(table_text_description, cfg.get("table_text_description"))
         )
@@ -622,6 +638,33 @@ class CustomFieldsEnricher(BaseEnricher):
 
         return await async_cached_call(self._url, payload, _produce)
 
+    async def _call_python_extractor(self, raw_text: str, document, **kwargs) -> dict:
+        """extractor: python — 고객 함수를 부른다.
+
+        계약은 `parser.type=python` 과 같은 모양이다. 넓은 시그니처를 먼저 시도하고
+        받지 못하면 `(text)` 하나로 재시도한다 — 고객이 필요한 인자만 선언하면 된다.
+
+            def extract(text, document=None, doc_type=None, **kwargs) -> dict
+
+        코루틴을 돌려주면 await 한다(사내 API 조회처럼 외부 호출이 필요한 경우).
+        """
+        try:
+            parsed = self._extract_callable(
+                raw_text,
+                document=document,
+                output_fields=self._output_fields,
+                **kwargs,
+            )
+        except TypeError:
+            parsed = self._extract_callable(raw_text)
+        if inspect.isawaitable(parsed):
+            parsed = await parsed
+        if not isinstance(parsed, dict):
+            raise TypeError(
+                f"extractor: python 의 결과는 dict 이어야 합니다: {type(parsed).__name__}"
+            )
+        return parsed
+
     def _parse_with_custom_parser(
         self, llm_output: str, document: DoclingDocument | None, **kwargs
     ) -> dict:
@@ -713,6 +756,10 @@ class CustomFieldsEnricher(BaseEnricher):
         않는다(`_table_text_desc_owned`) — 같은 표를 두 번 설명하는 것을 막는다.
         """
         if kwargs.get("_table_text_desc_owned"):
+            return False
+        # 표 설명은 LLM 이 만든다. extractor: python 은 그 호출을 하지 않으므로 융합 대상이
+        # 아니다(독립 실행기가 그대로 만든다).
+        if self._extractor != "llm":
             return False
         if not self.is_configured or not matches_doc_type(self._doc_types, kwargs.get("doc_type")):
             return False
@@ -1088,7 +1135,12 @@ class CustomFieldsEnricher(BaseEnricher):
 
     @property
     def is_configured(self) -> bool:
-        """LLM 연결 설정이 채워져 있는지. 비어 있으면 호출 자체를 하지 않는다."""
+        """값을 만들 수단이 있는지. 없으면 추출 자체를 하지 않는다.
+
+        extractor: python 은 LLM 연결이 아니라 고객 함수가 그 수단이다.
+        """
+        if self._extractor == "python":
+            return self._extract_callable is not None
         return bool(self._url and self._model)
 
     async def extract_fields_from_text(self, raw_text: str) -> dict:
@@ -1128,7 +1180,12 @@ class CustomFieldsEnricher(BaseEnricher):
             raw_text = f"{prompt_prefix}\n\n{raw_text}" if raw_text else prompt_prefix
 
         parsed: dict = {}
-        if self.is_configured:
+        if self._extractor == "python":
+            try:
+                parsed = await self._call_python_extractor(raw_text, document, **kwargs)
+            except Exception as e:
+                _log.warning(f"custom_fields 추출 실패(extractor: python): {e}")
+        elif self.is_configured:
             try:
                 targets = (
                     collect_table_text_targets(document, self._table_description_options)

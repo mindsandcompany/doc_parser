@@ -52,7 +52,7 @@ KIND_TO_EXTRACTOR = {
 }
 
 TOP_LEVEL_KEYS = frozenset({
-    SCHEMA_KEY, "source", "fields", "require", "filter", "body", "llm",
+    SCHEMA_KEY, "source", "fields", "require", "filter", "body", "llm", "python",
     # 프로세서 공통 표 설명의 문서유형별 오버라이드. 값 매핑이 아니라 기능 스위치라
     # v1/v2 표기가 같다 — 개념을 하나 더 만들지 않는다.
     "table_text_description",
@@ -209,6 +209,7 @@ def normalize(cfg: dict, *, label: str = "custom_fields") -> tuple[dict, str]:
     _normalize_require(cfg.get("require"), kind, out, label)
     _normalize_body(cfg.get("body"), kind, out, label)
     _normalize_llm(cfg.get("llm"), kind, out, label)
+    _normalize_python(cfg.get("python"), kind, out, label)
 
     if cfg.get("filter") is not None:
         if kind not in ("rows", "records"):
@@ -326,6 +327,38 @@ def _normalize_llm(llm: Any, kind: str, out: dict, label: str) -> None:
             out.setdefault("llm_fields", []).append(flat)
 
 
+# `python:` 블록이 받는 키. `out` 은 v2 쪽 이름이고 v1 에서는 output_fields 다
+# (그래서 아래 COVERED_V1_KEYS 에는 v1 이름 둘만 더한다).
+PYTHON_KEYS = frozenset({"file", "callable", "out"})
+PYTHON_V1_KEYS = frozenset({"file", "callable"})
+
+
+def _normalize_python(python: Any, kind: str, out: dict, label: str) -> None:
+    """`python:` → v1 의 file/callable.
+
+    값을 만드는 주체가 LLM 이 아니라 고객 함수인 경우다. 문서 단위 추출에만 쓴다 —
+    행·레코드 매핑은 원천에서 값을 그대로 꺼내므로 이 선택지가 필요 없다.
+    """
+    if python is None:
+        return
+    block = _require_dict(python, label, "python")
+    if kind != "document":
+        raise ConfigV2Error(f"{label}: python 은 kind: document 전용입니다.")
+    if out.get("url") or out.get("model"):
+        raise ConfigV2Error(
+            f"{label}: llm 과 python 은 함께 쓸 수 없습니다 — 값을 만드는 주체는 하나입니다."
+        )
+    _check_unknown(block, PYTHON_KEYS, label, "python")
+    if not block.get("file"):
+        raise ConfigV2Error(f"{label}: python.file 이 필요합니다.")
+    out["file"] = block["file"]
+    if block.get("callable"):
+        out["callable"] = block["callable"]
+    # 출력 필드 이름은 llm 항목의 `out` 과 같은 뜻이다 — 값을 만드는 주체만 다르다.
+    if block.get("out") is not None:
+        out["output_fields"] = block["out"]
+
+
 def _flatten_llm_item(item: dict, where: str) -> dict:
     """v2 의 endpoint/params/prompt 묶음을 v1 의 평평한 키로 편다."""
     flat: dict[str, Any] = {}
@@ -359,6 +392,10 @@ def _flatten_llm_item(item: dict, where: str) -> dict:
 # `normalize()` 의 역방향. 이 둘의 왕복이 원본과 같아야 v2 가 v1 을 온전히 표현한다는 뜻이다.
 
 _EXTRACTOR_TO_KIND = {v: k for k, v in KIND_TO_EXTRACTOR.items()}
+# python 은 llm 과 같은 자리(문서 단위)의 다른 선택지라 kind 가 같다. 위 표를 뒤집는
+# 것만으로는 안 나오므로 여기서 더한다 — kind→extractor 는 여전히 llm 하나로 유지한다
+# (등록 블록의 extractor 가 둘을 가른다).
+_EXTRACTOR_TO_KIND["python"] = "document"
 # v1 블록 → v2 필드 스펙 키. 위 단일 표에서 파생한다(직접 적지 않는다).
 _BLOCK_TO_SPEC_KEY = {
     **{block: "alias" for block in _ALIAS_BLOCK.values()},
@@ -447,8 +484,18 @@ def to_v2(cfg: dict, extractor: str) -> dict:
     if body:
         out["body"] = body
 
+    # 값을 만드는 주체가 고객 함수면 llm 항목 대신 python 블록으로 나간다.
+    is_python = bool(cfg.get("file"))
+    if is_python:
+        python_block = {"file": cfg["file"]}
+        if cfg.get("callable"):
+            python_block["callable"] = cfg["callable"]
+        if cfg.get("output_fields"):
+            python_block["out"] = cfg["output_fields"]
+        out["python"] = python_block
+
     llm = []
-    if kind == "document":
+    if kind == "document" and not is_python:
         document_item = _document_llm_item(cfg)
         if document_item:
             llm.append(document_item)
@@ -535,5 +582,6 @@ COVERED_V1_KEYS = (
     | {"required", "required_shared_fields", "llm_fields", "filter"}
     | set(_LLM_ENDPOINT_KEYS) | set(_LLM_PARAM_KEYS) | set(_LLM_PROMPT_KEYS)
     | {"output_fields", "parser", "pages", "template", "table_text_description", "prompt"}
+    | PYTHON_V1_KEYS
     | set(PRE_KEYS)
 )

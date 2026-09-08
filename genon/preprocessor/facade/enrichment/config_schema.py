@@ -99,6 +99,14 @@ EXTRACTOR_KEYS: dict[str, frozenset[str]] = {
         "front_matter_map", "value_map", "transforms", "derive",
         "body_fields", "chunk_prefix_fields", "first_chunk_fields", "field_labels",
     }),
+    # 문서 단위인데 값을 만드는 것이 LLM 이 아니라 고객 파이썬 함수인 경우. 연결·프롬프트
+    # 키가 없는 대신 file/callable 을 받고, 그 뒤의 값 파이프라인은 llm 과 같다.
+    "python": frozenset({
+        "file", "callable",
+        "output_fields", "constants", "defaults",
+        "value_map", "transforms", "derive",
+        "body_fields", "chunk_prefix_fields", "first_chunk_fields", "field_labels",
+    }),
 }
 
 ALL_KNOWN_KEYS = frozenset().union(*EXTRACTOR_KEYS.values()) | WIRING_KEYS

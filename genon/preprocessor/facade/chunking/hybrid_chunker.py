@@ -54,6 +54,9 @@ from docling_core.types.doc.document import LevelNumber, ListItem, CodeItem
 
 from genon.preprocessor.facade.common import config_parse as cp
 from genon.preprocessor.facade.common.markdown_export import export_markdown
+from genon.preprocessor.facade.chunking.formula_text import (
+    item_text as formula_item_text,
+)
 from genon.preprocessor.facade.chunking.rich_cells import table_embedded_refs
 from genon.preprocessor.facade.chunking.table_html import (
     MD_TABLE_PARAMS, drop_blank_markdown_rows, render_degenerate,
@@ -168,7 +171,9 @@ class HierarchicalDocChunker(BaseChunker):
 
                 if isinstance(item, TextItem) or (
                         (not self.merge_list_items) and isinstance(item, ListItem)) or isinstance(item, CodeItem):
-                    text = item.text
+                    # 블록 수식은 구분자가 빠진 본문으로 들어온다. 그대로 실으면 읽는
+                    # 쪽이 수식임을 알 수 없다(formula_text 모듈 docstring 참조).
+                    text = formula_item_text(item, item.text)
 
                 elif isinstance(item, TableItem):
                     # 레이아웃용 표(안내 배너 등)는 표기형태와 무관하게 평문으로 낸다.

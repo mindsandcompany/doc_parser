@@ -38,6 +38,9 @@ from docling_core.types.doc.labels import DocItemLabel
 
 from genon.preprocessor.facade.chunking import header_path as hp
 from genon.preprocessor.facade.chunking import table_html as th
+from genon.preprocessor.facade.chunking.formula_text import (
+    item_text as formula_item_text,
+)
 from genon.preprocessor.facade.chunking.rich_cells import table_embedded_refs
 from genon.preprocessor.facade.chunking.table_shape import (
     analyze_grid,
@@ -389,7 +392,8 @@ class SmartChunkerBase(BaseChunker):
                 # (실측 본문 라인: chunk_size 1024 → 64, 3000/10000 → 29).
                 if self._is_section_header(item) and item.text in text_parts:
                     continue
-                text_parts.append(item.text)
+                # 블록 수식은 구분자가 빠진 본문으로 들어온다(formula_text 참조).
+                text_parts.append(formula_item_text(item, item.text))
             elif isinstance(item, PictureItem):
                 if not self.PICTURE_ANNOTATION_TEXT:
                     text_parts.append("")  # 이미지는 빈 텍스트
@@ -972,7 +976,7 @@ class SmartChunkerBase(BaseChunker):
             if isinstance(item, TableItem):
                 return self._extract_table_text(item, dl_doc, **kwargs)
             elif hasattr(item, 'text') and item.text:
-                return item.text
+                return formula_item_text(item, item.text)
             elif isinstance(item, PictureItem):
                 text = ""
                 for annotation in item.annotations:

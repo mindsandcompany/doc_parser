@@ -29,6 +29,12 @@ def _as_int(value: Any, default: int, minimum: int = 0) -> int:
         return default
 
 
+# 응답 크기 추정에 쓰는 고정값. search_terms 는 상한만 있고 길이 규정이 없어 표현 1개를
+# 넉넉히 잡고, 스캐폴드는 table_id 와 JSON 구두점이 차지하는 몫이다.
+_SEARCH_TERM_CHARS = 20
+_TABLE_ENTRY_SCAFFOLD_CHARS = 120
+
+
 def merge_table_text_description(common: dict | None, local: dict | None) -> dict:
     """프로세서 공통 설정 위에 문서유형 설정을 key 단위로 얹는다(문서유형 우선).
 
@@ -63,6 +69,7 @@ class TableTextDescriptionOptions:
     include_search_terms: bool = False
     repeat_context_on_split: bool = True
     prompt_template: str = ""
+    concurrency: int = 8
 
     @classmethod
     def from_config(cls, cfg: dict | None) -> "TableTextDescriptionOptions":
@@ -94,6 +101,22 @@ class TableTextDescriptionOptions:
             include_search_terms=_as_bool(rag.get("include_search_terms"), False),
             repeat_context_on_split=_as_bool(rag.get("repeat_context_on_split"), True),
             prompt_template=str(cfg.get("prompt_template") or cfg.get("prompt") or "").strip(),
+            concurrency=_as_int(cfg.get("concurrency"), 8, 1),
+        )
+
+    @property
+    def estimated_output_chars_per_table(self) -> int:
+        """표 1개의 응답이 차지할 문자 수 추정(넘치는 쪽으로 보수 판정).
+
+        배치에 표를 몇 개까지 담을 수 있는지는 입력 예산이 아니라 이 값과 `max_tokens` 가
+        정한다. 프롬프트가 모델에게 약속받은 상한들을 그대로 더해 쓰므로, 모델이 지시를
+        지키는 한 실제 응답은 이보다 짧다.
+        """
+        return (
+            self.retrieval_context_max_chars
+            + self.key_fact_limit * self.key_fact_max_chars
+            + self.search_terms_limit * _SEARCH_TERM_CHARS
+            + _TABLE_ENTRY_SCAFFOLD_CHARS
         )
 
 

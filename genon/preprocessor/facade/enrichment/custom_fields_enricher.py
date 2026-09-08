@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import logging
@@ -797,6 +798,20 @@ class CustomFieldsEnricher(BaseEnricher):
                 },
             }))
 
+    def _max_tables_per_call(self) -> int:
+        """응답 상한(max_tokens)이 감당하는 표 개수. 0 이면 상한 없음.
+
+        입력 예산(`_prompt_fits`)만으로 배치를 묶으면 프롬프트에는 들어가지만 응답이
+        `max_tokens` 에서 잘리는 배치가 만들어진다. 잘린 JSON 은 파싱에 실패해 그 호출의
+        표 전부가 설명 없이 지나가므로, 배치 크기는 입력과 출력 **양쪽**이 정해야 한다.
+        """
+        per_table = int(
+            self._table_description_options.estimated_output_chars_per_table * _TOKENS_PER_CHAR
+        )
+        if per_table <= 0 or self._max_tokens <= 0:
+            return 0
+        return max(1, self._max_tokens // per_table)
+
     def _fit_targets(
         self, raw_text: str, document: DoclingDocument, targets: list[TableTextTarget]
     ) -> tuple[list[TableTextTarget], bool]:
@@ -804,8 +819,19 @@ class CustomFieldsEnricher(BaseEnricher):
 
         계획한 순서 그대로 (1) 있는 그대로 (2) 주변 문맥 축소 (3) HTML 을 markdown 으로 낮춤
         을 시도하고, 어느 단계에서 들어갔는지를 (targets, 통과여부) 로 돌려준다.
+
+        표 개수가 응답 상한을 이미 넘으면 세 단계를 건너뛰고 배치 경로로 내려보낸다 —
+        문맥을 아무리 줄여도 응답이 잘리는 것은 막지 못하고, 줄이는 시도 자체가 표 전량을
+        다시 직렬화하는 비용이다.
         """
         options = self._table_description_options
+        limit = self._max_tables_per_call()
+        if limit and len(targets) > limit:
+            _log.info(
+                f"표 {len(targets)}개가 응답 상한(max_tokens={self._max_tokens}, "
+                f"1회 최대 {limit}개)을 넘어 배치로 나눕니다."
+            )
+            return targets, False
         if self._prompt_fits(raw_text, document, self._table_prompt(targets)):
             return targets, True
 
@@ -835,6 +861,7 @@ class CustomFieldsEnricher(BaseEnricher):
         표 하나만으로도 예산을 넘으면 그 표는 어떤 호출에도 담을 수 없으므로 제외한다
         (overflow_policy=error 는 호출부에서 예외로 바꾼다).
         """
+        limit = self._max_tables_per_call()
         batches: list[list[TableTextTarget]] = []
         batch: list[TableTextTarget] = []
         for target in targets:
@@ -842,7 +869,10 @@ class CustomFieldsEnricher(BaseEnricher):
                 _log.warning("표 하나가 프롬프트 예산을 넘어 설명을 생략합니다: %s", target.table_id)
                 continue
             candidate = batch + [target]
-            if batch and not self._prompt_fits("", document, self._table_prompt(candidate)):
+            # 입력(프롬프트)과 출력(max_tokens) 중 먼저 걸리는 쪽에서 배치를 끊는다.
+            over_output = bool(limit) and len(candidate) > limit
+            over_input = not self._prompt_fits("", document, self._table_prompt(candidate))
+            if batch and (over_output or over_input):
                 batches.append(batch)
                 batch = [target]
             else:
@@ -850,6 +880,38 @@ class CustomFieldsEnricher(BaseEnricher):
         if batch:
             batches.append(batch)
         return batches
+
+    async def _call_table_batches(
+        self, document: DoclingDocument | None, batches: list[list[TableTextTarget]], **kwargs: Any
+    ) -> tuple[list[tuple[list[TableTextTarget], dict]], BaseException | None]:
+        """배치들을 동시에 호출하고 (배치, 파싱결과) 목록을 순서대로 돌려준다.
+
+        배치끼리는 서로 다른 표를 다루므로 호출 순서가 결과를 바꾸지 않는다. 표가 수백 개인
+        문서에서는 배치 수가 그만큼 늘어나 순차 호출이 그대로 처리 시간이 되므로 동시에
+        띄운다(`concurrency`). 실패한 배치는 건너뛰고 나머지를 살리되, 순차 실행과 같은
+        지점에서 오류가 드러나도록 첫 예외를 함께 돌려준다(호출부가 성공분을 붙인 뒤 올린다).
+        """
+        if not batches:
+            return [], None
+        semaphore = asyncio.Semaphore(max(1, self._table_description_options.concurrency))
+
+        async def _one(batch: list[TableTextTarget]) -> dict:
+            async with semaphore:
+                output = await self._call_llm("", document, self._table_prompt(batch))
+            return self._parse_with_custom_parser(output, document, **kwargs)
+
+        outcomes = await asyncio.gather(
+            *(_one(batch) for batch in batches), return_exceptions=True
+        )
+        results: list[tuple[list[TableTextTarget], dict]] = []
+        failure: BaseException | None = None
+        for batch, outcome in zip(batches, outcomes):
+            if isinstance(outcome, BaseException):
+                _log.warning(f"표 설명 배치 호출 실패({len(batch)}개 표): {outcome}")
+                failure = failure or outcome
+                continue
+            results.append((batch, outcome))
+        return results, failure
 
     async def _extract_with_table_descriptions(
         self,
@@ -890,10 +952,11 @@ class CustomFieldsEnricher(BaseEnricher):
         # batch 정책: custom fields는 한 번만 호출하고 표는 들어가는 만큼 묶어 추가 호출한다.
         try:
             batches = self._plan_batches(document, fitted)
-            for table_batch in batches:
-                table_output = await self._call_llm("", document, self._table_prompt(table_batch))
-                table_parsed = self._parse_with_custom_parser(table_output, document, **kwargs)
+            done, failure = await self._call_table_batches(document, batches, **kwargs)
+            for table_batch, table_parsed in done:
                 self._attach_table_descriptions(table_parsed, table_batch)
+            if failure is not None:
+                raise failure
         except Exception as exc:
             # 이미 추출한 custom fields 는 유지한다 — 표 설명만 없는 상태로 진행.
             _log.warning("표 설명 배치 호출 실패: %s", exc)
@@ -918,17 +981,19 @@ class CustomFieldsEnricher(BaseEnricher):
         results: dict = {}
         if not targets:
             return results
-        for batch in self._plan_batches(document, targets):
-            output = await self._call_llm("", document, self._table_prompt(batch))
-            parsed = self._parse_with_custom_parser(output, document, **kwargs)
+        batches = self._plan_batches(document, targets)
+        done, failure = await self._call_table_batches(document, batches, **kwargs)
+        for batch, parsed in done:
             values = parsed.get("_table_descriptions")
             if not isinstance(values, list):
-                _log.warning("표 설명 응답에 _table_descriptions 배열이 없습니다.")
+                _log.warning(f"표 설명 응답에 _table_descriptions 배열이 없습니다({len(batch)}개 표).")
                 continue
             for value in values:
                 table_id = str(value.get("table_id") or "") if isinstance(value, dict) else ""
                 if table_id:
                     results[table_id] = value
+        if failure is not None:
+            raise failure
         return results
 
     async def describe_tables_only(
@@ -958,10 +1023,13 @@ class CustomFieldsEnricher(BaseEnricher):
         if policy == "skip":
             _log.warning("표 설명 프롬프트가 한도를 초과해 표 설명을 건너뜁니다.")
             return
-        for table_batch in self._plan_batches(document, fitted):
-            output = await self._call_llm("", document, self._table_prompt(table_batch))
-            parsed = self._parse_with_custom_parser(output, document, **kwargs)
+        batches = self._plan_batches(document, fitted)
+        _log.info(f"[table_text_description] 표 {len(fitted)}개를 {len(batches)}개 배치로 호출합니다.")
+        done, failure = await self._call_table_batches(document, batches, **kwargs)
+        for table_batch, parsed in done:
             self._attach_table_descriptions(parsed, table_batch)
+        if failure is not None:
+            raise failure
 
     @property
     def is_configured(self) -> bool:

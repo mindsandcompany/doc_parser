@@ -61,6 +61,9 @@ def test_multiple_tables_share_one_custom_fields_llm_call_and_are_annotated():
         url="http://llm.invalid/v1/chat/completions",
         model="test-model",
         output_fields=["document_kind"],
+        # 표 2개가 한 호출을 공유하려면 그만한 응답 예산이 있어야 한다 — 배치 크기는
+        # 입력뿐 아니라 max_tokens 가 감당하는 표 개수로도 끊긴다.
+        max_tokens=8000,
         table_text_description={
             "enabled": True, "before_items": 2, "after_items": 1,
             "prompt_template": TEST_TABLE_PROMPT,
@@ -149,6 +152,7 @@ def test_actual_md_html_samples_parse_describe_once_and_chunk(
         url="http://llm.invalid/v1/chat/completions",
         model="test-model",
         output_fields=["document_kind"],
+        max_tokens=8000,   # 표 2개를 한 호출에 담을 응답 예산
         table_text_description={
             "enabled": True, "input_format": input_format,
             "prompt_template": TEST_TABLE_PROMPT,

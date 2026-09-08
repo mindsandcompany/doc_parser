@@ -220,28 +220,36 @@ enrichment:
   # 직접 만든다(권장). 그래야 custom_fields 가 LLM 을 쓰지 않는 문서유형(tabular/json 매핑)이나
   # 매칭 설정이 없는 문서에도 표 설명이 붙는다.
   # 비워 두면 예전처럼 매칭된 문서형 custom_fields YAML 의 연결을 빌려 쓴다(그 경우 위 문서들은 제외).
+  #
+  # 표가 많은 문서의 응답 잘림 방지 — 한 번의 호출에 표를 몇 개 담을지는 아래
+  # max_context_tokens(입력 예산)가 정하는데, 그 배치가 만들어 낼 응답 분량은
+  # max_tokens(출력 상한)가 받아 준다. 두 값이 어긋나면 응답 JSON 이 중간에서 잘리고
+  # 그 배치의 표 전부가 설명 없이 지나간다. 아래 두 값은 항상 함께 조정한다.
+  #   배치당 표 수  ~= (max_context_tokens - completion_reserved_tokens) / 1.5 / 표당 프롬프트 문자수
+  #   필요한 출력   ~= 배치당 표 수 x (retrieval_context_max_chars + key_fact_limit x key_fact_max_chars) x 1.3
+  # 필요한 출력이 max_tokens 보다 넉넉히 작아야 한다.
   - table_text_description:
       enable: true
       url: "https://genos.genon.ai/api/gateway/rep/serving/752/v1/chat/completions"
       api_key: "d1a9e0acab6243019008a96cd8af868e"
       model: "model"
-      max_tokens: 4000
+      max_tokens: 16000        # 응답 상한. 배치가 만들어 낼 분량보다 넉넉해야 잘리지 않는다
       temperature: 0.0
-      timeout: 300
+      timeout: 600             # 배치당 생성량이 늘어난 만큼 호출 타임아웃도 올린다
       prompt_template_file: prompt_table_text_description_rag.md
       input_format: auto       # auto=HTML 원본은 html, 그 외 markdown | markdown | html
-      before_items: 3          # 표 앞쪽 본문 아이템 수
-      after_items: 2           # 표 뒤쪽 본문 아이템 수
-      max_context_chars: 1500  # 앞/뒤 문맥 각각의 최대 문자 수
-      max_context_tokens: 128000       # 프롬프트 허용 상한(토크나이저 없이 문자 수로 보수 판정)
-      completion_reserved_tokens: 8000 # 응답 생성을 위해 남겨둘 여유
+      before_items: 2          # 표 앞쪽 본문 아이템 수
+      after_items: 1           # 표 뒤쪽 본문 아이템 수
+      max_context_chars: 400   # 앞/뒤 문맥 각각의 최대 문자 수
+      max_context_tokens: 40000        # 프롬프트 허용 상한(토크나이저 없이 문자 수로 보수 판정)
+      completion_reserved_tokens: 16000 # 응답 생성을 위해 남겨둘 여유. max_tokens 와 맞춘다
       overflow_policy: batch   # batch=최소 추가 호출 | skip=표 설명 생략 | error=실패
       conflict_policy: prefer_text # 기존 이미지 표 설명과 충돌 시 prefer_text | prefer_image | error
       rag:
-        retrieval_context_max_chars: 350 # 모든 분할 표 청크에 반복할 독립 검색 문맥
-        key_fact_limit: 3                # 원표에서 직접 확인되는 핵심 사실 최대 개수
-        key_fact_max_chars: 160          # 핵심 사실 1개당 최대 문자 수
-        search_terms_limit: 8            # 질의 확장용 검색 표현 최대 개수
+        retrieval_context_max_chars: 250 # 모든 분할 표 청크에 반복할 독립 검색 문맥
+        key_fact_limit: 2                # 원표에서 직접 확인되는 핵심 사실 최대 개수
+        key_fact_max_chars: 120          # 핵심 사실 1개당 최대 문자 수
+        search_terms_limit: 3            # 질의 확장용 검색 표현 최대 개수
         include_search_terms: false      # true면 검색어도 청크 텍스트에 노출
         repeat_context_on_split: true    # 큰 표 분할 시 retrieval_context를 모든 조각에 반복
 

@@ -244,6 +244,39 @@ def build_document_custom_fields_enrichers(configs: list[dict]) -> list["CustomF
     return enrichers
 
 
+def _recover_table_descriptions(llm_output: Any) -> list[dict]:
+    """잘린 JSON 응답에서 완결된 표 설명 항목만 건져낸다.
+
+    공유 파서(`_default_parse`)는 응답 전체가 유효한 JSON 이어야 하고 실패하면 `{}` 를
+    돌려준다. 그래서 응답이 `max_tokens` 에서 잘리면 그 호출에 실린 표가 **전부** 설명 없이
+    지나갔다. 배열이 닫히지 않았어도 앞쪽 항목들은 온전하므로 그것만 되살려 전손을 막는다.
+
+    공유 파서를 고치지 않는 이유는 그 계약에 기대는 호출부가 표와 무관한 custom_fields
+    추출까지 여러 곳이고, 고객이 `parser.type: python` 으로 자기 파서를 끼울 수도 있어
+    거기에 복구를 넣어도 그 경우에는 동작하지 않기 때문이다.
+    """
+    if not isinstance(llm_output, str):
+        return []
+    marker = re.search(r'"_table_descriptions"\s*:\s*\[', llm_output)
+    if not marker:
+        return []
+    decoder = json.JSONDecoder()
+    cursor = marker.end()
+    items: list[dict] = []
+    while cursor < len(llm_output):
+        while cursor < len(llm_output) and llm_output[cursor] in ", \t\r\n":
+            cursor += 1
+        if cursor >= len(llm_output) or llm_output[cursor] != "{":
+            break
+        try:
+            item, cursor = decoder.raw_decode(llm_output, cursor)
+        except json.JSONDecodeError:
+            break  # 잘려서 끝나지 않은 마지막 항목
+        if isinstance(item, dict) and item.get("table_id"):
+            items.append(item)
+    return items
+
+
 class CustomFieldsEnricher(BaseEnricher):
     """문서 단위 커스텀 메타데이터 추출 enricher.
 
@@ -881,6 +914,31 @@ class CustomFieldsEnricher(BaseEnricher):
             batches.append(batch)
         return batches
 
+    async def _describe_call(
+        self,
+        raw_text: str,
+        document: DoclingDocument | None,
+        targets: list[TableTextTarget],
+        **kwargs: Any,
+    ) -> dict:
+        """표 설명이 실린 호출 1회. 응답이 잘렸으면 완결된 항목만 건져 이어붙인다.
+
+        표 설명을 만드는 호출은 전부 이 자리를 지나므로, 잘림 복구가 단일 호출 경로와
+        배치 경로에 같은 모양으로 걸린다.
+        """
+        output = await self._call_llm(raw_text, document, self._table_prompt(targets))
+        parsed = self._parse_with_custom_parser(output, document, **kwargs)
+        if isinstance(parsed.get("_table_descriptions"), list):
+            return parsed
+        recovered = _recover_table_descriptions(output)
+        if recovered:
+            _log.warning(
+                f"표 설명 응답이 온전하지 않아 완결된 {len(recovered)}건만 복구했습니다"
+                f"(요청 {len(targets)}건). max_tokens 를 올리거나 표당 산출량을 줄이세요."
+            )
+            parsed["_table_descriptions"] = recovered
+        return parsed
+
     async def _call_table_batches(
         self, document: DoclingDocument | None, batches: list[list[TableTextTarget]], **kwargs: Any
     ) -> tuple[list[tuple[list[TableTextTarget], dict]], BaseException | None]:
@@ -897,8 +955,7 @@ class CustomFieldsEnricher(BaseEnricher):
 
         async def _one(batch: list[TableTextTarget]) -> dict:
             async with semaphore:
-                output = await self._call_llm("", document, self._table_prompt(batch))
-            return self._parse_with_custom_parser(output, document, **kwargs)
+                return await self._describe_call("", document, batch, **kwargs)
 
         outcomes = await asyncio.gather(
             *(_one(batch) for batch in batches), return_exceptions=True
@@ -932,8 +989,7 @@ class CustomFieldsEnricher(BaseEnricher):
             fitted, fits = targets, False
 
         if fits:
-            output = await self._call_llm(raw_text, document, self._table_prompt(fitted))
-            parsed = self._parse_with_custom_parser(output, document, **kwargs)
+            parsed = await self._describe_call(raw_text, document, fitted, **kwargs)
             try:
                 self._attach_table_descriptions(parsed, fitted)
             except Exception as exc:
@@ -1012,8 +1068,7 @@ class CustomFieldsEnricher(BaseEnricher):
             return
         fitted, fits = self._fit_targets("", document, targets)
         if fits:
-            output = await self._call_llm("", document, self._table_prompt(fitted))
-            parsed = self._parse_with_custom_parser(output, document, **kwargs)
+            parsed = await self._describe_call("", document, fitted, **kwargs)
             self._attach_table_descriptions(parsed, fitted)
             return
 

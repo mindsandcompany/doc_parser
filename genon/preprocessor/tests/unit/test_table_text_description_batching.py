@@ -119,6 +119,48 @@ def test_batches_run_concurrently_and_describe_every_table():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("keep_ratio,expected", [(1.0, 10), (0.7, 6), (0.05, 0)])
+def test_truncated_response_recovers_the_complete_entries(keep_ratio, expected):
+    """잘린 JSON 에서도 완결된 항목은 살린다 — 예전에는 배치 전체가 전손이었다."""
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        _recover_table_descriptions,
+    )
+
+    body = json.dumps({"document_kind": "안내", "_table_descriptions": [
+        {"table_id": f"table_{i:04d}", "retrieval_context": "설명" * 10,
+         "key_facts": ["사실"], "search_terms": ["질의"]}
+        for i in range(1, 11)
+    ]}, ensure_ascii=False)
+    assert len(_recover_table_descriptions(body[:int(len(body) * keep_ratio)])) == expected
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("payload", [None, "", "죄송합니다 응답할 수 없습니다", '{"document_kind":"안내"}'])
+def test_recovery_returns_nothing_for_responses_without_table_descriptions(payload):
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        _recover_table_descriptions,
+    )
+
+    assert _recover_table_descriptions(payload) == []
+
+
+@pytest.mark.unit
+def test_batch_is_not_lost_whole_when_the_response_is_cut():
+    """모든 배치의 응답이 잘려도 각 배치의 앞쪽 표는 설명을 받는다."""
+    enricher = _enricher()
+    targets = _targets(60)
+
+    async def _cut(raw, document=None, user_suffix=""):
+        full = _echo_response(user_suffix)
+        return full[:int(len(full) * 0.6)]
+
+    enricher._call_llm = _cut
+    described = asyncio.run(enricher.describe_table_targets(targets, document=None))
+    assert 0 < len(described) < len(targets)
+    assert all(table_id.startswith("table_") for table_id in described)
+
+
+@pytest.mark.unit
 def test_one_failed_batch_keeps_the_others_and_still_raises():
     enricher = _enricher()
     calls = {"n": 0}

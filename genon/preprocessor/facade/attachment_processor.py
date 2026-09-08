@@ -19,6 +19,7 @@ _log = logging.getLogger(__name__)
 # 구현은 facade/common/, facade/chunking/ 에 한 벌만 둔다. 여기서는 기존 이름을
 # 그대로 유지해 호출부를 건드리지 않는다. 사이트별 조정 대상 상수(구분자, 최소
 # 청크 크기, 토크나이저 경로)는 이 파일에 남아 있으므로 래퍼가 넘겨준다.
+from genon.preprocessor.converters.md_math import guard_markdown
 from genon.preprocessor.facade.common import config_parse as cp
 from genon.preprocessor.facade.common import loaders as ld
 from genon.preprocessor.facade.common import vector_meta as vm
@@ -490,8 +491,12 @@ class DocxProcessor:
         return ''.join(map(str, iterable)) + '\n'
 
     def load_documents(self, file_path: str, **kwargs: dict) -> DoclingDocument:
-        conv_result: ConversionResult = self.converter.convert(file_path, raises_on_error=True)
-        return conv_result.document
+        # markdown 수식은 파싱 전에 감춘다(converters/md_math 참조). md 가 아니면 원본 경로다.
+        with guard_markdown(file_path) as guard:
+            conv_result: ConversionResult = self.converter.convert(guard.path, raises_on_error=True)
+            document = conv_result.document
+        guard.restore(document)
+        return document
 
     def split_documents(self, document: DoclingDocument, **kwargs: dict):
         """chunker_type에 따라 HybridChunker 또는 RecursiveCharacterTextSplitter로 분할.

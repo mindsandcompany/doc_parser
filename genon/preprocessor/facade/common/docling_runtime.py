@@ -43,6 +43,7 @@ from docling.datamodel.pipeline_options import (
 from docling.datamodel.settings import settings as docling_settings
 from docling_core.types.doc import DoclingDocument
 
+from genon.preprocessor.converters.md_math import guard_markdown
 from genon.preprocessor.facade.common import config_parse as cp
 from genon.preprocessor.facade.common import docling_ops as dops
 from genon.preprocessor.facade.common import format_alias as fa
@@ -400,11 +401,17 @@ class DoclingRuntimeBase:
             self.simple_pipeline_options.include_wmf = include_wmf
             self._create_converters()
 
-        try:
-            conv_result = self.converter.convert(file_path, raises_on_error=True)
-        except Exception:
-            conv_result = self.second_converter.convert(file_path, raises_on_error=True)
-        return conv_result.document
+        # markdown 의 LaTeX 수식은 파싱 전에 감춰 둔다. 백엔드가 `$` 를 모르기 때문에
+        # 세로줄이 표로 오인되고 백슬래시가 해독되며 `$$` 블록이 쪼개진다
+        # (converters/md_math 모듈 docstring 참조). md 가 아니면 원본 경로 그대로다.
+        with guard_markdown(file_path) as guard:
+            try:
+                conv_result = self.converter.convert(guard.path, raises_on_error=True)
+            except Exception:
+                conv_result = self.second_converter.convert(guard.path, raises_on_error=True)
+            document = conv_result.document
+        guard.restore(document)
+        return document
 
     def load_documents_with_docling_ocr(self, file_path: str, **kwargs: dict) -> DoclingDocument:
         save_images = kwargs.get('save_images', True)
@@ -416,11 +423,16 @@ class DoclingRuntimeBase:
             self.simple_pipeline_options.include_wmf = include_wmf
             self._create_converters()
 
-        try:
-            conv_result = self.ocr_converter.convert(file_path, raises_on_error=True)
-        except Exception:
-            conv_result = self.ocr_second_converter.convert(file_path, raises_on_error=True)
-        return conv_result.document
+        with guard_markdown(file_path) as guard:
+            try:
+                conv_result = self.ocr_converter.convert(guard.path, raises_on_error=True)
+            except Exception:
+                conv_result = self.ocr_second_converter.convert(
+                    guard.path, raises_on_error=True
+                )
+            document = conv_result.document
+        guard.restore(document)
+        return document
 
     def load_documents(self, file_path: str, **kwargs: dict) -> DoclingDocument:
         return self.load_documents_with_docling(file_path, **kwargs)

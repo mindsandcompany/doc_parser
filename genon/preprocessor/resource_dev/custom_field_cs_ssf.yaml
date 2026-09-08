@@ -29,6 +29,13 @@
 #   원천에 ID 컬럼을 요청하거나 대체 키를 합의해야 한다.
 
 schema: v2
+
+# 표 설명(프로세서 공통 table_text_description)을 이 문서유형에서만 끈다.
+# 원천이 200MB / 레코드 약 3만 건이라 표가 수만 개다. 켜 두면 LLM 호출이 수천 건이 되어
+# 적재 시간이 몇 시간 단위로 늘어난다. 필요하면 요청 kwargs `table_text_desc=1` 로 그때만 켠다.
+table_text_description:
+  enable: false
+
 source:
   kind: records
   # 원천을 레코드 목록으로 바꾸는 전처리. columns 순서가 곧 원천의 필드 순서다.

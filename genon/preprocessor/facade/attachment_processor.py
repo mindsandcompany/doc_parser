@@ -76,11 +76,15 @@ except (ImportError, OSError):
     HTML = None
 
 from docling.datamodel.base_models import InputFormat
-from docling.datamodel.pipeline_options import PipelineOptions
+from docling.datamodel.pipeline_options import (
+    EasyOcrOptions,
+    PdfPipelineOptions,
+    PipelineOptions,
+)
 from docling.datamodel.document import ConversionResult
 from docling.pipeline.simple_pipeline import SimplePipeline
 from docling.document_converter import (
-    DocumentConverter, HwpxFormatOption, WordFormatOption,
+    DocumentConverter, HwpxFormatOption, PdfFormatOption, WordFormatOption,
 )
 from genon.preprocessor.facade.enrichment.page_description import (
     PageDescriptionOptions,
@@ -1106,15 +1110,84 @@ class DocumentProcessor:
                 )
         return images
 
+    def _get_empty_pdf_fallback_converter(self) -> DocumentConverter:
+        """PyMuPDF가 텍스트를 전혀 추출하지 못한 PDF용 Docling OCR 컨버터."""
+        converter = getattr(self, "_empty_pdf_fallback_converter", None)
+        if converter is not None:
+            return converter
+
+        options = PdfPipelineOptions()
+        options.do_ocr = True
+        options.do_table_structure = True
+        options.ocr_options = EasyOcrOptions(
+            force_full_page_ocr=True,
+            lang=["ko", "en"],
+        )
+        options.generate_page_images = False
+        options.generate_picture_images = False
+        converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=options),
+            }
+        )
+        self._empty_pdf_fallback_converter = converter
+        return converter
+
+    def _load_pdf_page_documents(
+        self,
+        pdf_path: str,
+        *,
+        source_path: Optional[str] = None,
+        compact_tables: bool = True,
+    ) -> "list[Document]":
+        """PyMuPDF 우선, 문서 전체가 비었을 때만 Docling OCR로 재파싱한다."""
+        page_documents = PyMuPDFLoader(pdf_path, mode="page").load()
+        if any(str(doc.page_content or "").strip() for doc in page_documents):
+            return page_documents
+
+        _log.info(
+            "[attachment] PyMuPDF 텍스트가 비어 Docling OCR로 폴백합니다: %s",
+            os.path.basename(pdf_path),
+        )
+        try:
+            document = self._get_empty_pdf_fallback_converter().convert(
+                pdf_path,
+                raises_on_error=True,
+            ).document
+        except Exception as exc:
+            # PDF는 이후 기존 Empty document 예외를, PPT는 기존 빈 벡터 응답을 유지한다.
+            _log.warning(
+                "[attachment] Docling OCR 폴백 실패 — 기존 빈 결과를 "
+                "유지합니다: %s (%s)",
+                os.path.basename(pdf_path),
+                exc,
+            )
+            return page_documents
+
+        page_count = max(len(page_documents), document.num_pages())
+        source = source_path or pdf_path
+        return [
+            Document(
+                page_content=export_markdown(
+                    document,
+                    page_no=page_no,
+                    compact_tables=compact_tables,
+                    image_placeholder="",
+                ).strip(),
+                metadata={"source": source, "page": page_no - 1},
+            )
+            for page_no in range(1, page_count + 1)
+        ]
+
     def _load_ppt_page_documents(self, file_path: str, **kwargs: dict) -> "Optional[list[Document]]":
-        """PPT/PPTX → PDF 변환 후 PyMuPDF 페이지 파싱 + 페이지 단위 image description.
+        """PPT/PPTX → PDF 변환 후 페이지 파싱 + 페이지 단위 image description.
 
         페이지별 Document(metadata['page']=0-based) 리스트를 반환한다. PDF 변환이 불가하면
         None 을 반환해 호출부가 레거시 langchain 경로로 폴백하도록 한다.
 
-        파싱은 .pdf 첨부와 동일한 PyMuPDFLoader 를 쓴다. docling StandardPdfPipeline 은
-        레이아웃 모델을 무조건 태우면서(끌 수 없음) 정작 첨부가 쓰는 건 페이지 텍스트뿐이었고,
-        레이아웃 클러스터에 안 잡힌 텍스트(표지 문구·차트 라벨·리스트 번호 등)를 누락시켰다.
+        파싱은 .pdf 첨부와 동일하게 PyMuPDF를 우선 사용하고, 문서 전체 텍스트가 비었을
+        때만 Docling OCR로 재시도한다. 텍스트가 있는 일반 PPT는 기존 경량 경로를
+        유지한다.
         """
         pdf_path = convert_to_pdf(file_path, use_pdf_sdk=kwargs.get('use_pdf_sdk', True))
         if not pdf_path or not os.path.exists(pdf_path):
@@ -1125,7 +1198,11 @@ class DocumentProcessor:
             return None
 
         # 페이지별 네이티브 텍스트 수집(page_no 는 1-based 로 정규화)
-        page_documents = PyMuPDFLoader(pdf_path, mode="page").load()
+        page_documents = self._load_pdf_page_documents(
+            pdf_path,
+            source_path=file_path,
+            compact_tables=_resolve_compact_tables(kwargs),
+        )
         page_texts: dict[int, str] = {}
         for page_document in page_documents:
             text = str(page_document.page_content or "").strip()
@@ -1343,6 +1420,12 @@ class DocumentProcessor:
         return pdf_path
 
     def load_documents(self, file_path: str, **kwargs: dict) -> list[Document]:
+        if self.get_real_file_type(file_path) == "pdf":
+            return self._load_pdf_page_documents(
+                file_path,
+                compact_tables=_resolve_compact_tables(kwargs),
+            )
+
         loader = self.get_loader(
             file_path,
             use_pdf_sdk=kwargs.get('use_pdf_sdk', True),
@@ -1580,8 +1663,9 @@ class DocumentProcessor:
             return await self.docx_processor(request, file_path, **kwargs)
 
         elif ext in ('.ppt', '.pptx'):
-            # PPT: PDF 변환 → 경량 docling 파싱 → 페이지 단위 image description(옵션) →
-            # 페이지 기반 청킹(기본 1 page 1 chunk, chunk_size 지정 시 페이지 결합).
+            # PPT: PDF 변환 → PyMuPDF(빈 결과면 Docling OCR) → 페이지 단위
+            # image description → 페이지 기반 청킹.
+            # 기본은 1 page 1 chunk이고, chunk_size 지정 시 페이지를 결합한다.
             # 변환 실패 시에만 레거시 langchain 경로로 폴백한다.
             documents: Optional[list[Document]] = self._load_ppt_page_documents(file_path, **kwargs)
             if documents is None:

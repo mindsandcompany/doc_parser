@@ -307,9 +307,64 @@ RAG 검색용 정제는 **설정으로 하는 것이 기본**입니다. `chunkin
 
 | 자리 | 무엇을 꽂나 | 어떻게 |
 |---|---|---|
+| **값 추출 자체** | 정규식 추출, 사내 마스터 조회처럼 **LLM 이 아닌 방법** | custom_fields 의 `extractor: python` |
 | 값 변환기 | 금액 파싱, 사번 → 부서명처럼 **사이트 전용 값 변환** | `tb.register_transform()` 후 yaml `transforms:` 에서 이름으로 |
 | LLM 출력 파서 | 표준 JSON 이 아닌 응답 해석 | custom_fields yaml 의 `parser: {type: python, file, callable}` |
 | 라우트 | 표준 포맷으로 못 바꾸는 원천 | 위 [ROUTES 절](#그래도-안-되면--라우트를-직접-씁니다) |
+
+세 자리 모두 **파일은 config yaml 과 같은 폴더 아래**에 둡니다(경로 탈출은 거부됩니다).
+
+### 값 추출을 파이썬으로 — `extractor: python`
+
+문서에서 값을 뽑는 방법이 LLM·엑셀 열 매핑·JSON 키 매핑 셋뿐이었습니다. 계약번호처럼
+**규칙이 분명한 값**은 LLM 에 물을 이유가 없고, **사내 시스템에 조회해야 채워지는 값**은
+LLM 이 아예 알 수 없습니다. 그럴 때 씁니다.
+
+```yaml
+# custom_field_contract.yaml
+schema: v2
+source: {kind: document}
+python:
+  file: contract_extract.py     # 이 yaml 과 같은 폴더
+  callable: extract             # 기본값 extract
+  out: [CONTRACT_NO, AMOUNT]
+fields:
+  AMOUNT: {transform: [to_int]} # 값 파이프라인은 llm 과 완전히 같습니다
+  SRC: {const: REGEX}
+```
+
+```yaml
+# 프로세서 설정의 등록 블록
+  - custom_fields:
+      enable: true
+      doc_type: contract
+      extractor: python
+      config_file: custom_field_contract.yaml
+```
+
+```python
+# contract_extract.py
+import re
+
+CONTRACT = re.compile(r"계약번호[:\s]*([A-Z0-9-]+)")
+
+def extract(text, document=None, output_fields=None, **kwargs):
+    m = CONTRACT.search(text or "")
+    return {"CONTRACT_NO": m.group(1) if m else None, "AMOUNT": ...}
+```
+
+- **돌려주는 것은 `dict` 하나**입니다. 그 뒤는 `extractor: llm` 과 **완전히 같은 경로**를
+  탑니다 — `out` 으로 필드를 거르고, `default → const → value_map → transform → derive`
+  순서로 값을 다듬어 문서에 싣습니다. 설정으로 하던 변환과 어긋나지 않습니다.
+- `async def` 로 써도 됩니다(사내 API 조회). 인자가 부담스러우면 `def extract(text)` 만
+  선언해도 불립니다.
+- 파일이 없거나 함수 이름이 틀리면 **기동에서 실패**합니다. 첫 요청까지 미루지 않습니다.
+- `url`·`system_prompt` 같은 LLM 전용 키는 이 extractor 에서 **쓸 수 없습니다**(기동 실패).
+  표 설명(`table_text_description`) 융합도 LLM 경로 전용이라 함께 돌지 않습니다.
+- v1 표기로는 `python:` 블록 대신 `file`·`callable`·`output_fields` 를 최상위에 씁니다.
+
+돌려 볼 수 있는 예시는 `examples/facade_hooks/custom_field_regex_demo.yaml` 과
+같은 이름의 `.py` 입니다.
 
 ### 값 변환기 등록
 

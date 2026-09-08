@@ -24,9 +24,13 @@ git apply my_change.patch          # 충돌하면 patch 를 보고 손으로 반
 | `hooks_skip_table_desc.py` | `parser_processor.py` 의 `__call__` | 지정한 doc_type 에서만 표 설명을 끈다 |
 | `hooks_custom_route.py` | `parser_processor.py` 의 `ROUTES` + 새 메서드 | 표준 포맷으로 못 바꾸는 원천을 자기 라우트로 받는다 |
 | `hooks_on_chunk.py` | `chunking_processor.py` 의 `on_chunk` | 청크 한 건씩 정제하고 내부용 청크를 버린다 |
+| `custom_field_regex_demo.yaml` + `.py` | 설정 폴더 (코드 수정 없음) | `extractor: python` — 정규식으로 값을 뽑는다 |
 
 청킹 쪽 정제 예시 비교(설정 vs 훅)는 `../text_cleanup/` 에 있다.
 훅 전반의 사용법은 [facade_hooks.md](../../facade/gitbook_doc/facade_hooks.md) 를 본다.
+
+마지막 항목은 훅이 아니다 — **전처리기 파일을 고치지 않고 설정만으로** 파이썬을 꽂는
+자리다(`extractor: python`). 값 추출이 목적이라면 훅보다 이쪽이 먼저다.
 
 ## hooks_skip_table_desc.py — doc_type 으로 표 설명 끄기
 

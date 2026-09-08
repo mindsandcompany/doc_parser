@@ -1864,7 +1864,7 @@ doc_type 이 동작해야 한다면 아래 파일에 **같은 블록을 각각**
 | `동일 doc_type에 tabular custom_fields 설정이 여러 개입니다` | 같은 doc_type 에 `tabular_mapping` 블록이 2개 |
 | `동일 doc_type에 json_mapping custom_fields 설정이 여러 개입니다` | 같은 doc_type 에 `json_mapping` 블록이 2개 |
 | `tabular custom_fields config 없음: …` / `json custom_fields config 없음: …` | `config_file` 경로는 **config yaml 과 같은 폴더** 기준. 파일명만 적으세요 |
-| `지원하지 않는 custom_fields extractor: …` | `extractor` 값 오타 — 허용 값은 위 3종 표 |
+| `지원하지 않는 custom_fields extractor: …` | `extractor` 값 오타 — `llm` / `python` / `tabular_mapping` / `json_mapping` / `json_semantic` |
 | `필수 Excel 컬럼 매핑 실패` | `required` 목표필드에 대응 컬럼이 없음. `column_map` 별칭을 늘리거나 `defaults` 를 주세요 |
 | `정규화 후 중복되는 Excel 컬럼이 있습니다` | 대소문자·공백만 다른 컬럼이 한 시트에 둘 이상 |
 | xlsx 가 행별로 안 나뉨 | 매칭되는 매핑이 없으면 `formats.xlsx.processing_mode` 가 결정합니다 (`tabular` 인지 확인) |
@@ -1887,7 +1887,7 @@ doc_type 이 동작해야 한다면 아래 파일에 **같은 블록을 각각**
 
 | 하고 싶은 것 | 고칠 곳 |
 |---|---|
-| 새 **extractor 종류** 추가 (예: 정규식 기반 추출기) | `facade/enrichment/custom_fields_enricher.py` 의 `DOCUMENT_CUSTOM_FIELD_EXTRACTORS` / `TABULAR_CUSTOM_FIELD_EXTRACTORS` / `JSON_CUSTOM_FIELD_EXTRACTORS` 집합 + 해당 빌더 함수 |
+| 새 **추출 방법** (예: 정규식, 사내 마스터 조회) | 코드 수정이 아니라 `extractor: python` 을 씁니다 — 설정 폴더에 파이썬 파일을 두고 `python: {file, callable}` 로 가리킵니다([facade_hooks.md](facade_hooks.md)). 코어를 고쳐야 하는 것은 **행·레코드 단위** 추출기를 새로 만들 때뿐입니다(`TABULAR_CUSTOM_FIELD_EXTRACTORS` / `JSON_CUSTOM_FIELD_EXTRACTORS` + 빌더 함수) |
 | 새 **값 변환기** 추가 (예: 금액 파싱) | 코드 수정이 아니라 전처리기 파일에서 `tb.register_transform("won_to_int", fn)` 으로 등록하면 `transforms` 에서 이름으로 바로 쓸 수 있습니다([facade_hooks.md](facade_hooks.md) 참조). 저장소의 `field_transforms.py` 를 고치면 릴리스 갱신에서 사라집니다 |
 | 새 **element category** 추가 | 코드 수정이 아니라 `chunking_processor.py` 의 `ROW_CATEGORIES` 에 이름을 더하면 됩니다(예: `ROW_CATEGORIES = ChunkerCore.ROW_CATEGORIES | {"crm_row"}`) |
 

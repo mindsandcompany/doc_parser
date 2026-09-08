@@ -41,6 +41,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from genon.preprocessor.converters.md_math import INLINE_MATH_RE
+
 _log = logging.getLogger(__name__)
 
 # 변환 대상 정보문자열(펜스 뒤 언어 표기). "" = 언어 표기 없는 펜스.
@@ -146,9 +148,33 @@ def _looks_like_prose(body: str, min_hangul_ratio: float) -> bool:
     return hangul / (hangul + latin) >= min_hangul_ratio
 
 
+def _replace_layout_pipes(raw: str) -> str:
+    r"""레이아웃용 세로줄만 공백으로 바꾼다.
+
+    수식 안의 세로줄은 절댓값·행렬 기호라 지우면 수식이 깨진다(실측:
+    `$\left| S_t - K \right|$` 가 `$\left S_t - K \right $` 가 됐다). 수식 구간은
+    건너뛰고 나머지에만 치환을 적용한다.
+
+    수식 판정은 `md_math` 것을 그대로 쓴다. 규칙을 복사하면 한쪽만 고쳐져 두 경로가
+    갈린다. 이 전처리는 `md_math` 의 감추기보다 **앞**에서 돌기 때문에 여기서 스스로
+    비켜가야 한다 — 감추기에 맡길 수 없다.
+    """
+    if "$" not in raw:
+        return raw.replace("|", " ")
+
+    parts: list[str] = []
+    pos = 0
+    for m in INLINE_MATH_RE.finditer(raw):
+        parts.append(raw[pos : m.start()].replace("|", " "))
+        parts.append(m.group(0))
+        pos = m.end()
+    parts.append(raw[pos:].replace("|", " "))
+    return "".join(parts)
+
+
 def _clean_line(raw: str) -> str:
     """레이아웃 파이프·들여쓰기·공백 런을 걷어낸 한 줄."""
-    line = raw.replace("|", " ")
+    line = _replace_layout_pipes(raw)
     return _WS_RUN_RE.sub(" ", line).strip()
 
 
@@ -221,9 +247,37 @@ def _restore_paragraphs(body_lines: list[str]) -> str:
     units: list[list[tuple[str, str]]] = []
     cur: list[tuple[str, str]] = []
     wrap_width = _estimate_wrap_width(body_lines)
+    in_math = False
     for raw in body_lines:
-        cleaned = _clean_line(raw)
-        if not cleaned or _RULE_RE.fullmatch(cleaned):
+        # 블록 수식 줄은 파이프를 지우지 않는다. 행렬·cases 의 세로줄이 사라진다.
+        math_line = _WS_RUN_RE.sub(" ", raw).strip()
+        if in_math or math_line.startswith("$$"):
+            cleaned = math_line
+        else:
+            cleaned = _clean_line(raw)
+        if not cleaned or (not in_math and _RULE_RE.fullmatch(cleaned)):
+            continue
+
+        # 블록 수식은 통째로 단위 하나다. 앞뒤 문장과 한 단락으로 접히면 줄 첫머리의
+        # `$$` 를 잃어 뒤따르는 감추기가 블록 수식으로 알아보지 못한다. 여러 줄 수식이
+        # 한 줄로 접히는 것은 무방하다 — `$$ ... $$` 형태로 남는다.
+        if in_math:
+            cur.append((raw, cleaned))
+            if cleaned.endswith("$$"):
+                units.append(cur)
+                cur = []
+                in_math = False
+            continue
+        if cleaned.startswith("$$"):
+            if cur:
+                units.append(cur)
+                cur = []
+            cur.append((raw, cleaned))
+            if len(cleaned) >= 4 and cleaned[2:].rstrip().endswith("$$"):
+                units.append(cur)
+                cur = []
+            else:
+                in_math = True
             continue
 
         starts_unit = _UNIT_START_RE.match(cleaned) is not None

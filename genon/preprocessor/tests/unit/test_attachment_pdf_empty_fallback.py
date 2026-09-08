@@ -1,4 +1,4 @@
-"""attachment PDF의 PyMuPDF 빈 결과 → Docling OCR 폴백 단위 테스트."""
+"""attachment PDF의 PyMuPDF 빈 결과 → DotsOCR 폴백 단위 테스트."""
 
 from types import SimpleNamespace
 
@@ -29,14 +29,14 @@ def test_pdf_native_text_keeps_pymupdf_fast_path(monkeypatch):
     monkeypatch.setattr(
         processor,
         "_get_empty_pdf_fallback_converter",
-        lambda: pytest.fail("Docling fallback must not run for non-empty PDF"),
+        lambda: pytest.fail("DotsOCR fallback must not run for non-empty PDF"),
     )
 
     assert processor._load_pdf_page_documents("sample.pdf") is native
 
 
 @pytest.mark.unit
-def test_empty_pdf_falls_back_to_docling_ocr_per_page(monkeypatch):
+def test_empty_pdf_falls_back_to_dotsocr_per_page(monkeypatch):
     empty_pages = [
         Document(page_content="", metadata={"page": 0}),
         Document(page_content="  ", metadata={"page": 1}),
@@ -91,7 +91,7 @@ def test_empty_pdf_falls_back_to_docling_ocr_per_page(monkeypatch):
 
 
 @pytest.mark.unit
-def test_empty_pdf_fallback_converter_enables_full_page_korean_ocr(monkeypatch):
+def test_empty_pdf_fallback_converter_configures_dotsocr(monkeypatch):
     captured = {}
 
     class FakeDocumentConverter:
@@ -99,6 +99,20 @@ def test_empty_pdf_fallback_converter_enables_full_page_korean_ocr(monkeypatch):
             captured["format_options"] = format_options
 
     processor = object.__new__(DocumentProcessor)
+    processor._empty_pdf_fallback_layout = attachment.ps.resolve_layout_settings(
+        {},
+        {
+            "layout_model_type": "genos_layout",
+            "genos_layout": {
+                "endpoint": "http://dots.test/v1/chat/completions",
+                "model": "dots-mocr",
+                "table_fallback_enabled": False,
+            },
+        },
+    )
+    processor._empty_pdf_fallback_pdf = attachment.ps.resolve_pdf_basics(
+        {"images_scale": 2, "table_structure_mode": "accurate"}
+    )
     monkeypatch.setattr(attachment, "DocumentConverter", FakeDocumentConverter)
 
     first = processor._get_empty_pdf_fallback_converter()
@@ -107,10 +121,22 @@ def test_empty_pdf_fallback_converter_enables_full_page_korean_ocr(monkeypatch):
     assert first is second
     format_option = captured["format_options"][attachment.InputFormat.PDF]
     pdf_options = format_option.pipeline_options
-    assert pdf_options.do_ocr is True
+    assert pdf_options.do_ocr is False
     assert pdf_options.do_table_structure is True
-    assert pdf_options.ocr_options.force_full_page_ocr is True
-    assert pdf_options.ocr_options.lang == ["ko", "en"]
+    assert (
+        pdf_options.table_structure_options.table_structure_model_type
+        == attachment.TableStructureModelType.DOTSOCR
+    )
+    assert pdf_options.layout_options.layout_model_type.value == "genos_layout"
+    assert (
+        pdf_options.layout_options.genos_layout_options.endpoint
+        == "http://dots.test/v1/chat/completions"
+    )
+    assert pdf_options.layout_options.genos_layout_options.model == "dots-mocr"
+    assert pdf_options.layout_options.genos_layout_options.table_fallback_enabled is False
+    assert pdf_options.images_scale == 2
+    assert pdf_options.generate_page_images is False
+    assert pdf_options.generate_picture_images is False
 
 
 @pytest.mark.unit

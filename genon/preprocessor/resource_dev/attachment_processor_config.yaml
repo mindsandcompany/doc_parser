@@ -8,6 +8,30 @@ defaults:
   # 입력 포맷 자동 PDF 변환 엔진 선택 (ppt/txt/md/img→pdf, hwp 폴백 등 전 변환 경로 공용)
   use_pdf_sdk: true
 
+# PyMuPDF가 PDF/PPT 변환본 전체에서 텍스트를 찾지 못한 경우에만 쓰는 DotsOCR 설정.
+layout:
+  layout_model_type: "genos_layout"
+  genos_layout:
+    endpoint: "http://192.168.75.174:26001/v1/chat/completions"
+    api_key: ""
+    max_completion_tokens: 16384
+    model: "dots-mocr"
+    timeout: 1200
+    retry_count: 2
+    temperature: 0.1
+    top_p: 0.9
+    repetition_penalty: 1.15
+    length_fallback_enabled: true
+    fallback_dpi: 200
+    # attachment 폴백은 속도 우선: DotsOCR가 준 표만 사용하고 로컬 TableFormer는 띄우지 않는다.
+    table_fallback_enabled: false
+
+pdf_pipeline:
+  num_threads: 8
+  device: "auto"
+  images_scale: 2
+  table_structure_mode: "accurate"
+
 # 포맷별 옵션 컨테이너
 formats:
   # HWP/HWPX: SDK 백엔드 파싱 옵션
@@ -19,9 +43,9 @@ formats:
     # 이미지 저장 여부
     save_images: true
 
-  # PPT(ppt/pptx): PDF 변환 → 경량 docling 파싱 → 페이지 기반 청킹(기본 1 page 1 chunk,
+  # PPT(ppt/pptx): PDF 변환 → PyMuPDF 파싱 → 페이지 기반 청킹(기본 1 page 1 chunk,
   # chunk_size 지정 시 연속 페이지 결합). page_description 으로 "페이지 자체"를 VLM 설명.
-  # (첨부용은 dotsocr 미수행 + do_ocr=false 최소 파싱, bbox 미추출)
+  # 문서 전체의 텍스트가 비었을 때만 위 DotsOCR 설정으로 재파싱한다.
   ppt:
     # 첨부용은 속도 우선: 병렬도↑, 이미지/출력 축소, 간결 프롬프트.
     page_description:

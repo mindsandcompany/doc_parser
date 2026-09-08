@@ -25,6 +25,7 @@ from genon.preprocessor.facade.common import vector_meta as vm
 from genon.preprocessor.facade.common import runtime as rt
 from genon.preprocessor.facade.common import file_probe as fp
 from genon.preprocessor.facade.common import pdf_convert as pc
+from genon.preprocessor.facade.common import pipeline_setup as ps
 from genon.preprocessor.facade.chunking import hybrid_chunker as hc
 
 _as_dict = cp.as_dict
@@ -77,9 +78,9 @@ except (ImportError, OSError):
 
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
-    EasyOcrOptions,
     PdfPipelineOptions,
     PipelineOptions,
+    TableStructureModelType,
 )
 from docling.datamodel.document import ConversionResult
 from docling.pipeline.simple_pipeline import SimplePipeline
@@ -907,6 +908,8 @@ class DocumentProcessor:
         generic_chunk_cfg = _as_dict(chunking_cfg.get("generic"))
         recursive_chunk_cfg = _as_dict(chunking_cfg.get("recursive"))
         hybrid_chunk_cfg = _as_dict(chunking_cfg.get("hybrid"))
+        layout_cfg = _as_dict(cfg.get("layout"))
+        pdf_cfg = _as_dict(cfg.get("pdf_pipeline"))
         loaders_cfg = _as_dict(cfg.get("loaders"))
         image_loader_cfg = _as_dict(loaders_cfg.get("image"))
         tabular_loader_cfg = _as_dict(loaders_cfg.get("tabular"))
@@ -919,6 +922,10 @@ class DocumentProcessor:
         hwp_fmt_cfg = _as_dict(formats_cfg.get("hwp"))
         ppt_pd_cfg = _as_dict(ppt_fmt_cfg.get("page_description"))
         self._page_desc_options = PageDescriptionOptions.from_config(ppt_pd_cfg, self._config_dir)
+
+        # PyMuPDF가 문서 전체에서 텍스트를 찾지 못할 때만 생성하는 DotsOCR 파이프라인 설정.
+        self._empty_pdf_fallback_layout = ps.resolve_layout_settings(cfg, layout_cfg)
+        self._empty_pdf_fallback_pdf = ps.resolve_pdf_basics(pdf_cfg)
 
         # 청킹용 토크나이저 (chunking config 기반; 미지정 시 현행 기본값)
         self._tokenizer = _resolve_tokenizer(chunking_cfg)
@@ -1111,18 +1118,24 @@ class DocumentProcessor:
         return images
 
     def _get_empty_pdf_fallback_converter(self) -> DocumentConverter:
-        """PyMuPDF가 텍스트를 전혀 추출하지 못한 PDF용 Docling OCR 컨버터."""
+        """PyMuPDF가 텍스트를 전혀 추출하지 못한 PDF용 DotsOCR 컨버터."""
         converter = getattr(self, "_empty_pdf_fallback_converter", None)
         if converter is not None:
             return converter
 
         options = PdfPipelineOptions()
-        options.do_ocr = True
+        options.do_ocr = False
         options.do_table_structure = True
-        options.ocr_options = EasyOcrOptions(
-            force_full_page_ocr=True,
-            lang=["ko", "en"],
+        options.table_structure_options.table_structure_model_type = (
+            TableStructureModelType.DOTSOCR
         )
+
+        layout = self._empty_pdf_fallback_layout
+        pdf = self._empty_pdf_fallback_pdf
+        ps.apply_layout_settings(options, layout)
+        options.accelerator_options = pdf.accelerator_options
+        options.images_scale = pdf.images_scale
+        options.table_structure_options.mode = pdf.table_structure_mode
         options.generate_page_images = False
         options.generate_picture_images = False
         converter = DocumentConverter(
@@ -1140,13 +1153,13 @@ class DocumentProcessor:
         source_path: Optional[str] = None,
         compact_tables: bool = True,
     ) -> "list[Document]":
-        """PyMuPDF 우선, 문서 전체가 비었을 때만 Docling OCR로 재파싱한다."""
+        """PyMuPDF 우선, 문서 전체가 비었을 때만 DotsOCR로 재파싱한다."""
         page_documents = PyMuPDFLoader(pdf_path, mode="page").load()
         if any(str(doc.page_content or "").strip() for doc in page_documents):
             return page_documents
 
         _log.info(
-            "[attachment] PyMuPDF 텍스트가 비어 Docling OCR로 폴백합니다: %s",
+            "[attachment] PyMuPDF 텍스트가 비어 DotsOCR로 폴백합니다: %s",
             os.path.basename(pdf_path),
         )
         try:
@@ -1157,7 +1170,7 @@ class DocumentProcessor:
         except Exception as exc:
             # PDF는 이후 기존 Empty document 예외를, PPT는 기존 빈 벡터 응답을 유지한다.
             _log.warning(
-                "[attachment] Docling OCR 폴백 실패 — 기존 빈 결과를 "
+                "[attachment] DotsOCR 폴백 실패 — 기존 빈 결과를 "
                 "유지합니다: %s (%s)",
                 os.path.basename(pdf_path),
                 exc,
@@ -1186,7 +1199,7 @@ class DocumentProcessor:
         None 을 반환해 호출부가 레거시 langchain 경로로 폴백하도록 한다.
 
         파싱은 .pdf 첨부와 동일하게 PyMuPDF를 우선 사용하고, 문서 전체 텍스트가 비었을
-        때만 Docling OCR로 재시도한다. 텍스트가 있는 일반 PPT는 기존 경량 경로를
+        때만 DotsOCR로 재시도한다. 텍스트가 있는 일반 PPT는 기존 경량 경로를
         유지한다.
         """
         pdf_path = convert_to_pdf(file_path, use_pdf_sdk=kwargs.get('use_pdf_sdk', True))

@@ -12,7 +12,7 @@
 | 파일 | 줄수 | 고칠 자리 |
 |---|---:|---|
 | `facade/parser_processor.py` | 101 | `ROUTES` · `pre_source` · `post_parse` |
-| `facade/chunking_processor.py` | 113 | `GenOSVectorMeta` · `GenosSmartChunker` · `ROW_CATEGORIES` · `pre_chunk` · `post_chunk` |
+| `facade/chunking_processor.py` | 123 | `GenOSVectorMeta` · `GenosSmartChunker` · `ROW_CATEGORIES` · `pre_chunk` · `on_chunk` · `post_chunk` |
 
 처리 본체는 `facade/core/` 에 있고 **열어 볼 일이 없습니다.** 열어야 했다면 그건 훅이
 부족하다는 뜻이니 알려 주세요.
@@ -21,7 +21,7 @@
 
 ```
 파싱   요청 → 확장자 판정 → ROUTES → [pre_source] → 파싱 → [post_parse] → 응답
-청킹   파서 결과 → 형태 판별 → [pre_chunk] → 분할·벡터 조합 → [post_chunk] → 응답
+청킹   파서 결과 → 형태 판별 → [pre_chunk] → 분할 → [on_chunk] → 벡터 조합 → [post_chunk] → 응답
 ```
 
 `__call__` 을 열어 보면 이 순서가 그대로 적혀 있습니다.
@@ -216,7 +216,51 @@ API 라 그 값은 호출자용 정보로 끝납니다. `tb.set_chunk_metadata()
         return tb.refresh_stats(kept)                  # 아래 주의사항
 ```
 
+## on_chunk — 청크 한 건씩 손보거나 버립니다
+
+**본문을 고치거나 청크를 버리는 일은 `post_chunk` 가 아니라 여기서 하세요.** 통계와 순번이
+붙기 전이라 코어가 알아서 맞춰 줍니다 — `refresh_stats` 를 부를 필요가 없습니다.
+
+```python
+    def on_chunk(self, text, info, **kwargs):
+        if "상담직원용" in text:
+            return tb.DROP                 # 이 청크를 버립니다
+        return text.replace("■", "")       # 고친 본문을 돌려줍니다
+```
+
+돌려주는 값의 뜻은 셋입니다.
+
+| 값 | 뜻 |
+|---|---|
+| 문자열 | 그 문자열이 청크 본문이 됩니다 |
+| `None` | 손대지 않습니다. `return` 을 빠뜨려도 청크가 사라지지 않습니다 |
+| `tb.DROP` | 이 청크를 버립니다. 순번·개수는 코어가 다시 맞춥니다 |
+
+빈 문자열이나 공백만 돌려줘도 버린 것으로 봅니다(빈 청크는 적재 의미가 없습니다).
+
+`info` 는 **경로가 달라도 모양이 같습니다.** 문서·레코드·평문 어느 원천이든 훅 한 벌로
+처리할 수 있습니다.
+
+| 키 | 값 |
+|---|---|
+| `kind` | `"docling"`(문서) · `"row"`(레코드/표 행) · `"text"`(그 밖) |
+| `page` | 1-based 페이지 |
+| `index` | 현재 순번. 버리면 다시 매겨지므로 참고용입니다 |
+| `headings` | 섹션 경로 목록. `docling` 경로만 채워집니다 |
+| `metadata` | `row` 는 레코드 metadata, `docling` 은 문서 메타 |
+
+`text` 는 접두와 `HEADER:` 라인까지 **붙은 뒤**의 본문입니다. 훅이 돌려준 값에 마스킹·정제·
+표기형태 변형이 뒤이어 적용됩니다.
+
+> 첫 청크 전용 접두(`body.once`)는 **살아남은 첫 청크**가 받습니다. 0번을 버려도 문서
+> 식별 정보가 사라지지 않습니다.
+>
+> 두 경로는 이 훅을 타지 않습니다 — 음성 전사(`[AUDIO]`)와 legacy tabular(`[DA]`)는
+> 파일 하나가 청크 하나라 `post_chunk` 로 충분합니다.
+
 ### post_chunk 에서 본문을 고치면 refresh_stats 를 부르세요
+
+(본문 수정·청크 버리기는 위 `on_chunk` 가 낫습니다. 이 절은 그 밖의 손질에 해당합니다.)
 
 `n_char`·`n_word`·`n_line` 과 청크 순번(`i_chunk_on_doc` 등)은 청킹이 끝날 때 계산됩니다.
 `post_chunk` 는 그 뒤라서, 본문을 고치거나 청크를 버려도 이 값들이 **옛 값으로 남습니다**
@@ -235,12 +279,13 @@ RAG 검색용 정제는 **설정으로 하는 것이 기본**입니다. `chunkin
 | 방식 | 정제하는 자리 | 쓰는 때 |
 |---|---|---|
 | yaml | `chunking.text_cleanup` | 전 문서 공통 |
-| `post_chunk` | 이 파일 | 특정 doc_type 만 |
+| `on_chunk` | 이 파일 | 특정 doc_type 만 (통계가 자동으로 맞습니다) |
 | 둘 다 | 공통은 yaml, 예외만 훅 | 대부분의 실제 사이트 |
 
 설정 규칙은 **청킹 입력**에 걸리므로 삭제가 청크 경계와 `n_char` 에 반영되고, LLM 보강이
-보는 텍스트까지 같이 깨끗해집니다. `post_chunk` 는 완성된 청크를 손보므로 그 두 이점이
-없습니다. 그래서 `text_cleanup` 이 doc_type 을 가릴 수 없을 때만 훅을 씁니다.
+보는 텍스트까지 같이 깨끗해집니다. 훅은 이미 잘린 청크를 손보므로 경계는 되돌리지 못합니다
+(`on_chunk` 는 `n_char` 까지는 맞춰 줍니다). 그래서 `text_cleanup` 이 doc_type 을 가릴 수
+없을 때만 훅을 씁니다.
 
 **전부 지우면 안 됩니다.** 실측(상담 HTML 1건, 청크 11건 / 2,582자)에서 특수문자 225개 중
 지워서 이득인 것은 장식 마커(`■ ◈ ※ ☎`) 13개와 미해독 엔티티(`&gt;`) 3개뿐이었습니다.
@@ -321,6 +366,7 @@ from genon.preprocessor.facade.core import toolbox as tb
 | 청크 메타 | `set_chunk_metadata` + 예약 키 4개 |
 | 청크 통계 | `refresh_stats` (post_chunk 로 본문을 고쳤을 때) |
 | 확장 등록 | `register_transform` (사이트 전용 값 변환기) · `make_elements` (커스텀 라우트 산출) |
+| on_chunk 반환 | `DROP` (이 청크를 버린다) |
 
 ## 고쳤으면 확인합니다
 

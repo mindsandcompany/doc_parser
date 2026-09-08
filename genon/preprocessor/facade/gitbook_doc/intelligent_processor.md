@@ -636,7 +636,7 @@ field_transforms:
 - **키 이름 변경**: 프롬프트가 `doc_date` 로 추출하면 `source: [doc_date]` 로만 바꿔도 `created_date` 가 동일하게 채워집니다.
 - **fallback**: 추출이 비고 본문에 `"보고자료 2024-01-15 기준"` 이 있으면 `created_date: 20240115` 로 보강됩니다.
 - intelligent 의 기본 변환은 `created_date` 입니다 (convert 는 `created_date` + `authors`).
-- 신규 변환기/보조추출은 `field_transforms.py` 의 `VALUE_TRANSFORMS` / `FALLBACK_STRATEGIES` 에 등록하면 YAML 에서 바로 사용 가능합니다.
+- 신규 변환기/보조추출은 `field_transforms.py` 의 `VALUE_TRANSFORMS` / `FALLBACK_STRATEGIES` 에 등록하면 YAML 에서 바로 사용 가능합니다. 사이트 전용 변환기는 저장소를 고치지 말고 전처리기 파일에서 `tb.register_transform()` 으로 등록합니다.
 
 #### doc_summary
 

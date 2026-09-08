@@ -116,6 +116,40 @@
 **먼저 ROUTES 에 등록한 다음 시험하세요.** 등록 전에 넣으면 캐치올(`route_other`)이 받아
 결과가 달라집니다.
 
+### 그래도 안 되면 — 라우트를 직접 씁니다
+
+로그·고정폭 텍스트·사내 전문 포맷처럼 **표준 포맷 어느 것으로도 못 바꾸는 원천**은
+핸들러를 직접 만듭니다. 그 핸들러도 **이 파일에 둡니다** — core 는 여전히 안 고칩니다.
+
+```python
+    ROUTES = (((".log",), "route_log"),) + (... 기존 표 그대로 ...)
+
+    async def route_log(self, file_path, ext, ctx, **kwargs):
+        lines = [l for l in tb.read_text_with_fallback(file_path).splitlines() if l.strip()]
+        return {"elements": tb.make_elements(lines)}
+```
+
+계약은 셋뿐입니다.
+
+| | |
+|---|---|
+| 시그니처 | `async def route_<이름>(self, file_path, ext, ctx, **kwargs) -> dict \| None` |
+| 응답 | `{"elements": [...]}` 만 채우면 됩니다. `content`·`usage` 는 core 가 채웁니다 |
+| 폴스루 | `None` 을 돌려주면 `ROUTES` 의 다음 후보로 넘어갑니다 |
+
+`tb.make_elements()` 가 `id`·`page`·`coordinates` 같은 배관 필드를 채웁니다. 원소는
+문자열이거나 dict 이고, **행 1개 = 청크 1개**로 적재하려면 category 를 바꿉니다.
+
+```python
+        return {"elements": tb.make_elements(
+            [{"content": row["본문"], "metadata": {"ORDER_NO": row["주문번호"]}} for row in rows],
+            category="custom_fields_row",   # 청커의 행 기반 경로로 보냅니다
+        )}
+```
+
+실측: 위 `.log` 예시 그대로 3줄 파일을 파싱하면 element 3개, 이어서 청킹하면 청크 3개가
+나옵니다. 돌려 볼 수 있는 예시는 `examples/facade_hooks/hooks_custom_route.py` 입니다.
+
 ### 엑셀은 원하는 라이브러리로 다뤄도 됩니다
 
 2차원 행 목록, pandas·polars `DataFrame`, `list[dict]` 중 무엇으로 돌려줘도 받습니다.
@@ -221,6 +255,52 @@ RAG 검색용 정제는 **설정으로 하는 것이 기본**입니다. `chunkin
 
 어느 방식이든 청크 본문이 바뀌므로 **재색인이 필요합니다.**
 
+## 파이썬을 꽂을 수 있는 자리 3곳
+
+훅 말고도 **설정에서 이름을 부르면 실행되는** 자리가 셋 있습니다. 훅보다 좁고 정확해서,
+해당되면 이쪽이 먼저입니다.
+
+| 자리 | 무엇을 꽂나 | 어떻게 |
+|---|---|---|
+| 값 변환기 | 금액 파싱, 사번 → 부서명처럼 **사이트 전용 값 변환** | `tb.register_transform()` 후 yaml `transforms:` 에서 이름으로 |
+| LLM 출력 파서 | 표준 JSON 이 아닌 응답 해석 | custom_fields yaml 의 `parser: {type: python, file, callable}` |
+| 라우트 | 표준 포맷으로 못 바꾸는 원천 | 위 [ROUTES 절](#그래도-안-되면--라우트를-직접-씁니다) |
+
+### 값 변환기 등록
+
+`custom_field_*.yaml` 의 `transforms:` 는 등록된 이름만 받습니다. 사이트 전용 변환은
+**core 를 고치지 말고** 전처리기 파일 최상위에서 등록하세요 — core 를 고치면 릴리스
+통째 갱신에서 사라집니다.
+
+```python
+tb.register_transform("won_to_int", lambda v: int(str(v).replace(",", "").replace("원", "")))
+```
+
+```yaml
+transforms:
+  AMT: [won_to_int]        # '1,200원' -> 1200
+```
+
+설정으로 하던 변환과 **같은 파이프라인**을 타므로 `value_map` · `derive` 와 순서가
+어긋나지 않습니다. 인자가 필요한 변환은 클로저로 감싸 인자 없는 함수로 만드세요.
+
+### LLM 출력 파서
+
+`extractor: llm` 의 응답이 표준 JSON 이 아니면 설정 디렉터리 안의 파이썬으로 해석합니다.
+파일은 config yaml 과 **같은 폴더 아래**에 두어야 합니다(경로 탈출은 거부됩니다).
+
+```yaml
+parser:
+  type: python
+  file: my_parser.py       # config yaml 과 같은 폴더 기준
+  callable: parse          # 기본값 parse
+```
+
+```python
+def parse(llm_output, output_fields=None, **kwargs) -> dict:
+    return {...}           # dict 를 돌려주지 않으면 기동에 실패합니다
+```
+
 ## toolbox — 이미 있는 기능을 씁니다
 
 ```python
@@ -240,6 +320,7 @@ from genon.preprocessor.facade.core import toolbox as tb
 | md·html | `promote_markdown_marker_headings` `unfence_text` `precheck_html` `marker_heading_match` |
 | 청크 메타 | `set_chunk_metadata` + 예약 키 4개 |
 | 청크 통계 | `refresh_stats` (post_chunk 로 본문을 고쳤을 때) |
+| 확장 등록 | `register_transform` (사이트 전용 값 변환기) · `make_elements` (커스텀 라우트 산출) |
 
 ## 고쳤으면 확인합니다
 

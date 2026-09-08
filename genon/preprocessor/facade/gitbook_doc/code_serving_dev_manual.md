@@ -1870,7 +1870,7 @@ doc_type 이 동작해야 한다면 아래 파일에 **같은 블록을 각각**
 | xlsx 가 행별로 안 나뉨 | 매칭되는 매핑이 없으면 `formats.xlsx.processing_mode` 가 결정합니다 (`tabular` 인지 확인) |
 | json 레코드가 청크로 안 나옴 | `records` 키 이름 확인. 또는 `text_fields` 가 모두 비어 청크 본문이 없는 경우 — `본문이 빈 레코드 N/M건을 제외했습니다` 경고를 보세요(LLM 요약 실패가 흔한 원인) |
 | json 레코드가 **전건** skip 됨 | `skipped N/N records (missing required)` 경고 확인. 원천 키 표기가 `key_map` 별칭과 달라 `required` 필드가 null 이 된 경우입니다 — 별칭을 늘리거나, 원천에 아예 없는 필드면 `required` 에서 빼고 `defaults`/`constants` 로 채우세요 |
-| `등록되지 않은 transforms 변환기: …` | `transforms` 에 없는 변환기 이름. `field_transforms.VALUE_TRANSFORMS` 에 등록된 것만 쓸 수 있습니다 |
+| `등록되지 않은 transforms 변환기: …` | `transforms` 에 없는 변환기 이름. 출고 변환기이거나 `tb.register_transform` 으로 등록한 것만 쓸 수 있습니다 |
 | 필드는 안 붙는데 `doc_type` 만 모든 청크에 붙음 | 매칭되는 블록이 없는 상태. 스탬프(위 3번)는 docling 계열 포맷이면 매칭 여부와 무관하게 동작합니다 |
 | csv/xlsx 인데 `doc_type` 조차 안 붙음 | 정상입니다. csv/xlsx 는 **매칭되는 행 매핑이 있을 때만** `doc_type` 이 실립니다 |
 
@@ -1888,7 +1888,7 @@ doc_type 이 동작해야 한다면 아래 파일에 **같은 블록을 각각**
 | 하고 싶은 것 | 고칠 곳 |
 |---|---|
 | 새 **extractor 종류** 추가 (예: 정규식 기반 추출기) | `facade/enrichment/custom_fields_enricher.py` 의 `DOCUMENT_CUSTOM_FIELD_EXTRACTORS` / `TABULAR_CUSTOM_FIELD_EXTRACTORS` / `JSON_CUSTOM_FIELD_EXTRACTORS` 집합 + 해당 빌더 함수 |
-| 새 **값 변환기** 추가 (예: 금액 파싱) | `facade/enrichment/field_transforms.py` 에 함수 작성 후 `VALUE_TRANSFORMS` 에 등록. 그러면 `transforms` 에서 이름으로 바로 쓸 수 있습니다 |
+| 새 **값 변환기** 추가 (예: 금액 파싱) | 코드 수정이 아니라 전처리기 파일에서 `tb.register_transform("won_to_int", fn)` 으로 등록하면 `transforms` 에서 이름으로 바로 쓸 수 있습니다([facade_hooks.md](facade_hooks.md) 참조). 저장소의 `field_transforms.py` 를 고치면 릴리스 갱신에서 사라집니다 |
 | 새 **element category** 추가 | 코드 수정이 아니라 `chunking_processor.py` 의 `ROW_CATEGORIES` 에 이름을 더하면 됩니다(예: `ROW_CATEGORIES = ChunkerCore.ROW_CATEGORIES | {"crm_row"}`) |
 
 > 새 category 를 만들기보다 **`custom_fields_row` 를 그대로 재사용**하는 쪽이 안전합니다.

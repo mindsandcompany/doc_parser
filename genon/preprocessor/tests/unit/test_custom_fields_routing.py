@@ -282,11 +282,12 @@ def test_tabular_mapping_rejects_missing_required_column(tmp_path):
         mapper.to_parse_format(data, "faq")
 
 
+@pytest.mark.asyncio
 @pytest.mark.unit
 @pytest.mark.parametrize("category", ["tabular_row", "custom_fields_row", "faq_row"])
-def test_chunker_accepts_generic_and_legacy_row_categories(category):
+async def test_chunker_accepts_generic_and_legacy_row_categories(category):
     processor = object.__new__(ChunkProcessor)
-    vectors = processor._chunk_parse_format([{
+    vectors = await processor._chunk_parse_format([{
         "category": category,
         "content": "질문\n답변",
         "page": 1,
@@ -897,8 +898,9 @@ def test_db_column_style_target_names_pass(tmp_path):
     assert set(mapper.config["column_map"]) == {"TITLE", "GROUP_C", "SRC_LAST_MOD_DT"}
 
 
+@pytest.mark.asyncio
 @pytest.mark.unit
-def test_row_metadata_validation_failure_is_wrapped_with_stage():
+async def test_row_metadata_validation_failure_is_wrapped_with_stage():
     """청커의 예약필드 충돌은 raw ValidationError 가 아니라 stage 를 가진 예외로 올라간다.
 
     raw 로 두면 pydantic ValidationError 가 ValueError 하위라 업로드 파일 문제(INPUT_ERROR)로
@@ -911,7 +913,7 @@ def test_row_metadata_validation_failure_is_wrapped_with_stage():
         "metadata": {"title": None, "GROUP_C": "SLF", "doc_type": "notice"},
     }]
     with pytest.raises(cp.GenosServiceException) as exc:
-        cp.DocumentProcessor._chunk_custom_fields_rows(proc, elements)
+        await cp.DocumentProcessor._chunk_custom_fields_rows(proc, elements)
     assert exc.value.stage == "custom_fields"
     assert "title" in exc.value.error_msg
 

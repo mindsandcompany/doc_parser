@@ -36,6 +36,10 @@ from genon.preprocessor.facade.enrichment.field_transforms import register_trans
 # ROUTES 에 자기 route_* 를 만들었을 때 응답 element 를 만드는 데 쓴다.
 from genon.preprocessor.facade.serialize.parse_format import make_elements
 
+# ── on_chunk 반환값 ─────────────────────────────────────────────────────────
+# 이 청크를 버린다는 표식. None 은 "안 바꿈" 이라 버리는 것은 명시해야 한다.
+from genon.preprocessor.facade.common.hooks import DROP
+
 # ── 엑셀·CSV ────────────────────────────────────────────────────────────────
 from genon.preprocessor.converters.xlsx_processor import (
     load_sheets,      # 파일 -> {시트명: 2차원 행}. 병합셀은 펴진 상태
@@ -141,7 +145,7 @@ def refresh_stats(vectors, reindex: bool = True):
 __all__ = [
     "json_to_markdown", "strip_inline_html", "date_int", "date_int_flex", "html_text",
     "regex_extract", "regex_sub", "text", "text_norm", "to_int", "truncate",
-    "register_transform", "make_elements",
+    "register_transform", "make_elements", "DROP",
     "load_sheets", "load_tables",
     "collect_text_fields", "detect_format",
     "render_plain_text", "render_table", "sanitize_table_html",

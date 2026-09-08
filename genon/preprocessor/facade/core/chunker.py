@@ -519,6 +519,10 @@ class ChunkerCore:
         chunk_index_on_page = 0
         vectors = []
         upload_tasks = []
+        # 첫 청크 전용 접두를 아직 못 붙였는지. on_chunk 가 첫 청크를 버리면 그 접두가
+        # 문서에서 통째로 사라지므로, 살아남은 첫 청크가 받는다(문서당 1회 계약).
+        _first_prefix_pending = bool(_first_prefix_text)
+        _dropped = 0
         for chunk_idx, chunk in enumerate(chunks):
             chunk_page = chunk.meta.doc_items[0].prov[0].page_no if chunk.meta.doc_items[0].prov else 0
             # 청크 선두에 섹션 경로 부착 (HEADER: ). 여기가 유일한 부착 지점이며,
@@ -526,10 +530,18 @@ class ChunkerCore:
             headers_text = _build_header_line(chunk.meta.headings, _include_header, self.CHUNKER)
             # 접두는 헤더 앞이다 — 문서 식별(카드명·문의유형)이 섹션 경로보다 앞에 와야
             # 청크만 떼어 봤을 때 "무엇에 대한 글인지" 가 먼저 읽힌다.
-            # 첫 청크 전용 접두는 chunk_idx 0 에서만 붙는다(문서당 1회 계약).
             content = (_prefix_text
-                       + (_first_prefix_text if chunk_idx == 0 else "")
+                       + (_first_prefix_text if _first_prefix_pending else "")
                        + headers_text + chunk.text)
+
+            # [중간] on_chunk — 통계·순번이 붙기 전이라 고친 결과가 그대로 반영된다.
+            content, _drop = await self._hook_chunk(
+                content, kwargs, kind="docling", page=chunk_page, index=chunk_idx,
+                headings=chunk.meta.headings, metadata=merged_metadata)
+            if _drop:
+                _dropped += 1
+                continue
+            _first_prefix_pending = False
 
             # appendix 추출 !! appendix feature (2025-09-30, geonhee kim) !!
             matched_appendices = self.check_appendix_keywords(content, appendix_list)
@@ -585,6 +597,10 @@ class ChunkerCore:
         if upload_tasks:
             await asyncio.gather(*upload_tasks)
 
+        if _dropped:
+            # n_chunk_of_doc / page 개수는 루프 전에 계산해 둔 값이라 다시 맞춰야 한다.
+            _log.info(f"[chunker] on_chunk 가 청크 {_dropped}건을 버렸습니다 → 순번 재계산")
+            vm.refresh_stats(vectors)
         return vectors
 
     def get_media_files(self, doc_items: list, include_tables: bool = False):
@@ -699,7 +715,7 @@ class ChunkerCore:
         chunk_overlap = min(max(int(overlap), 0), chunk_size - 1)
         return chunk_size, chunk_overlap
 
-    def _chunk_text_elements(self, elements: list, **kwargs: dict) -> list:
+    async def _chunk_text_elements(self, elements: list, **kwargs: dict) -> list:
         """parse-format element 들을 RecursiveCharacterTextSplitter 로 청킹한다.
 
         legacy attachment_processor.split_documents/compose_vectors 와 동일한 동작.
@@ -766,9 +782,16 @@ class ChunkerCore:
         vectors = []
         current_page = None
         chunk_index_on_page = 0
+        dropped = 0
         for idx, c in enumerate(chunks):
             page = c.metadata.get("page", 1)
             text = c.page_content
+            # [중간] on_chunk — 통계·순번이 붙기 전이다.
+            text, _drop = await self._hook_chunk(
+                text, kwargs, kind="text", page=page, index=idx)
+            if _drop:
+                dropped += 1
+                continue
             if page != current_page:
                 current_page = page
                 chunk_index_on_page = 0
@@ -802,6 +825,9 @@ class ChunkerCore:
                 **global_metadata,
             }))
             chunk_index_on_page += 1
+        if dropped:
+            _log.info(f"[chunker] on_chunk 가 청크 {dropped}건을 버렸습니다 → 순번 재계산")
+            vm.refresh_stats(vectors)
         return vectors
 
     def _expand_table_rows(self, rows: list, **kwargs: dict) -> list:
@@ -892,7 +918,7 @@ class ChunkerCore:
             )
         return expanded
 
-    def _chunk_custom_fields_rows(self, elements: list, **kwargs: dict) -> list:
+    async def _chunk_custom_fields_rows(self, elements: list, **kwargs: dict) -> list:
         """행별 tabular/custom_fields element → 행마다 청크 1개.
 
         일반 tabular_row는 원본 컬럼 metadata를, custom_fields_row는 목표필드 + doc_type metadata를
@@ -947,12 +973,20 @@ class ChunkerCore:
         vectors: list = []
         current_page = None
         chunk_index_on_page = 0
+        dropped = 0
         for idx, el in enumerate(rows):
             page = _page_of(el)
+            text = str(el.get("content", "") or "")
+            # [중간] on_chunk — 레코드 metadata 를 함께 넘겨 doc_type 별 판정을 돕는다.
+            text, _drop = await self._hook_chunk(
+                text, kwargs, kind="row", page=page, index=idx,
+                metadata=el.get("metadata"))
+            if _drop:
+                dropped += 1
+                continue
             if page != current_page:
                 current_page = page
                 chunk_index_on_page = 0
-            text = str(el.get("content", "") or "")
             # 표기형태 변형은 마스킹·정제 이전 텍스트에서 만들고 같은 후처리를 거친다.
             # 순서를 바꾸면 가드레일로 가린 값이 변형 필드로 평문 유출된다.
             variant_values = tv.field_values_for_text(
@@ -1004,9 +1038,12 @@ class ChunkerCore:
                     stage="custom_fields",
                 ) from exc
             chunk_index_on_page += 1
+        if dropped:
+            _log.info(f"[chunker] on_chunk 가 청크 {dropped}건을 버렸습니다 → 순번 재계산")
+            vm.refresh_stats(vectors)
         return vectors
 
-    def _chunk_parse_format(self, elements: list, **kwargs: dict) -> list:
+    async def _chunk_parse_format(self, elements: list, **kwargs: dict) -> list:
         """parse-format( {"elements":[...]} ) 출력을 legacy 동작으로 청킹한다.
 
         포맷은 element 내용으로 식별(파일 확장자 불필요):
@@ -1032,7 +1069,7 @@ class ChunkerCore:
         non_empty_all = [el for el in elements if isinstance(el, dict)]
         if non_empty_all and any(
                 el.get("category") in self.ROW_CATEGORIES for el in non_empty_all):
-            return self._chunk_custom_fields_rows(non_empty_all, **kwargs)
+            return await self._chunk_custom_fields_rows(non_empty_all, **kwargs)
 
         # 1) audio 가드 — parser 전사 결과는 content 가 "[AUDIO]" 접두사로 시작한다.
         for el in elements:
@@ -1052,7 +1089,7 @@ class ChunkerCore:
                 "[DA] " + joined, _cleanup_in, **self._text_variant_options(**kwargs))]
 
         # 3) 공통 텍스트 경로
-        return self._chunk_text_elements(elements, **kwargs)
+        return await self._chunk_text_elements(elements, **kwargs)
 
     async def __call__(self, request: Request, file_path: str = "", **kwargs: dict):
         """파싱 결과를 입력받아 청킹만 수행한다 (Chunk API, #284).
@@ -1125,6 +1162,45 @@ class ChunkerCore:
         """
         return vectors
 
+    def on_chunk(self, text, info, **kwargs):
+        """[중간] 청크 한 건이 만들어진 직후. 본문을 고치거나 그 청크를 버린다.
+
+        post_chunk 와 달리 통계(n_char 등)와 순번이 확정되기 **전**이라, 고친 결과가
+        그대로 반영된다. 돌려주는 값의 뜻은 셋이다.
+
+          문자열     그 문자열이 청크 본문이 된다
+          None       손대지 않는다(기본 구현)
+          tb.DROP    이 청크를 버린다. 순번과 개수는 core 가 다시 맞춘다
+
+        info 는 경로가 달라도 같은 모양의 dict 다.
+          kind      "docling"(문서) | "row"(레코드/표 행) | "text"(그 밖)
+          page      1-based 페이지
+          index     현재 순번(버리면 다시 매겨지므로 참고용)
+          headings  섹션 경로 목록. docling 경로만 채워진다
+          metadata  행 경로는 레코드 metadata, docling 경로는 문서 메타
+
+        훅이 돌려준 본문에 마스킹·정제·표기형태 변형이 뒤이어 적용된다.
+        """
+        return None
+
+    def _on_chunk_active(self) -> bool:
+        """훅을 덮어썼는지. 안 덮어썼으면 청크마다 호출하는 비용을 치르지 않는다."""
+        return type(self).on_chunk is not ChunkerCore.on_chunk
+
+    async def _hook_chunk(self, text, kwargs, *, kind, page=1, index=0,
+                          headings=None, metadata=None):
+        """on_chunk 를 부르고 (본문, 버릴지) 를 돌려준다."""
+        if not self._on_chunk_active():
+            return text, False
+        info = {
+            "kind": kind,
+            "page": page,
+            "index": index,
+            "headings": list(headings) if headings else None,
+            "metadata": dict(metadata) if metadata else {},
+        }
+        return await hk.call_chunk_hook(self.on_chunk, text, info, request_kwargs=kwargs)
+
     async def run_pre_chunk(self, kind, data, /, **kwargs):
         """pre_chunk 훅 호출부. facade 의 __call__ 이 부른다."""
         return await hk.call_hook(self.pre_chunk, kind, data, request_kwargs=kwargs)
@@ -1156,7 +1232,7 @@ class ChunkerCore:
             kind, data, _gr_kwargs = src.kind, src.data, src.guardrail
             if kind == "parse":
                 # parse-format(비-docling): legacy(attachment) 와 동일하게 공통 청킹.
-                vectors = self._chunk_parse_format(data, **_gr_kwargs, **kwargs)
+                vectors = await self._chunk_parse_format(data, **_gr_kwargs, **kwargs)
                 if not vectors:
                     raise GenosServiceException(1, "chunk length is 0")
             else:

@@ -61,3 +61,38 @@ async def call_hook(fn: Callable, *args, request_kwargs: dict | None = None) -> 
     if inspect.isawaitable(result):
         result = await result
     return result
+
+
+class _Drop:
+    """on_chunk 가 "이 청크를 버린다" 고 말하는 표식. 인스턴스는 DROP 하나뿐이다."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # 오류 메시지에 그대로 나온다
+        return "tb.DROP"
+
+
+# on_chunk 에서 청크를 버릴 때 돌려준다. None 을 "버림" 으로 삼지 않는 이유는 return 을
+# 빠뜨린 훅이 조용히 청크를 지우기 때문이다 — 버리는 것은 명시해야 한다.
+DROP = _Drop()
+
+
+async def call_chunk_hook(fn: Callable, text: str, info: dict,
+                          request_kwargs: dict | None = None) -> tuple:
+    """on_chunk 결과를 (본문, 버릴지) 로 정규화한다.
+
+      문자열       그 문자열이 청크 본문이 된다
+      None         손대지 않는다(받은 본문 그대로)
+      DROP / 공백  이 청크를 버린다
+    """
+    out = await call_hook(fn, text, info, request_kwargs=request_kwargs)
+    if out is DROP:
+        return None, True
+    if out is None:
+        return text, False
+    if not isinstance(out, str):
+        raise TypeError(
+            f"on_chunk 는 문자열이나 None, tb.DROP 을 돌려줘야 합니다: {type(out).__name__}")
+    if not out.strip():
+        return None, True
+    return out, False

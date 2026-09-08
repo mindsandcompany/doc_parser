@@ -826,3 +826,43 @@ def test_carry_over_section_headings_noop_without_headings():
     """헤딩이 없는 평문 입력에서는 아무것도 하지 않는다(회귀 가드)."""
     pieces = ["첫 문단입니다.", "둘째 문단입니다."]
     assert _carry_over_section_headings(list(pieces)) == pieces
+
+
+# ---------------------------------------------------------------------------
+# on_chunk — docling 경로 (#363 09 B군 ③)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_on_chunk_drop_moves_the_once_prefix_to_the_first_survivor():
+    """첫 청크 전용 접두는 '살아남은 첫 청크' 가 받는다.
+
+    chunk_idx == 0 기준이면 그 청크를 버렸을 때 문서 식별 접두가 통째로 사라진다.
+    """
+    tb = pytest.importorskip("facade.core.toolbox")
+    cf = pytest.importorskip("facade.chunking_processor")
+
+    class _P(cf.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            return tb.DROP if info["index"] == 0 else None
+
+    # 접두 값은 문서 metadata 로 넘어간다(파서와 청커가 별도 API 라 KeyValueItem 경유).
+    result = {"document": _build_doc().model_dump(mode="json")}
+    tb.set_chunk_metadata(result, {
+        "DOC_NM": "약관문서식별",
+        tb.FIRST_CHUNK_FIELDS_KEY: ["DOC_NM"],
+    })
+    payload = result["document"]
+
+    base = await cf.DocumentProcessor()(None, "", document=payload)
+    assert len(base) >= 2, "접두 이동을 보려면 청크가 둘 이상이어야 한다"
+    kept = await _P()(None, "", document=payload)
+
+    # 버리기 전에는 0번만, 버린 뒤에는 새 0번만 접두를 갖는다(문서당 1회).
+    assert sum("약관문서식별" in v.text for v in base) == 1
+    assert base[0].text.startswith("약관문서식별")
+    assert len(kept) == len(base) - 1
+    assert sum("약관문서식별" in v.text for v in kept) == 1
+    assert kept[0].text.startswith("약관문서식별")
+    # 순번·개수는 코어가 다시 맞춘다.
+    assert [v.i_chunk_on_doc for v in kept] == list(range(len(kept)))
+    assert all(v.n_chunk_of_doc == len(kept) for v in kept)

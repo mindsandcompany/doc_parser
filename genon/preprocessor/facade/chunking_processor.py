@@ -7,6 +7,7 @@
 #   GenosSmartChunker  청킹 동작 옵션과 헤더 구분자·접두.
 #   ROW_CATEGORIES     행 1개 = 청크 1개로 볼 element category.
 #   pre_chunk          파서 산출을 청킹 직전에 손볼 때.
+#   on_chunk           청크 한 건씩 손보거나 버릴 때 (통계·순번은 코어가 맞춘다).
 #   post_chunk         완성된 청크를 손볼 때.
 #
 # 단독 실행:  python preprocessor.py <파서결과.json> -o chunks.json
@@ -100,6 +101,15 @@ class DocumentProcessor(ChunkerCore):
         **직렬화한 dict** 다 — 본문은 data["texts"][i]["text"] 로 닿는다.
         kwargs 는 요청 파라미터다. 외부 조회가 필요하면 `async def` 로 바꿔 쓴다."""
         return data
+
+    def on_chunk(self, text, info, **kwargs):
+        """[중간] 청크 한 건이 만들어진 직후. 통계·순번이 붙기 전이다.
+
+        돌려주는 값: 문자열=본문 교체 · None=그대로 · tb.DROP=이 청크를 버림.
+        info 는 {kind, page, index, headings, metadata} 이고 경로가 달라도 모양이 같다.
+        본문만 손보거나 청크를 버리는 일은 post_chunk 보다 여기가 낫다 —
+        refresh_stats 를 부를 필요가 없다."""
+        return None
 
     def post_chunk(self, vectors, **kwargs):
         """[후처리] 응답 직전. list[GenOSVectorMeta] 를 손본다(필드 추가·청크 제거).

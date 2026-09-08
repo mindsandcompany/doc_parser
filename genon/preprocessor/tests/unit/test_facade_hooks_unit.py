@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -495,11 +496,16 @@ def test_row_categories_are_extendable_from_the_facade():
 
     proc = _bare(_P)
     routed = {}
-    proc._chunk_custom_fields_rows = lambda els, **kw: routed.setdefault("rows", len(els))
+
+    async def _fake_rows(els, **kw):
+        routed["rows"] = len(els)
+        return []
+
+    proc._chunk_custom_fields_rows = _fake_rows
     proc._text_variant_options = lambda **kw: {}
     proc._text_cleanup = "off"
     proc._text_cleanup_rules = ()
-    proc._chunk_parse_format([{"category": "crm_row", "content": "a"}])
+    asyncio.run(proc._chunk_parse_format([{"category": "crm_row", "content": "a"}]))
     assert routed == {"rows": 1}
 
 
@@ -609,3 +615,139 @@ def test_register_transform_rejects_bad_input():
     existing = next(iter(ft.PARAM_TRANSFORMS))
     with pytest.raises(ValueError):
         tb.register_transform(existing, lambda v: v)
+
+
+# ---------------------------------------------------------------------------
+# on_chunk — 청크 한 건씩 손보는 자리 (#363 09 B군 ③)
+#
+# post_chunk 는 통계·순번이 확정된 뒤라 본문을 고치면 값이 어긋나고, 청크를 버리면
+# 순번을 손으로 다시 맞춰야 했다. on_chunk 는 그 앞이라 코어가 맞춰 준다.
+# ---------------------------------------------------------------------------
+
+def _chunker(cls, **attrs):
+    proc = _bare(cls)
+    proc.setup_logging = lambda *_a, **_k: None
+    proc._log_level = 4
+    proc._gr_cfg = type("C", (), {"masking_enabled": False})()
+    proc._text_cleanup = "off"
+    proc._text_cleanup_rules = ()
+    proc._chunk_size = 0
+    proc._recursive_chunk_overlap = 0
+    proc._table_as_chunk = True
+    for key, value in attrs.items():
+        setattr(proc, key, value)
+    return proc
+
+
+def _rows(n):
+    return [{"category": "custom_fields_row", "content": f"본문{i}", "page": 1,
+             "metadata": {"IDX": i}} for i in range(n)]
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_default_changes_nothing():
+    """출고 템플릿의 훅은 활성이지만 None 을 돌려주므로 산출이 그대로다."""
+    proc = _chunker(chunker_facade.DocumentProcessor)
+    vectors = await proc._chunk_parse_format(_rows(3))
+    assert [v.text for v in vectors] == ["본문0", "본문1", "본문2"]
+    # 훅을 아예 두지 않은 코어는 청크마다 호출하는 비용조차 치르지 않는다.
+    assert _bare(core_chunker.ChunkerCore)._on_chunk_active() is False
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_edit_is_reflected_in_stats():
+    """본문을 고치면 n_char 가 따라온다 — post_chunk 였다면 옛 값이 남는다."""
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            return text + "!!!"
+
+    vectors = await _chunker(_P)._chunk_parse_format(_rows(2))
+    assert [v.text for v in vectors] == ["본문0!!!", "본문1!!!"]
+    assert all(v.n_char == len(v.text) for v in vectors)
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_drop_renumbers_the_rest():
+    """버린 뒤 순번과 개수를 코어가 다시 맞춘다."""
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            return tb.DROP if info["metadata"].get("IDX") == 1 else None
+
+    vectors = await _chunker(_P)._chunk_parse_format(_rows(4))
+    assert [v.text for v in vectors] == ["본문0", "본문2", "본문3"]
+    assert [v.i_chunk_on_doc for v in vectors] == [0, 1, 2]
+    assert all(v.n_chunk_of_doc == 3 for v in vectors)
+    assert all(v.n_chunk_of_page == 3 for v in vectors)
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_returning_none_keeps_the_chunk():
+    """return 을 빠뜨린 훅이 청크를 지우면 안 된다 — 버리는 것은 DROP 으로만."""
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            pass
+
+    vectors = await _chunker(_P)._chunk_parse_format(_rows(2))
+    assert len(vectors) == 2
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_blank_is_treated_as_drop():
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            return "   " if info["index"] == 0 else text
+
+    vectors = await _chunker(_P)._chunk_parse_format(_rows(2))
+    assert [v.text for v in vectors] == ["본문1"]
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_rejects_wrong_return_type():
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            return 123
+
+    with pytest.raises(TypeError):
+        await _chunker(_P)._chunk_parse_format(_rows(1))
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_info_shape_is_the_same_on_every_path():
+    """경로가 달라도 훅이 보는 dict 모양이 같아야 한 벌로 쓸 수 있다."""
+    seen = []
+
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            seen.append(info)
+            return None
+
+    await _chunker(_P)._chunk_parse_format(_rows(1))
+    await _chunker(_P)._chunk_parse_format(
+        [{"category": "text", "content": "평문 본문", "page": 2}])
+    assert [i["kind"] for i in seen] == ["row", "text"]
+    assert all(set(i) == {"kind", "page", "index", "headings", "metadata"} for i in seen)
+    assert seen[0]["metadata"] == {"IDX": 0} and seen[1]["page"] == 2
+
+
+@pytest.mark.asyncio
+async def test_on_chunk_receives_request_params():
+    seen = {}
+
+    class _P(chunker_facade.DocumentProcessor):
+        def on_chunk(self, text, info, **kwargs):
+            seen.update(kwargs)
+            return None
+
+    await _chunker(_P)._chunk_parse_format(_rows(1), tenant="A")
+    assert seen.get("tenant") == "A"
+
+
+@pytest.mark.asyncio
+async def test_async_on_chunk_is_awaited():
+    class _P(chunker_facade.DocumentProcessor):
+        async def on_chunk(self, text, info, **kwargs):
+            return text.upper()
+
+    vectors = await _chunker(_P)._chunk_parse_format(
+        [{"category": "text", "content": "abc", "page": 1}])
+    assert vectors[0].text == "ABC"

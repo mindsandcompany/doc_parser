@@ -88,9 +88,18 @@ class TestChunkerAndProcessorContract:
         assert "cp.CHUNK_PREFIX_FIELDS_KEY" in reserved_block
         assert "cp.FIRST_CHUNK_FIELDS_KEY" in reserved_block
 
-    def test_first_chunk_prefix_is_attached_only_to_chunk_zero(self):
+    def test_first_chunk_prefix_is_attached_exactly_once(self):
+        """문서당 1회 계약.
+
+        기준은 "첫 번째 청크" 가 아니라 "살아남은 첫 번째 청크" 다 — on_chunk 이 첫 청크를
+        버렸을 때 그 접두가 문서에서 통째로 사라지면 안 된다.
+        """
         source = (_BASE / "facade" / "core" / "chunker.py").read_text(encoding="utf-8")
-        assert '_first_prefix_text if chunk_idx == 0 else ""' in source
+        assert '_first_prefix_text if _first_prefix_pending else ""' in source
+        # 플래그는 청크를 실제로 유지한 뒤에만 내려간다(버린 청크는 continue 로 건너뛴다).
+        after_drop = source.split("_dropped += 1", 1)[1]
+        assert after_drop.lstrip().startswith("continue")
+        assert "_first_prefix_pending = False" in after_drop
 
 
 @pytest.mark.unit

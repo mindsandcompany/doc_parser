@@ -11,13 +11,12 @@ from __future__ import annotations
 import json
 import os
 import logging
-import math, bisect
-import yaml
+import re
 from pathlib import Path
 
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional, Iterable, Any, List, Dict, Tuple
+from typing import Optional, Any, List, Tuple
 
 from fastapi import Request
 
@@ -26,15 +25,10 @@ _log = logging.getLogger(__name__)
 # Genos 웹 UI 환경은 facade 코드를 단일 파일(preprocessor.py)로 처리하므로
 # 다른 facade 파일에서 import 가 깨진다. 따라서 convert_to_pdf 는
 # attachment_processor / convert_processor 와 동일하게 자체 정의한다.
-import shutil
-import subprocess
-import tempfile
-import unicodedata
 
 
 def convert_to_pdf(file_path: str, use_pdf_sdk: bool = True) -> str | None:
-    """
-    PDF 변환을 시도한다. 실패해도 예외를 던지지 않고 None을 반환한다.
+    """PDF 변환을 시도한다. 실패해도 예외를 던지지 않고 None 을 반환한다.
 
     chain (HWP/HWPX 입력):
       use_pdf_sdk=True  → pdf_sdk → rhwp → libreoffice
@@ -43,57 +37,77 @@ def convert_to_pdf(file_path: str, use_pdf_sdk: bool = True) -> str | None:
       use_pdf_sdk=True  → pdf_sdk → libreoffice
       use_pdf_sdk=False → libreoffice
 
-    rhwp 는 HWP/HWPX 전용이라 비-HWP 입력에는 chain 에 들어가지 않는다. HWP/HWPX
-    변환은 rhwp 를 libreoffice 보다 우선한다 (pdf_sdk 가 있으면 그 다음 순위).
-    내부 구현은 `genon.preprocessor.converters.hwp_to_pdf` 모듈에 통합되어 있다.
+    구현은 facade/common/pdf_convert.py 에 있다(변환 backend 는
+    genon.preprocessor.converters.hwp_to_pdf).
     """
-    from genon.preprocessor.converters.hwp_to_pdf import convert_hwp_to_pdf
-    ext = os.path.splitext(file_path)[1].lower()
-    is_hwp = ext in (".hwp", ".hwpx")
-    if use_pdf_sdk:
-        order = ["pdf_sdk", "rhwp", "libreoffice"] if is_hwp else ["pdf_sdk", "libreoffice"]
-    else:
-        order = ["rhwp", "libreoffice"] if is_hwp else ["libreoffice"]
-    return convert_hwp_to_pdf(file_path, order=order)
+    return pc.convert_to_pdf(file_path, use_pdf_sdk=use_pdf_sdk)
 
-def _is_pdf(file_path: str) -> bool:
-    """파일이 PDF 매직 헤더로 시작하는지 확인 (확장자 무관)."""
-    try:
-        with open(file_path, "rb") as f:
-            return f.read(5) == b"%PDF-"
-    except Exception:
-        return False
+# ── 공용 하위 모듈로 옮긴 헬퍼들의 별칭 ──────────────────────────────
+# 구현은 facade/common/, facade/chunking/ 에 한 벌만 둔다. 여기서는 기존 이름을
+# 그대로 유지해 호출부를 건드리지 않는다. 사이트별 조정 대상 상수(구분자, 최소
+# 청크 크기, 토크나이저 경로)는 이 파일에 남아 있으므로 래퍼가 넘겨준다.
+from genon.preprocessor.facade.common import config_parse as cp
+from genon.preprocessor.facade.common import pipeline_setup as ps
+from genon.preprocessor.facade.common import appendix as apx
+from genon.preprocessor.facade.chunking import smart_chunker as sc
+from genon.preprocessor.facade.common import vector_meta as vm
+from genon.preprocessor.facade.common import docling_ops as dops
+from genon.preprocessor.facade.common import runtime as rt
+from genon.preprocessor.facade.common import file_probe as fp
+from genon.preprocessor.facade.common import pdf_convert as pc
+from genon.preprocessor.facade.chunking import doc_prefix as dpx
+from genon.preprocessor.facade.chunking import header_path as hp
+from genon.preprocessor.facade.chunking import table_blocks as tbk
+from genon.preprocessor.facade.chunking import table_variants as tv
+
+_as_dict = cp.as_dict
+_filename_title_candidates = hp.filename_title_candidates
+_is_pdf = fp.is_pdf
+_normalize_filename_title = hp.normalize_filename_title
+_parse_optional_bool = cp.parse_optional_bool
+_parse_optional_float = cp.parse_optional_float
+_parse_optional_int = cp.parse_optional_int
+_resolve_include_chunk_header = cp.resolve_include_chunk_header
+_union_paths = hp.union_paths
+_warn_unresolved_placeholders = cp.warn_unresolved_placeholders
+
+
+def _build_header_line(headings, include_header: bool) -> str:
+    return hp.build_header_line(
+        headings, include_header, _CHUNK_HEADER_SEP, _CHUNK_PATH_SEP, _CHUNK_PATH_MAX_LEAVES)
+
+def _clamp_chunk_size(size):
+    return cp.clamp_chunk_size(size, _MIN_CHUNK_SIZE)
+
+def _collapse_paths(paths) -> list:
+    return hp.collapse_paths(paths, _CHUNK_HEADER_SEP)
+
+def _load_config(config_path: str) -> dict:
+    return cp.load_config(config_path, strict=True)
+
+def _render_header_paths(headings) -> str:
+    return hp.render_header_paths(
+        headings, _CHUNK_HEADER_SEP, _CHUNK_PATH_SEP, _CHUNK_PATH_MAX_LEAVES)
+
+def _resolve_tokenizer(chunking_cfg: dict):
+    return cp.resolve_tokenizer(
+        chunking_cfg, local_path=_DEFAULT_TOKENIZER_LOCAL_PATH, hf_id=_DEFAULT_TOKENIZER_ID)
 
 
 # docling imports
 
-from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
-from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
-from docling.datamodel.base_models import InputFormat
-from docling.pipeline.simple_pipeline import SimplePipeline
 # from docling.datamodel.document import ConversionStatus
 from docling.datamodel.pipeline_options import (
     AcceleratorDevice,
-    AcceleratorOptions,
-    # OcrEngine,
-    # PdfBackend,
-    LayoutModelType,
     PdfPipelineOptions,
     TableFormerMode,
-    TableStructureModelType,
     PipelineOptions,
-    PaddleOcrOptions,
     UpstageOcrOptions,
 )
 
-from docling.document_converter import (
-    DocumentConverter,
-    PdfFormatOption,
-    FormatOption
-)
 from docling.datamodel.pipeline_options import DataEnrichmentOptions
 from docling.prompts.prompt_manager import LLMApiError
-from docling.utils.document_enrichment import enrich_document, check_document
+from docling.utils.document_enrichment import enrich_document
 from docling.utils.llm_cache import (
     log_summary as _log_cache_summary,
     parse_interim_ref as _parse_interim_ref,
@@ -103,68 +117,35 @@ from docling.utils.llm_cache import (
 )
 from docling.datamodel.document import ConversionResult
 from docling_core.transforms.chunker import (
-    BaseChunk,
-    BaseChunker,
     DocChunk,
-    DocMeta,
 )
-from docling_core.transforms.serializer.markdown import (
-    MarkdownDocSerializer,
-    MarkdownParams,
-)
-from docling_core.types import DoclingDocument
 
-from pandas import DataFrame
 import asyncio
-from docling_core.types import DoclingDocument as DLDocument
 from docling_core.types.doc.document import (
-    DocumentOrigin,
-    LevelNumber,
     ListItem,
     CodeItem,
-    ContentLayer,
 )
-from docling_core.types.doc.labels import DocItemLabel
 from docling_core.types.doc import (
     BoundingBox,
     DocItemLabel,
     DoclingDocument,
-    DocumentOrigin,
-    DocItem,
-    ImageRef,
-    PictureItem,
     SectionHeaderItem,
     TableItem,
     TextItem,
-    PageItem,
     ProvenanceItem
 )
-from docling_core.types.doc.utils import relative_path
 from docling.datamodel.settings import settings
 
-from collections import Counter
-import re
-import json
-import time
-import warnings
-from typing import Iterable, Iterator, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, PositiveInt, TypeAdapter, model_validator
-from typing_extensions import Self
+from pydantic import BaseModel
 
-try:
-    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
-        build_document_custom_fields_enrichers as _build_document_custom_fields_enrichers,
-    )
-except ImportError:
-    _build_document_custom_fields_enrichers = None  # type: ignore[assignment]
-try:
-    from genon.preprocessor.facade.enrichment.metadata_enricher import MetadataEnricher as _MetadataEnricher
-except ImportError:
-    _MetadataEnricher = None  # type: ignore[assignment,misc]
+from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+    build_document_custom_fields_enrichers as _build_document_custom_fields_enrichers,
+)
+from genon.preprocessor.facade.enrichment.metadata_enricher import (
+    MetadataEnricher as _MetadataEnricher,
+)
 
-from genon.preprocessor.facade.enrichment.prompt_files import read_prompt_file
-from genon.preprocessor.facade.enrichment.prompt_template import PromptTemplate
 from genon.preprocessor.facade.enrichment.enrichment_config import EnrichmentConfig
 from genon.preprocessor.facade.enrichment.field_transforms import (
     DEFAULT_METADATA_FIELD_TRANSFORMS,
@@ -176,6 +157,7 @@ from genon.preprocessor.facade.enrichment.image_description import (
     ImageDescriptionOptions,
     ImageDescriptionEnricher,
 )
+from genon.preprocessor.facade.chunking import text_norm as tn
 
 try:
     import semchunk
@@ -196,98 +178,28 @@ except ImportError:
 # 설정 로딩 헬퍼 (from parser_processor.py)
 # ============================================================
 
-def _warn_unresolved_placeholders(cfg: dict, config_path: str) -> None:
-    """config 에 남아있는 미치환 플레이스홀더(<UPPER_SNAKE>)를 탐지해 경고한다.
 
-    Site 배포 시 OCR/Layout/Enrichment endpoint·serving ID 등의 치환 누락을 조기에
-    드러내기 위함. fail-fast 하지 않고(기동 보존) WARNING 로그만 남긴다.
-    """
-    pattern = re.compile(r"<[A-Z0-9_]+>")
-    found = []
+# 한 경로 안의 레벨 구분자(부모 → 자식). heading 자체에 콤마가 들어있는 경우가 있어
+# (실측 409건 중 20건) 콤마로는 경로를 레벨 단위로 되돌릴 수 없다 —
+# 예: "제4조(여비) ① 여비는 여객운임, 숙박비, 식비 …". " > " 는 실측 충돌이 0 이다.
+# (검색 신호로서의 효과는 미검증이다. 표준 BM25 분석기는 문장부호를 제거한다.
+#  이 구분자의 근거는 파싱 안정성과 사람이 읽을 때의 명료성이다.)
+_CHUNK_HEADER_SEP = " > "
 
-    def _scan(node, path):
-        if isinstance(node, dict):
-            for k, v in node.items():
-                _scan(v, f"{path}.{k}" if path else str(k))
-        elif isinstance(node, list):
-            for i, v in enumerate(node):
-                _scan(v, f"{path}[{i}]")
-        elif isinstance(node, str):
-            for ph in pattern.findall(node):
-                found.append((path, ph))
-
-    _scan(cfg, "")
-    if found:
-        lines = "\n".join(f"  - {path}: {ph}" for path, ph in found)
-        _log.warning(
-            "[DocumentProcessor] 미치환 설정 플레이스홀더가 발견되었습니다 "
-            f"(config='{config_path}'). Site 배포 시 실제 값으로 변경하세요:\n{lines}"
-        )
+# 서로 다른 경로(형제 섹션) 사이 구분자. 경로 내부 구분자와 반드시 달라야
+# `A > B`(부모-자식)와 `A | B`(형제)가 구분된다. 한 청크가 여러 섹션에 걸치면
+# 예전에는 전부 평탄하게 dedup 해서 형제를 부모-자식처럼 표기했다
+# (실측: `상품 안내 > 우대금리 조건 > 가입 제한` — 뒤 둘은 형제).
+_CHUNK_PATH_SEP = " | "
 
 
-def _load_config(config_path: str) -> dict:
-    with open(config_path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    if not isinstance(cfg, dict):
-        raise ValueError(f"Invalid config format: expected mapping, got {type(cfg).__name__}")
-    _warn_unresolved_placeholders(cfg, config_path)
-    return cfg
-
-
-def _as_dict(value: Any) -> dict:
-    return value if isinstance(value, dict) else {}
-
-
-def _parse_optional_bool(value: Any, key: str = "") -> Optional[bool]:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in {"1", "true", "yes", "y", "on"}:
-            return True
-        if text in {"0", "false", "no", "n", "off"}:
-            return False
-    if key:
-        _log.warning(f"[DocumentProcessor] Invalid bool value for '{key}': {value!r}. Fallback to default.")
-    return None
-
-
-def _parse_optional_int(value: Any, key: str = "") -> Optional[int]:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        if key:
-            _log.warning(f"[DocumentProcessor] Invalid int value for '{key}': {value!r}. Fallback to default.")
-        return None
+# 다경로 청크에서 나열할 리프 최대 개수. 초과분은 "… 외 N개" 로 접는다.
+# resize_all 로 수십 개 섹션이 한 청크에 뭉치면 경로를 전부 나열한 헤더가 노이즈가 된다
+# (실측: hwp 71경로 → 헤더 3,239자, 청크가 chunk_size 를 30% 초과).
+_CHUNK_PATH_MAX_LEAVES = 5
 
 
 _MIN_CHUNK_SIZE = 1024
-
-
-def _clamp_chunk_size(size: Optional[int]) -> Optional[int]:
-    """chunk_size 가 0 초과이면서 _MIN_CHUNK_SIZE 미만이면 _MIN_CHUNK_SIZE 로 보정.
-    0(=분할 안 함) 과 None 은 그대로 둔다."""
-    if size is not None and 0 < size < _MIN_CHUNK_SIZE:
-        _log.info(f"[chunk_size] {size} < {_MIN_CHUNK_SIZE} → {_MIN_CHUNK_SIZE} 로 보정")
-        return _MIN_CHUNK_SIZE
-    return size
-
-
-def _parse_optional_float(value: Any, key: str = "") -> Optional[float]:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        if key:
-            _log.warning(f"[DocumentProcessor] Invalid float value for '{key}': {value!r}. Fallback to default.")
-        return None
 
 
 # pdf_pipeline.device / pdf_pipeline.table_structure_mode 의 yaml 문자열 → docling enum 매핑.
@@ -320,17 +232,6 @@ _DEFAULT_TOKENIZER_LOCAL_PATH = "/models/doc_parser_models/sentence-transformers
 _DEFAULT_TOKENIZER_ID = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def _resolve_tokenizer(chunking_cfg: dict):
-    """chunking config 로부터 토크나이저를 결정한다.
-
-    tokenizer_path 가 실제 존재하면 그 로컬 경로를, 없으면 tokenizer_id(HF) 로 폴백한다
-    (외부 네트워크 차단 환경 대비). config 미지정 시 기본값은 현행 하드코딩 값과 동일.
-    """
-    local = chunking_cfg.get("tokenizer_path") or _DEFAULT_TOKENIZER_LOCAL_PATH
-    hf_id = chunking_cfg.get("tokenizer_id") or _DEFAULT_TOKENIZER_ID
-    return Path(local) if Path(local).exists() else hf_id
-
-
 # ============================================
 #
 # Copyright IBM Corp. 2024 - 2024
@@ -339,1045 +240,32 @@ def _resolve_tokenizer(chunking_cfg: dict):
 
 """Chunker implementation leveraging the document structure."""
 
-class GenosSmartChunker(BaseChunker):
-    """토큰 제한을 고려하여 섹션별 청크를 분할하고 병합하는 청커 (v2)"""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    tokenizer: Union[PreTrainedTokenizerBase, str, Path] = (
-            Path(_DEFAULT_TOKENIZER_LOCAL_PATH)
-            if Path(_DEFAULT_TOKENIZER_LOCAL_PATH).exists()
-            else _DEFAULT_TOKENIZER_ID
-        )
-    max_tokens: int = 1024
-    merge_peers: bool = True
-    # 토큰 수 계산 방식. "char"(default)=문자 수 기준 | "huggingface"=HF 토크나이저 기준
-    tokenizer_type: str = "char"
-    # 청킹 모드. "split_only"(기본)=chunk_size 초과 청크만 분할(구조 보존) | "resize_all"=모든 청크를 chunk_size 에 맞게 병합/분할
-    chunk_mode: str = "split_only"
-
-    # _inner_chunker: BaseChunker = None
-    _tokenizer: PreTrainedTokenizerBase = None
-    merge_list_items: bool = True
-
-    @model_validator(mode="after")
-    def _initialize_components(self) -> Self:
-        # 토크나이저 초기화
-        mode = (self.tokenizer_type or "char").strip().lower()
-        if mode not in {"char", "huggingface"}:
-            _log.warning(f"[GenosSmartChunker] Unknown tokenizer_type '{mode}', fallback to 'char'.")
-            mode = "char"
-        self.tokenizer_type = mode
-        if mode == "char":
-            # 문자 수 기반: HF 토크나이저 로드 불필요 (외부 모델 의존 제거)
-            self._tokenizer = None
-        else:
-            self._tokenizer = (
-                self.tokenizer
-                if isinstance(self.tokenizer, PreTrainedTokenizerBase)
-                else AutoTokenizer.from_pretrained(self.tokenizer)
-            )
-        return self
-
-    def preprocess(self, dl_doc: DLDocument, **kwargs: Any) -> Iterator[BaseChunk]:
-        """문서의 모든 아이템을 헤더 정보와 함께 청크로 생성
-
-        Args:
-            dl_doc: 청킹할 문서
-
-        Yields:
-            문서의 모든 아이템을 포함하는 하나의 청크
-        """
-        # 모든 아이템과 헤더 정보 수집
-        all_items = []
-        all_header_info = []  # 각 아이템의 헤더 정보
-        current_heading_by_level: dict[LevelNumber, str] = {}
-        all_header_short_info = []  # 각 아이템의 짧은 헤더 정보
-        current_heading_short_by_level: dict[LevelNumber, str] = {}
-        list_items: list[TextItem] = []
-
-        # iterate_items()로 수집된 아이템들의 self_ref 추적
-        processed_refs = set()
-
-        # 모든 아이템 순회
-        for item, level in dl_doc.iterate_items(included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE}, traverse_pictures=True):
-            if hasattr(item, 'self_ref'):
-                processed_refs.add(item.self_ref)
-
-            if not isinstance(item, DocItem):
-                continue
-
-            # 리스트 아이템 병합 처리
-            if self.merge_list_items:
-                if isinstance(item, ListItem) or (
-                    isinstance(item, TextItem) and item.label == DocItemLabel.LIST_ITEM
-                ):
-                    list_items.append(item)
-                    continue
-                elif list_items:
-                    # 누적된 리스트 아이템들을 추가
-                    for list_item in list_items:
-                        all_items.append(list_item)
-                        # 리스트 아이템의 헤더 정보 저장
-                        all_header_info.append({k: v for k, v in current_heading_by_level.items()})
-                        all_header_short_info.append({k: v for k, v in current_heading_short_by_level.items()})
-                    list_items = []
-
-            # 섹션 헤더 처리
-            if isinstance(item, SectionHeaderItem) or (
-                isinstance(item, TextItem) and
-                item.label in [DocItemLabel.SECTION_HEADER, DocItemLabel.TITLE]
-            ):
-                # 새로운 헤더 레벨 설정
-                header_level = (
-                    item.level if isinstance(item, SectionHeaderItem)
-                    else (0 if item.label == DocItemLabel.TITLE else 1)
-                )
-                current_heading_by_level[header_level] = item.text
-                current_heading_short_by_level[header_level] = item.orig  # 첫 단어로 짧은 헤더 정보 설정
-
-                # 더 깊은 레벨의 헤더들 제거
-                keys_to_del = [k for k in current_heading_by_level if k > header_level]
-                for k in keys_to_del:
-                    current_heading_by_level.pop(k, None)
-                keys_to_del_short = [k for k in current_heading_short_by_level if k > header_level]
-                for k in keys_to_del_short:
-                    current_heading_short_by_level.pop(k, None)
-
-                # 헤더 아이템도 추가 (헤더 자체도 아이템임)
-                all_items.append(item)
-                all_header_info.append({k: v for k, v in current_heading_by_level.items()})
-                all_header_short_info.append({k: v for k, v in current_heading_short_by_level.items()})
-                continue
-
-            if (isinstance(item, TextItem) or
-                isinstance(item, ListItem) or
-                isinstance(item, CodeItem) or
-                isinstance(item, TableItem) or
-                isinstance(item, PictureItem)):
-                # if item.label in [DocItemLabel.PAGE_HEADER, DocItemLabel.PAGE_FOOTER]:
-                #     item.text = ""
-                all_items.append(item)
-                # 현재 아이템의 헤더 정보 저장
-                all_header_info.append({k: v for k, v in current_heading_by_level.items()})
-                all_header_short_info.append({k: v for k, v in current_heading_short_by_level.items()})
-
-        # 마지막 리스트 아이템들 처리
-        if list_items:
-            for list_item in list_items:
-                all_items.append(list_item)
-                all_header_info.append({k: v for k, v in current_heading_by_level.items()})
-                all_header_short_info.append({k: v for k, v in current_heading_short_by_level.items()})
-
-        # iterate_items()에서 누락된 테이블들을 별도로 추가
-        missing_tables = []
-        for table in dl_doc.tables:
-            table_ref = getattr(table, 'self_ref', None)
-            if table_ref not in processed_refs:
-                missing_tables.append(table)
-
-        # 누락된 테이블들을 문서 앞부분에 추가 (페이지 1의 테이블들일 가능성이 높음)
-        if missing_tables:
-            for missing_table in missing_tables:
-                # 첫 번째 위치에 삽입 (헤더 테이블일 가능성이 높음)
-                all_items.insert(0, missing_table)
-                all_header_info.insert(0, {})  # 빈 헤더 정보
-                all_header_short_info.insert(0, {})  # 빈 짧은 헤더 정보
-
-        # 아이템이 없으면 빈 문서
-        if not all_items:
-            return
-
-        # 모든 아이템을 하나의 청크로 반환 (HybridChunker에서 분할)
-        # headings는 None으로 설정하고, 헤더 정보는 별도로 관리
-        chunk = DocChunk(
-            text="",  # 텍스트는 HybridChunker에서 생성
-            meta=DocMeta(
-                doc_items=all_items,
-                headings=None,  # DocMeta의 원래 형식 유지
-                captions=None,
-                origin=dl_doc.origin,
-            ),
-        )
-        # 헤더 정보를 별도 속성으로 저장
-        chunk._header_info_list = all_header_info
-        chunk._header_short_info_list = all_header_short_info  # 짧은 헤더 정보도 저장
-        yield chunk
-
-    def _count_tokens(self, text: str) -> int:
-        """텍스트의 토큰 수 계산 (안전한 분할 처리)"""
-        if not text:
-            return 0
-
-        if self._tokenizer is None:   # 문자 수 기반
-            return len(text)
-
-        # 텍스트를 더 작은 단위로 분할하여 계산
-        max_chunk_length = 300  # 더 안전한 길이로 설정
-        total_tokens = 0
-
-        # 텍스트를 줄 단위로 먼저 분할
-        lines = text.split('\n')
-        current_chunk = ""
-
-        for line in lines:
-            # 현재 청크에 줄을 추가했을 때 길이 확인
-            temp_chunk = current_chunk + '\n' + line if current_chunk else line
-
-            if len(temp_chunk) <= max_chunk_length:
-                current_chunk = temp_chunk
-            else:
-                # 현재 청크가 있으면 토큰 계산
-                if current_chunk:
-                    try:
-                        total_tokens += len(self._tokenizer.tokenize(current_chunk))
-                    except Exception:
-                        total_tokens += int(len(current_chunk.split()) * 1.3)  # 대략적인 계산
-
-                # 새로운 청크 시작
-                current_chunk = line
-
-        # 마지막 청크 처리
-        if current_chunk:
-            try:
-                total_tokens += len(self._tokenizer.tokenize(current_chunk))
-            except Exception:
-                total_tokens += int(len(current_chunk.split()) * 1.3)  # 대략적인 계산
-
-        return total_tokens
-
-    def _generate_text_from_items_with_headers(self, items: list[DocItem],
-                                              header_info_list: list[dict],
-                                              dl_doc: DoclingDocument,
-                                              **kwargs) -> str:
-        """DocItem 리스트로부터 헤더 정보를 포함한 텍스트 생성"""
-        text_parts = []
-        current_section_headers = {}  # 현재 섹션의 헤더 정보
-
-        for i, item in enumerate(items):
-            item_headers = header_info_list[i] if i < len(header_info_list) else {}
-
-            # 헤더 정보가 변경된 경우 (새로운 섹션 시작)
-            if item_headers != current_section_headers:
-                # 변경된 헤더 레벨들만 추가
-                headers_to_add = []
-                for level in sorted(item_headers.keys()):
-                    # 이전 섹션과 다른 헤더만 추가
-                    if (level not in current_section_headers or
-                        current_section_headers[level] != item_headers[level]):
-                        # 해당 레벨까지의 모든 상위 헤더 포함
-                        for l in sorted(item_headers.keys()):
-                            if l < level:
-                                headers_to_add.append(item_headers[l])
-                            elif l == level:
-                                headers_to_add.append('')
-
-                        break
-
-                # 헤더가 있으면 추가
-                if headers_to_add:
-                    header_text = ", ".join(headers_to_add)
-                    if header_text not in text_parts:
-                        text_parts.append(header_text)
-
-                current_section_headers = item_headers.copy()
-
-            # 아이템 텍스트 추가
-            if isinstance(item, TableItem):
-                table_text = self._extract_table_text(item, dl_doc, **kwargs)
-                if table_text:
-                    text_parts.append(table_text)
-            elif hasattr(item, 'text') and item.text:
-                # 타이틀과 섹션 헤더 처리 개선
-                # is_section_header = (
-                #     isinstance(item, SectionHeaderItem) or
-                #     (isinstance(item, TextItem) and
-                #      item.label in [DocItemLabel.SECTION_HEADER])  # TITLE은 제외
-                # )
-
-                # 타이틀은 항상 포함, 섹션 헤더는 중복 방지를 위해 스킵
-                # if not is_section_header:
-                # 20250909, shkim, text_parts에 없는 경우만 추가. 섹션헤더가 반복해서 추가되는 것 방지
-                if item.text not in text_parts:
-                    text_parts.append(item.text)
-            elif isinstance(item, PictureItem):
-                picture_text = self._extract_picture_annotation_text(item)
-                if picture_text and picture_text not in text_parts:
-                    text_parts.append(picture_text)
-
-        result_text = self.delim.join(text_parts)
-        return result_text
-
-    @staticmethod
-    def _extract_picture_annotation_text(item: PictureItem) -> str:
-        """PictureItem annotation의 텍스트를 단일 문자열로 추출."""
-        texts: list[str] = []
-        for annotation in getattr(item, "annotations", []) or []:
-            text = str(getattr(annotation, "text", "") or "").strip()
-            if text:
-                texts.append(text)
-        if not texts:
-            return ""
-        # 동일 annotation 중복 주입 방지
-        return "\n".join(dict.fromkeys(texts))
-
-    def _extract_table_text(self, table_item: TableItem, dl_doc: DoclingDocument, **kwargs) -> str:
-        """테이블에서 텍스트를 추출하는 일반화된 메서드"""
-        try:
-            # 먼저 export_to_markdown 시도
-            export_to_html = kwargs.get('export_to_html', 1)
-            if export_to_html == 1:
-                table_text = table_item.export_to_html(dl_doc)
-            elif bool(kwargs.get("compact_tables", True)):
-                # TableItem.export_to_markdown() 은 compact 옵션이 없어 직접 serializer 구성
-                # (컬럼 정렬 패딩 제거 → 대형 표 markdown 크기 대폭 축소)
-                table_text = MarkdownDocSerializer(
-                    doc=dl_doc,
-                    params=MarkdownParams(compact_tables=True),
-                ).serialize(item=table_item).text
-            else:
-                table_text = table_item.export_to_markdown(dl_doc)
-            if table_text and table_text.strip():
-                return table_text
-        except Exception:
-            pass
-
-        # export_to_markdown 실패 시 테이블 셀 데이터에서 직접 텍스트 추출
-        try:
-            if hasattr(table_item, 'data') and table_item.data:
-                cell_texts = []
-
-                # table_cells에서 텍스트 추출
-                if hasattr(table_item.data, 'table_cells'):
-                    for cell in table_item.data.table_cells:
-                        if hasattr(cell, 'text') and cell.text and cell.text.strip():
-                            cell_texts.append(cell.text.strip())
-
-                # grid에서 텍스트 추출 (table_cells가 없는 경우)
-                elif hasattr(table_item.data, 'grid') and table_item.data.grid:
-                    for row in table_item.data.grid:
-                        if isinstance(row, list):
-                            for cell in row:
-                                if hasattr(cell, 'text') and cell.text and cell.text.strip():
-                                    cell_texts.append(cell.text.strip())
-
-                # 추출된 셀 텍스트들을 결합
-                if cell_texts:
-                    return ' '.join(cell_texts)
-        except Exception:
-            pass
-
-        # 모든 방법 실패 시 item.text 사용 (있는 경우)
-        if hasattr(table_item, 'text') and table_item.text:
-            return table_item.text
-
-        return ""
-
-    @staticmethod
-    def _doc_has_sheet_groups(dl_doc) -> bool:
-        """DoclingDocument 가 xlsx 유래인지(그룹명 'sheet: X' 존재) 자동 감지."""
-        try:
-            for g in getattr(dl_doc, "groups", None) or []:
-                name = getattr(g, "name", None)
-                if isinstance(name, str) and name.startswith("sheet: "):
-                    return True
-        except Exception:
-            pass
-        return False
-
-    @staticmethod
-    def _render_table_row_html(row: list, num_cols: int) -> str:
-        """grid 한 행을 <tr>..</tr> HTML 로 렌더(docling HTMLTableSerializer 형식 모방).
-        colspan 중복 셀은 제거하고 헤더 계열 셀은 <th>, 그 외는 <td> 로 낸다.
-        (row_span==1 전제 — 호출부에서 세로 병합 표는 분할하지 않음)
-        """
-        import html as _html
-        cells = []
-        for j in range(num_cols):
-            cell = row[j]
-            if cell.start_col_offset_idx != j:  # colspan 으로 이미 렌더된 셀 스킵
-                continue
-            is_header = bool(
-                getattr(cell, "column_header", False)
-                or getattr(cell, "row_header", False)
-                or getattr(cell, "row_section", False)
-            )
-            tag = "th" if is_header else "td"
-            attrs = f' colspan="{cell.col_span}"' if cell.col_span > 1 else ""
-            cells.append(f"<{tag}{attrs}>{_html.escape((cell.text or '').strip())}</{tag}>")
-        return "<tr>" + "".join(cells) + "</tr>"
-
-    @staticmethod
-    def _sheet_prefix(table_item: TableItem, dl_doc: DoclingDocument) -> str:
-        """xlsx docling 표의 부모 그룹(name='sheet: X')에서 시트명을 뽑아 '시트명: X\\n' 접두 생성.
-        시트 그룹이 없으면 '' 반환(PDF 등 비-xlsx 문서엔 실질 미적용)."""
-        try:
-            parent = table_item.parent.resolve(dl_doc) if getattr(table_item, "parent", None) else None
-            name = getattr(parent, "name", None)
-        except Exception:
-            name = None
-        if not name:
-            return ""
-        if name.startswith("sheet: "):
-            name = name[len("sheet: "):]
-        name = name.strip()
-        return f"시트명: {name}\n" if name else ""
-
-    def _table_item_to_texts(self, table_item: TableItem, dl_doc: DoclingDocument,
-                             h_short: dict, **kwargs) -> list[str]:
-        """표를 청크 텍스트 목록으로 변환. chunk_size(max_tokens) 초과 시 row 단위로 분할하고
-        각 분할 청크에 헤더 행(선두 column_header 행 + 다음 컬럼명 행)을 반복 포함한다.
-
-        미초과(또는 max_tokens<=0)면 현행과 동일하게 단일 청크(docling export_to_html) 1개를 반환.
-        모든 청크(단일/분할)에 시트명 접두(`시트명: X\\n`)를 붙인다.
-        """
-        sheet_prefix = self._sheet_prefix(table_item, dl_doc)
-        single = sheet_prefix + self._generate_section_text_with_heading([table_item], [h_short], dl_doc, **kwargs)
-
-        if self.max_tokens is None or self.max_tokens <= 0:
-            return [single]
-        if self._count_tokens(single) <= self.max_tokens:
-            return [single]
-
-        try:
-            grid = table_item.data.grid
-            num_cols = table_item.data.num_cols
-        except Exception:
-            return [single]
-        if not grid or not num_cols:
-            return [single]
-
-        # 헤더 행 수: 선두의 연속된 헤더 플래그 행 + 바로 다음 행(컬럼명 추정)
-        flag_n = 0
-        for row in grid:
-            if any(getattr(c, "column_header", False) or getattr(c, "row_header", False)
-                   or getattr(c, "row_section", False) for c in row):
-                flag_n += 1
-            else:
-                break
-        header_n = flag_n + 1
-        if header_n >= len(grid):  # 데이터 행이 없음 → 분할 불가
-            return [single]
-
-        header_rows = grid[:header_n]
-        data_rows = grid[header_n:]
-
-        # 세로 병합(row_span>1)이 데이터 행에 있으면 row 분할이 구조를 깨뜨리므로 분할하지 않는다.
-        # (헤더 영역의 세로병합은 헤더 블록이 매 청크에 통째로 반복되므로 무해)
-        if any(getattr(c, "row_span", 1) > 1 for r in data_rows for c in r):
-            return [single]
-
-        # heading 접두(_generate_section_text_with_heading 과 동일 규칙). xlsx 는 보통 공백.
-        merged = {lvl: t for lvl, t in (h_short or {}).items() if t}
-        heading = ", ".join(merged[l] for l in sorted(merged)) if merged else ""
-        prefix = (heading + ", ") if heading else ""
-
-        header_inner = "".join(self._render_table_row_html(r, num_cols) for r in header_rows)
-
-        def wrap(inner: str) -> str:
-            return sheet_prefix + prefix + "<table><tbody>" + header_inner + inner + "</tbody></table>"
-
-        texts: list[str] = []
-        cur = ""
-        for r in data_rows:
-            tr = self._render_table_row_html(r, num_cols)
-            if cur and self._count_tokens(wrap(cur + tr)) > self.max_tokens:
-                texts.append(wrap(cur))
-                cur = tr
-            else:
-                cur += tr
-        if cur:
-            texts.append(wrap(cur))
-        return texts or [single]
-
-    def _extract_used_headers(self, header_info_list: list[dict]) -> Optional[list[str]]:
-        """헤더 정보 리스트에서 실제 사용되는 모든 헤더들을 level 순서대로 추출하고 ', '로 연결"""
-        if not header_info_list:
-            return None
-
-        all_headers = [] # header 순서대로 추가
-        seen_headers = set()  # 중복 방지용
-
-        for header_info in header_info_list:
-            if header_info:
-                for level in sorted(header_info.keys()):
-                    header_text = header_info[level]
-                    if header_text and header_text not in seen_headers:
-                        all_headers.append(header_text)
-                        seen_headers.add(header_text)
-
-        return all_headers if all_headers else None
-
-    def _split_table_text(self, table_text: str, max_tokens: int) -> list[str]:
-        """테이블 텍스트를 토큰 제한에 맞게 분할 (단순 토큰 수 기준)"""
-        if not table_text:
-            return [table_text]
-
-        # 전체 테이블이 토큰 제한 내인지 확인
-        if self._count_tokens(table_text) <= max_tokens:
-            return [table_text]
-
-        # 단순히 토큰 수 기준으로 텍스트 분할
-        # semchunk 사용하여 토큰 제한에 맞게 분할 (char 모드는 문자 수 카운터 len 사용)
-        counter = len if self._tokenizer is None else self._tokenizer
-        chunker = semchunk.chunkerify(counter, chunk_size=max_tokens)
-        chunks = chunker(table_text)
-        return chunks if chunks else [table_text]
-
-    def _is_section_header(self, item: DocItem) -> bool:
-        """아이템이 section header인지 확인"""
-        return (isinstance(item, SectionHeaderItem) or
-                (isinstance(item, TextItem) and
-                 item.label in [DocItemLabel.SECTION_HEADER, DocItemLabel.TITLE]))
-
-    def _get_section_header_level(self, item: DocItem) -> Optional[int]:
-        """Section header의 level을 반환"""
-        if isinstance(item, SectionHeaderItem):
-            return item.level
-        elif isinstance(item, TextItem):
-            if item.label == DocItemLabel.TITLE:
-                return 0
-            elif item.label == DocItemLabel.SECTION_HEADER:
-                return 1
-        return None
-
-    def _generate_section_text_with_heading(self, section_items: list[DocItem],
-                                            section_header_infos: list[dict],
-                                            dl_doc: DoclingDocument,
-                                            **kwargs) -> str:
-        """섹션의 텍스트를 생성하되, 앞에 heading을 붙임"""
-        # 첫 번째 item의 header_info에서 heading 추출
-        if section_header_infos and section_header_infos[0]:
-            merged_headers = {}
-            for level, header_text in section_header_infos[0].items():
-                if header_text:
-                    merged_headers[level] = header_text
-
-            # level 순서대로 정렬해서 ', '로 연결
-            if merged_headers:
-                sorted_levels = sorted(merged_headers.keys())
-                headers = [merged_headers[level] for level in sorted_levels]
-                heading_text = ', '.join(headers)
-            else:
-                heading_text = ""
-        else:
-            heading_text = ""
-
-        # 섹션의 일반 텍스트 생성
-        section_text = self._generate_text_from_items_with_headers(
-            section_items, section_header_infos, dl_doc, **kwargs
-        )
-
-        # heading이 있으면 앞에 붙이기
-        if heading_text:
-            return heading_text + ", " + section_text
-        else:
-            return section_text
-
-    def _split_document_by_tokens(self, doc_chunk: DocChunk, dl_doc: DoclingDocument, **kwargs) -> list[DocChunk]:
-        """문서를 토큰 제한에 맞게 분할 (v2: 섹션 헤더 기준으로 분할 후 max_tokens로 병합)"""
-        items = doc_chunk.meta.doc_items
-        header_info_list = getattr(doc_chunk, '_header_info_list', [])
-        header_short_info_list = getattr(doc_chunk, '_header_short_info_list', [])
-
-        if not items:
-            return []
-
-        # ================================================================
-        # 헬퍼 함수들
-        # ================================================================
-
-        def get_header_level(header_infos, *, first=False, default=-1):
-            """header_infos에서 최종 레벨 계산"""
-            if not header_infos:
-                return default
-            info = header_infos[0] if first else header_infos[-1]
-            return max(info.keys(), default=default)
-
-        def get_current_chunk(doc_chunk: DocChunk, merged_texts: list[str], merged_header_short_infos: list[dict], merged_items: list[DocItem]):
-            """현재까지 병합된 내용으로 DocChunk 생성"""
-            # doc_items 가 비면 DocMeta(min_length=1) 검증에서 크래시하므로 스킵한다.
-            # (chunk_size 분할 시 헤더만 남고 items 가 빈 무의미 그룹이 생길 수 있음)
-            if not merged_texts or not merged_items:
-                return None
-            chunk_text = "\n".join(merged_texts)
-            used_headers = self._extract_used_headers(merged_header_short_infos)
-
-            return DocChunk(
-                    text=chunk_text,
-                    meta=DocMeta(
-                        doc_items=merged_items,
-                        headings=used_headers,
-                        captions=None,
-                        origin=doc_chunk.meta.origin,
-                    )
-                )
-
-        def get_text_from_item(item: DocItem) -> str:
-            """DocItem에서 텍스트 추출"""
-            if isinstance(item, TableItem):
-                return self._extract_table_text(item, dl_doc, **kwargs)
-            elif hasattr(item, 'text') and item.text:
-                return item.text
-            elif isinstance(item, PictureItem):
-                text = ""
-                for annotation in item.annotations:
-                    if hasattr(annotation, 'text'):
-                        text += annotation.text
-                return text
-            return ""
-
-        def split_items_evenly_by_tokens(item_token_counts, max_tokens):
-            n = len(item_token_counts)
-            total = sum(item_token_counts)
-            if n == 0:
-                return []
-            if total <= max_tokens:
-                return [(0, n)]   # ✅ 항상 (a,b)
-
-            k = math.ceil(total / max_tokens)
-            target = total / k
-
-            P = [0]
-            for c in item_token_counts:
-                P.append(P[-1] + c)
-
-            cuts = [0]
-            used = {0}
-            for t in range(1, k):
-                goal = t * target
-                j = bisect.bisect_left(P, goal)
-
-                cand = []
-                if 0 < j < len(P): cand.append(j)
-                if 0 <= j-1 < len(P): cand.append(j-1)
-
-                best = None
-                best_dist = float("inf")
-                for x in cand:
-                    if x in used:
-                        continue
-                    if x <= cuts[-1]:
-                        continue
-                    if x >= len(P)-1:  # n
-                        continue
-                    dist = abs(P[x] - goal)
-                    if dist < best_dist:
-                        best_dist = dist
-                        best = x
-
-                if best is None:
-                    best = min(max(cuts[-1] + 1, 1), len(P)-2)
-
-                cuts.append(best)
-                used.add(best)
-
-            cuts.append(n)
-
-            # 폭 0 범위(a==b)는 빈 items 그룹을 만들어 하위에서 무의미 청크가 되므로 제외.
-            return [(a, b) for a, b in zip(cuts[:-1], cuts[1:]) if a < b]
-
-        def adjust_captions(items_group):
-
-            b_modified = False
-            for idx, group in enumerate(items_group):
-                if group is None:
-                    continue
-                item = group[0][0]
-                ref_idx_list = []
-                if hasattr(item, 'captions') and item.captions:
-                    for cap in item.captions:
-                        cap_ref = cap.cref
-                        cap_idx = -1
-                        for j, it in enumerate(items_group):
-                            if it is None:
-                                continue
-                            if getattr(it[0][0], 'self_ref', None) == cap_ref:
-                                cap_idx = j
-                                break
-                        if cap_idx != -1:
-                            ref_idx_list.append(cap_idx)
-                if ref_idx_list:
-                    ref_idx_list = sorted(ref_idx_list)
-
-                if not ref_idx_list:
-                    continue
-
-                # caption 아이템들을 부모 아이템 바로 뒤로 이동
-                for cap_idx in ref_idx_list:
-                    for g in items_group[cap_idx]:
-                        items_group[idx].append(g)
-                    items_group[cap_idx] = None  # 나중에 None 제거
-                    b_modified = True
-
-            if b_modified:
-                items_group = [it for it in items_group if it is not None]
-
-            return items_group
-
-        def adjust_pictures_in_tables(items_group):
-            # picture in table 처리
-
-            b_modified = False
-            for idx, group in enumerate(items_group):
-                if group is None:
-                    continue
-                item = group[0][0]
-                pic_idx_list = []
-                if isinstance(item, TableItem):
-                    if not item.prov:  # HTML 등 좌표(prov) 없는 표는 bbox 매칭 불가 → 건너뜀
-                        continue
-                    table_bbox = item.prov[0].bbox
-                    table_page_no = item.prov[0].page_no
-
-                    for j in range(len(items_group)):
-                        if items_group[j] is None:
-                            continue
-                        pic_item = items_group[j][0][0]
-                        if isinstance(pic_item, PictureItem):
-                            # table 안의 picture인지 확인. iou 사용
-                            if not pic_item.prov:  # 좌표 없는 그림은 매칭 불가 → 건너뜀
-                                continue
-                            pic_bbox = pic_item.prov[0].bbox
-                            pic_page_no = pic_item.prov[0].page_no
-                            if pic_page_no != table_page_no:
-                                continue
-                            ios = pic_bbox.intersection_over_self(table_bbox)
-                            if ios > 0.5:  # picture가 50% 이상 table 안에 포함되면 table 안의 picture로 간주
-                                pic_idx_list.append(j)
-                    if pic_idx_list:
-                        pic_idx_list = sorted(pic_idx_list)
-
-                if not pic_idx_list:
-                    continue
-
-                for pic_idx in pic_idx_list:
-                    for g in items_group[pic_idx]:
-                        items_group[idx].append(g)
-                    items_group[pic_idx] = None  # 나중에 None 제거
-                    b_modified = True
-
-            if b_modified:
-                items_group = [it for it in items_group if it is not None]
-
-            return items_group
-
-        # ================================================================
-        # 표 단위 청크 분리 (xlsx docling: table_as_chunk kwarg 또는 xlsx-origin 자동감지)
-        #   각 TableItem 을 독립 청크로(초과 시 row 분할+헤더 반복+시트명), 사이 비표 아이템은 별도 청크.
-        #   chunk_size(max_tokens) 와 무관하게 표가 병합되지 않도록 토큰 단계 이전에 확정 반환한다.
-        # ================================================================
-        if kwargs.get("table_as_chunk") or self._doc_has_sheet_groups(dl_doc):
-            table_chunks: list[DocChunk] = []
-            buf_items: list[DocItem] = []
-            buf_short: list[dict] = []
-
-            def _flush_buf():
-                if buf_items:
-                    text = self._generate_section_text_with_heading(buf_items, buf_short, dl_doc, **kwargs)
-                    # 빈 문서 방어용 "." placeholder 등 무의미한 텍스트 run 은 청크로 만들지 않는다.
-                    if text and text.strip() and text.strip() != ".":
-                        ch = get_current_chunk(doc_chunk, [text], list(buf_short), list(buf_items))
-                        if ch:
-                            table_chunks.append(ch)
-                    buf_items.clear()
-                    buf_short.clear()
-
-            for i, item in enumerate(items):
-                h_short = header_short_info_list[i] if i < len(header_short_info_list) else {}
-                if isinstance(item, TableItem):
-                    _flush_buf()
-                    # 행이 많아 chunk_size 를 초과하는 표는 row 단위로 분할(각 청크에 헤더 반복 포함).
-                    for text in self._table_item_to_texts(item, dl_doc, h_short, **kwargs):
-                        ch = get_current_chunk(doc_chunk, [text], [h_short], [item])
-                        if ch:
-                            table_chunks.append(ch)
-                else:
-                    buf_items.append(item)
-                    buf_short.append(h_short)
-            _flush_buf()
-
-            if table_chunks:
-                return table_chunks
-
-        # ================================================================
-        # 1단계: 섹션 헤더 기준으로 분할
-        # ================================================================
-
-        sections = []  # [(items, header_infos, header_short_infos), ...]
-        cur_items, cur_h_infos, cur_h_short = [], [], []
-
-        for i, item in enumerate(items):
-            h_info = header_info_list[i] if i < len(header_info_list) else {}
-            h_short = header_short_info_list[i] if i < len(header_short_info_list) else {}
-
-            # 섹션 헤더를 만나면
-            if self._is_section_header(item):
-                # 이전 섹션이 있으면 저장
-                if cur_items:
-                    sections.append((cur_items, cur_h_infos, cur_h_short))
-
-                # 새로운 섹션 시작
-                cur_items = [item]
-                cur_h_infos = [h_info]
-                cur_h_short = [h_short]
-            else:
-                # 섹션 헤더가 아니면 현재 섹션에 추가
-                cur_items.append(item)
-                cur_h_infos.append(h_info)
-                cur_h_short.append(h_short)
-
-        # 마지막 섹션 저장
-        if cur_items:
-            sections.append((cur_items, cur_h_infos, cur_h_short))
-
-        # ================================================================
-        # 2단계: 각 섹션의 텍스트에 heading 붙이기
-        # ================================================================
-
-        sections_with_text = []
-        for items, header_infos, header_short_infos in sections:
-            text = self._generate_section_text_with_heading(
-                items, header_short_infos, dl_doc, **kwargs
-            )
-            sections_with_text.append((
-                text,
-                items,
-                header_infos,
-                header_short_infos
-            ))
-
-        # ================================================================
-        # 2.5단계: 너무 긴 청크는 분할 (인덱스 꼬임 방지를 위해 새 리스트 사용)
-        #   resize_all 전용. split_only 는 구조 그룹핑(4단계) 후 5.5단계에서 분할한다
-        #   (여기서 분할하면 같은 섹션 조각들이 4단계에서 다시 병합되어 무의미).
-        # ================================================================
-        if self.max_tokens > 0 and self.chunk_mode == "resize_all":
-            final_sections = []  # 결과를 담을 새 리스트
-            for text, items, h_infos, h_short in sections_with_text:
-                token_count = self._count_tokens(text)
-                if token_count < self.max_tokens:
-                    final_sections.append((text, items, h_infos, h_short))
-                    continue
-
-                # caption 및 table 내 그림은 같은 섹션에 있도록 조정
-                items_group=[[(item, info, short)] for item, info, short in zip(items, h_infos, h_short)]
-                items_group = adjust_captions(items_group)
-                items_group = adjust_pictures_in_tables(items_group)
-
-                # 너무 긴 섹션은 분할
-                # 각 아이템 별 token 수 계산
-                item_token_counts = []
-                for group in items_group:
-                    cur_count = 0
-                    for g in group:
-                        cur_count += self._count_tokens(get_text_from_item(g[0]))
-                    item_token_counts.append(cur_count)
-
-                # 아이템 그룹들을 토큰 기준으로 균등 분할
-                split_info = split_items_evenly_by_tokens(item_token_counts, self.max_tokens)
-
-                # 분할된 결과들을 새 리스트에 추가
-                for (a, b) in split_info:
-
-                    # 각 그룹에서 items, h_infos, h_short로 분리
-                    group_items = []
-                    group_h_infos = []
-                    group_h_short = []
-                    for idx in range(a, b):
-                        for g in items_group[idx]:
-                            group_items.append(g[0])
-                            group_h_infos.append(g[1])
-                            group_h_short.append(g[2])
-
-                    new_text = self._generate_section_text_with_heading(
-                        group_items, group_h_short, dl_doc, **kwargs
-                    )
-                    final_sections.append((new_text, group_items, group_h_infos, group_h_short))
-
-            sections_with_text = final_sections  # 전체 리스트 교체
-
-        # ================================================================
-        # 3단계: 단독 타이틀(1줄만) → 다음 섹션으로 병합
-        # ================================================================
-
-        for i in range(len(sections_with_text) - 2, -1, -1):
-            text, items, h_infos, h_short = sections_with_text[i]
-
-            # 아이템이 하나인 섹션 헤더만 검사
-            if len(items) != 1 or not self._is_section_header(items[0]):
-                continue
-
-            # 문단이 이미 구성된 것은 제외 (문자 수가 30자 이상이면 문단을 구성했다고 간주)
-            item_text = "".join(getattr(it, "text", "") for it in items)
-            if len(item_text) > 30:
-                continue
-
-            # 현재 섹션헤더 레벨이 다음 섹션헤더 레벨보다 더 높은 경우에만 병합 (높은 레벨이 더 작은 숫자)
-            n_text, n_items, n_h_infos, n_h_short = sections_with_text[i + 1]
-            current_level = get_header_level(h_infos, first=False)
-            next_level = get_header_level(n_h_infos, first=True)
-            if 0 <= next_level < current_level:
-                continue
-
-            # 다음 섹션과 병합
-            sections_with_text[i] = (text + '\n' + n_text, items + n_items, h_infos + n_h_infos, h_short + n_h_short)
-            sections_with_text.pop(i + 1)
-
-        # ================================================================
-        # 4단계: 토큰 기준 병합 (1차 — 섹션 구조 경계 기준 그룹 생성)
-        # ================================================================
-
-        groups: list[dict] = []
-        merged_texts, merged_items = [], []
-        merged_header_infos, merged_header_short_infos = [], []
-
-        def flush_group():
-            if merged_texts:
-                groups.append({
-                    "texts": list(merged_texts),
-                    "items": list(merged_items),
-                    "h_infos": list(merged_header_infos),
-                    "h_short": list(merged_header_short_infos),
-                })
-
-        for text, items, header_infos, header_short_infos in sections_with_text:
-
-            b_new_chunk = False
-
-            #----------------------------------
-            # 병합 가능 여부 판단
-
-            # 병합 가능 토큰 수 계산
-            test_tokens = self._count_tokens("\n".join(merged_texts + [text]))
-
-            # 현재 섹션헤더 레벨과 병합된 섹션헤더 레벨
-            section_level = get_header_level(header_infos, first=True)
-            merged_level = get_header_level(merged_header_infos, first=False)
-
-            # split_only: base 섹션 granularity 유지 — 구조 그룹핑 병합 없이 섹션마다 분리(장 단위 병합 방지).
-            #   (1·3단계로 만든 섹션을 그대로 두고, 초과분만 5.5단계에서 분할)
-            if self.chunk_mode == "split_only" and len(merged_texts) > 0:
-                b_new_chunk = True
-            # 토큰 수 초과 시 새로운 청크 생성 (resize_all 전용)
-            elif self.chunk_mode == "resize_all" and test_tokens > self.max_tokens and len(merged_texts) > 0:
-                b_new_chunk = True
-            # 현재 섹션헤더 레벨이 더 높으면 새로운 청크 생성 (resize_all 구조 경계)
-            elif 0 <= section_level < merged_level:
-                b_new_chunk = True
-            #----------------------------------
-
-            # 새로운 청크 생성
-            if b_new_chunk:
-                flush_group()
-
-                # 새로운 병합 시작
-                merged_texts = [text]
-                merged_items = list(items)
-                merged_header_infos = list(header_infos)
-                merged_header_short_infos = list(header_short_infos)
-            else:
-                # 현재 섹션 병합
-                merged_texts.append(text)
-                merged_items.extend(items)
-                merged_header_infos.extend(header_infos)
-                merged_header_short_infos.extend(header_short_infos)
-
-        # 마지막 병합된 items 처리
-        flush_group()
-
-        # ================================================================
-        # 5단계: chunk_size 한도 내 인접 그룹 greedy 병합
-        #   1차 결과(구조 경계 기준 그룹)를 순서대로, 합산 크기가 chunk_size 이하인 동안
-        #   인접 그룹끼리 결합한다. (크기는 HEADER 라인 포함 최종 텍스트 기준)
-        # ================================================================
-        def _size(g):
-            text = "\n".join(g["texts"])
-            headings = self._extract_used_headers(g["h_short"]) or []
-            header_line = ("HEADER: " + ", ".join(headings) + "\n") if headings else ""
-            # char 모드면 문자 수, huggingface 모드면 토큰 수로 산정 (max_tokens 단위와 일치)
-            return self._count_tokens(header_line + text)
-
-        if self.max_tokens > 0 and groups and self.chunk_mode == "resize_all":
-            def _merge(a, b):
-                return {
-                    "texts": a["texts"] + b["texts"],
-                    "items": a["items"] + b["items"],
-                    "h_infos": a["h_infos"] + b["h_infos"],
-                    "h_short": a["h_short"] + b["h_short"],
-                }
-
-            merged_groups = [groups[0]]
-            for g in groups[1:]:
-                cand = _merge(merged_groups[-1], g)
-                if _size(cand) <= self.max_tokens:
-                    merged_groups[-1] = cand
-                else:
-                    merged_groups.append(g)
-            groups = merged_groups
-
-        # ================================================================
-        # 5.5단계: split_only 전용 — chunk_size 초과 그룹만 토큰 기준 균등 분할
-        #   (구조 기반 그룹은 유지, 작은 그룹은 병합하지 않고 그대로 둔다)
-        # ================================================================
-        if self.max_tokens > 0 and groups and self.chunk_mode == "split_only":
-            new_groups = []
-            for g in groups:
-                if _size(g) <= self.max_tokens:
-                    new_groups.append(g)
-                    continue
-
-                # caption 및 table 내 그림은 같은 조각에 있도록 조정 (2.5단계와 동일 로직)
-                items_group = [[(it, inf, sh)] for it, inf, sh in zip(g["items"], g["h_infos"], g["h_short"])]
-                items_group = adjust_captions(items_group)
-                items_group = adjust_pictures_in_tables(items_group)
-
-                item_token_counts = []
-                for grp in items_group:
-                    item_token_counts.append(sum(self._count_tokens(get_text_from_item(x[0])) for x in grp))
-
-                for (a, b) in split_items_evenly_by_tokens(item_token_counts, self.max_tokens):
-                    gi, gh, gs = [], [], []
-                    for idx in range(a, b):
-                        for x in items_group[idx]:
-                            gi.append(x[0]); gh.append(x[1]); gs.append(x[2])
-                    new_text = self._generate_section_text_with_heading(gi, gs, dl_doc, **kwargs)
-                    new_groups.append({"texts": [new_text], "items": gi, "h_infos": gh, "h_short": gs})
-            groups = new_groups
-
-        # ================================================================
-        # 6단계: 최종 DocChunk 생성
-        # ================================================================
-        result_chunks = []
-        for g in groups:
-            cur_chunk = get_current_chunk(doc_chunk, g["texts"], g["h_short"], g["items"])
-            if cur_chunk:
-                result_chunks.append(cur_chunk)
-
-        return result_chunks
-
-    def chunk(self, dl_doc: DoclingDocument, **kwargs: Any) -> Iterator[BaseChunk]:
-        """문서를 청킹하여 반환
-
-        Args:
-            dl_doc: 청킹할 문서
-
-        Yields:
-            토큰 제한에 맞게 분할된 청크들
-        """
-        doc_chunks = list(self.preprocess(dl_doc=dl_doc, **kwargs))
-
-        if not doc_chunks:
-            return iter([])
-
-        doc_chunk = doc_chunks[0]  # preprocess는 하나의 청크만 반환
-
-        final_chunks = self._split_document_by_tokens(doc_chunk, dl_doc, **kwargs)
-
-        return iter(final_chunks)
+class GenosSmartChunker(sc.SmartChunkerBase):
+    """청킹 본체는 facade/chunking/smart_chunker.py 에 있다.
+
+    여기에는 이 facade 가 고른 동작 옵션과 헤더 구분자만 둔다. 값을 바꾸면 청킹
+    동작이 바로 달라지므로, 사이트에서 손댈 지점은 사실상 이 블록이다.
+    """
+
+    # 그림 annotation 텍스트를 청크 본문에 싣는다.
+    PICTURE_ANNOTATION_TEXT = True
+    # 표 설명 annotation 반영 범위: 검색 설명 접두만 붙인다.
+    TABLE_DESCRIPTION_MODE = "prefix_only"
+
+    # 헤더 경로 구분자는 이 파일의 모듈 상수를 그대로 쓴다 — 청크 크기 산정과
+    # compose_vectors 의 실제 부착이 반드시 같은 문자열을 봐야 한다.
+    CHUNK_HEADER_SEP = _CHUNK_HEADER_SEP
+    CHUNK_PATH_SEP = _CHUNK_PATH_SEP
+    CHUNK_PATH_MAX_LEAVES = _CHUNK_PATH_MAX_LEAVES
 # 민감정보 분류/마스킹(#315)은 facade/guardrail 모듈로 분리 — gr.* 로 사용.
 # chunking 은 워크플로우를 직접 호출하지 않고, parser 가 넘긴 sensitive_infos 를 청크에 적용만 한다.
 from genon.preprocessor.facade import guardrail as gr
+
+
+
+
+# 조각에 섹션 문맥을 물려주는 규칙은 공용 모듈 한 벌이다(표 기준 분리도 같은 함수를 쓴다).
+_carry_over_section_headings = hp.carry_over_section_headings
 
 
 class GenOSVectorMeta(BaseModel):
@@ -1403,124 +291,32 @@ class GenOSVectorMeta(BaseModel):
     appendix: str = None ## !! appendix feature (2025-09-30, geonhee kim) !!
     file_path: Optional[str] = None
     guardrail_categories: Optional[list] = None  # #315 민감정보 분류 라벨(부동산/인사/민감 등). 미적용 시 None
+    # 표 메타(#360). 표 청크만 골라 검색하거나 나뉜 조각을 원래 순서로 잇는 데 쓴다.
+    has_table: bool = False
+    table_refs: Optional[str] = None
+    table_split_index: Optional[int] = None
+    table_split_total: Optional[int] = None
 
-class GenOSVectorMetaBuilder:
+class GenOSVectorMetaBuilder(vm.VectorMetaBuilderBase):
+    """공통 세터(텍스트 통계·페이지·bbox·미디어·글로벌 메타데이터)는
+    facade/common/vector_meta.py 에 있다. 여기에는 이 facade 고유 필드만 둔다."""
+
     def __init__(self):
         """빌더 초기화"""
-        self.text: Optional[str] = None
-        self.n_char: Optional[int] = None
-        self.n_word: Optional[int] = None
-        self.n_line: Optional[int] = None
-        self.i_page: Optional[int] = None
-        self.e_page: Optional[int] = None
-        self.i_chunk_on_page: Optional[int] = None
-        self.n_chunk_of_page: Optional[int] = None
-        self.i_chunk_on_doc: Optional[int] = None
-        self.n_chunk_of_doc: Optional[int] = None
-        self.n_page: Optional[int] = None
-        self.reg_date: Optional[str] = None
-        self.chunk_bboxes: Optional[str] = None
-        self.media_files: Optional[str] = None
+        super().__init__()
         self.title: Optional[str] = None
         self.created_date: Optional[int] = None
         self.appendix: Optional[str] = None # !! appendix feature (2025-09-30, geonhee kim) !!
         self.file_path: Optional[str] = None
-        self.guardrail_categories: Optional[list] = None  # #315 민감정보 분류 라벨
-        self.extra_metadata: dict[str, Any] = {}
-
-    def set_guardrail_categories(self, guardrail_categories: Optional[list]) -> "GenOSVectorMetaBuilder":
-        """#315 청크 민감정보 분류 라벨 설정 (부동산/인사/민감 등의 list, 미적용 시 None)"""
-        self.guardrail_categories = guardrail_categories or None
-        return self
-
-    def set_text(self, text: str) -> "GenOSVectorMetaBuilder":
-        """텍스트와 관련된 데이터를 설정"""
-        self.text = text
-        self.n_char = len(text)
-        self.n_word = len(text.split())
-        self.n_line = len(text.splitlines())
-        return self
-
-    def set_page_info(
-            self, i_page: int, i_chunk_on_page: int, n_chunk_of_page: int
-    ) -> "GenOSVectorMetaBuilder":
-        """페이지 정보 설정"""
-        self.i_page = i_page
-        self.i_chunk_on_page = i_chunk_on_page
-        self.n_chunk_of_page = n_chunk_of_page
-        return self
-
-    def set_chunk_index(self, i_chunk_on_doc: int) -> "GenOSVectorMetaBuilder":
-        """문서 전체의 청크 인덱스 설정"""
-        self.i_chunk_on_doc = i_chunk_on_doc
-        return self
-
-    def set_global_metadata(self, **global_metadata) -> "GenOSVectorMetaBuilder":
-        """글로벌 메타데이터 병합"""
-        for key, value in global_metadata.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-            else:
-                self.extra_metadata[key] = value
-        return self
-
-    def set_chunk_bboxes(self, doc_items: list, document: DoclingDocument) -> "GenOSVectorMetaBuilder":
-        chunk_bboxes = []
-        for item in doc_items:
-            for prov in item.prov:
-                label = item.self_ref
-                type_ = item.label
-                size = document.pages.get(prov.page_no).size
-                page_no = prov.page_no
-                bbox = prov.bbox
-                bbox_data = {'l': bbox.l / size.width,
-                             't': bbox.t / size.height,
-                             'r': bbox.r / size.width,
-                             'b': bbox.b / size.height,
-                             'coord_origin': bbox.coord_origin.value}
-                chunk_bboxes.append({'page': page_no, 'bbox': bbox_data, 'type': type_, 'ref': label})
-        self.e_page = max([bbox['page'] for bbox in chunk_bboxes]) if chunk_bboxes else 0
-        self.chunk_bboxes = json.dumps(chunk_bboxes)
-        return self
-
-    def set_media_files(self, doc_items: list, include_tables: bool = False) -> "GenOSVectorMetaBuilder":
-        temp_list = []
-        for item in doc_items:
-            if isinstance(item, PictureItem) and item.image:
-                path = str(item.image.uri)
-                name = path.rsplit("/", 1)[-1]
-                temp_list.append({'name': name, 'type': 'image', 'ref': item.self_ref})
-            elif include_tables and isinstance(item, TableItem) and item.image:
-                # 표 이미지는 picture 와 구분되도록 type='table_image' 로 기록한다.
-                # ref(self_ref)는 chunk_bboxes 의 table 엔트리 ref 와 동일 → 조인 가능.
-                path = str(item.image.uri)
-                name = path.rsplit("/", 1)[-1]
-                temp_list.append({'name': name, 'type': 'table_image', 'ref': item.self_ref})
-        self.media_files = json.dumps(temp_list)
-        return self
 
     def build(self) -> GenOSVectorMeta:
         """설정된 데이터를 사용해 최종적으로 GenOSVectorMeta 객체 생성"""
         payload = {
-            "text": self.text,
-            "n_char": self.n_char,
-            "n_word": self.n_word,
-            "n_line": self.n_line,
-            "i_page": self.i_page,
-            "e_page": self.e_page,
-            "i_chunk_on_page": self.i_chunk_on_page,
-            "n_chunk_of_page": self.n_chunk_of_page,
-            "i_chunk_on_doc": self.i_chunk_on_doc,
-            "n_chunk_of_doc": self.n_chunk_of_doc,
-            "n_page": self.n_page,
-            "reg_date": self.reg_date,
-            "chunk_bboxes": self.chunk_bboxes,
-            "media_files": self.media_files,
+            **self.core_payload(),
             "title": self.title,
             "created_date": self.created_date,
             "appendix": self.appendix or "", # !! appendix feature (2025-09-30, geonhee kim) !!
             "file_path": self.file_path,
-            "guardrail_categories": self.guardrail_categories,  # #315 민감정보 분류 라벨
             **self.extra_metadata,
         }
         return GenOSVectorMeta.model_validate(payload)
@@ -1634,6 +430,23 @@ class DocumentProcessor:
             _log.warning(f"[DocumentProcessor] Unknown chunking.chunk_mode '{self._chunk_mode}', fallback to 'split_only'.")
             self._chunk_mode = "split_only"
 
+        # 청크 선두 "HEADER: <섹션 경로>" 라인 부착 여부(기본 True). kwargs 의 include_chunk_header 가 우선.
+        _ich = _parse_optional_bool(chunking_cfg.get("include_chunk_header"), "chunking.include_chunk_header")
+        self._include_chunk_header = True if _ich is None else _ich
+
+        # 표를 본문과 섞지 않고 독자 청크로 낼지(chunking.table_as_chunk, 기본 true).
+        # kwargs 의 table_as_chunk 가 우선.
+        _tac = _parse_optional_bool(chunking_cfg.get("table_as_chunk"), "chunking.table_as_chunk")
+        self._table_as_chunk = True if _tac is None else _tac
+
+        # 청크 텍스트 정규화(chunking.text_cleanup): "off"(기본) | "safe".
+        # safe 면 청킹 입력에 문자 위생(tn.sanitize)을, 벡터 생성 직전에 표현 정리(tn.tidy)를 적용한다.
+        # 우선순위: kwargs.text_cleanup > 아래 > "off".
+        self._text_cleanup = tn.mode_from_cfg(chunking_cfg)
+        # 사이트별 노이즈 삭제 규칙(text_cleanup.rules). 기동 시 정규식을 컴파일해
+        # 잘못된 설정을 요청 전에 드러낸다. 규칙이 없으면 빈 튜플이라 무비용이다.
+        self._text_cleanup_rules = tn.rules_from_cfg(chunking_cfg)
+
         # 민감정보 분류(#315): chunking 은 워크플로우를 직접 호출하지 않는다(parser 가 호출).
         # parser 가 넘긴 sensitive_infos 를 청크에 적용만 하며, 치환 여부는 masking_enabled 로 결정.
         self._gr_cfg = gr.GuardrailConfig.from_cfg(cfg)
@@ -1646,38 +459,13 @@ class DocumentProcessor:
 
         # OCR 엔드포인트는 ocr.paddle.ocr_endpoint 가 정식 위치.
         # 구버전 호환: ocr.ocr_endpoint(상위) / 최상위 ocr_endpoint 도 폴백으로 인식.
-        paddle_cfg = _as_dict(ocr_cfg.get("paddle"))
-        ocr_ep = (
-            paddle_cfg.get("ocr_endpoint")
-            or ocr_cfg.get("ocr_endpoint")
-            or cfg.get("ocr_endpoint", "http://192.168.73.172:48080/ocr")
-        )
-
-        # OCR 수행 모드. "auto"(default)=휴리스틱 기반 재OCR / "force"=무조건 전체 OCR / "disable"=OCR 안 함
-        raw_ocr_mode = str(ocr_cfg.get("ocr_mode", cfg.get("ocr_mode", "auto"))).lower().strip()
-        if raw_ocr_mode not in {"auto", "force", "disable"}:
-            _log.warning(f"[DocumentProcessor] Unknown ocr_mode '{raw_ocr_mode}', fallback to 'auto'")
-            raw_ocr_mode = "auto"
-        self.ocr_mode = raw_ocr_mode
-
-        # 테이블 셀 재OCR HTTP timeout (ocr_all_table_cells). 잘못된 값은 60 으로 폴백.
-        table_cell_ocr_timeout = _parse_optional_int(
-            ocr_cfg.get("table_cell_ocr_timeout"), "ocr.table_cell_ocr_timeout"
-        )
-        self._table_cell_ocr_timeout = (
-            table_cell_ocr_timeout if table_cell_ocr_timeout and table_cell_ocr_timeout > 0 else 60
-        )
-
-        # 글리프 기반 auto-OCR 재트리거 임계값.
-        glyph_cfg = _as_dict(ocr_cfg.get("glyph_detection"))
-        glyph_cell_th = _parse_optional_int(
-            glyph_cfg.get("table_cell_threshold"), "ocr.glyph_detection.table_cell_threshold"
-        )
-        self._glyph_table_cell_threshold = glyph_cell_th if glyph_cell_th and glyph_cell_th > 0 else 1
-        glyph_doc_th = _parse_optional_int(
-            glyph_cfg.get("document_threshold"), "ocr.glyph_detection.document_threshold"
-        )
-        self._glyph_document_threshold = glyph_doc_th if glyph_doc_th and glyph_doc_th > 0 else 10
+        # 해석은 facade/common/pipeline_setup.py 로 모았다(조정 지점은 yaml 의 ocr 섹션).
+        _ocr_rt = ps.resolve_ocr_runtime(cfg, ocr_cfg)
+        ocr_ep = _ocr_rt.endpoint
+        self.ocr_mode = _ocr_rt.mode
+        self._table_cell_ocr_timeout = _ocr_rt.table_cell_ocr_timeout
+        self._glyph_table_cell_threshold = _ocr_rt.glyph_table_cell_threshold
+        self._glyph_document_threshold = _ocr_rt.glyph_document_threshold
 
         ocr_options = self._build_ocr_options(ocr_cfg, paddle_endpoint=ocr_ep)
         if isinstance(ocr_options, UpstageOcrOptions):
@@ -1687,27 +475,13 @@ class DocumentProcessor:
 
         self.page_chunk_counts = defaultdict(int)
 
-        device_str = str(pdf_cfg.get("device", "auto")).lower().strip()
-        device = _ACCELERATOR_DEVICE_MAP.get(device_str)
-        if device is None:
-            _log.warning(f"[DocumentProcessor] Unknown pdf_pipeline.device '{device_str}', fallback to 'auto'")
-            device = AcceleratorDevice.AUTO
-
-        num_threads = _parse_optional_int(pdf_cfg.get("num_threads"), "pdf_pipeline.num_threads")
-        if num_threads is None or num_threads <= 0:
-            num_threads = 8
-        accelerator_options = AcceleratorOptions(num_threads=num_threads, device=device)
-
-        images_scale = _parse_optional_int(pdf_cfg.get("images_scale"), "pdf_pipeline.images_scale")
-        if images_scale is None or images_scale <= 0:
-            images_scale = 2
-
-        generate_page_images = _parse_optional_bool(
-            pdf_cfg.get("generate_page_images"), "pdf_pipeline.generate_page_images"
-        )
-        generate_picture_images = _parse_optional_bool(
-            pdf_cfg.get("generate_picture_images"), "pdf_pipeline.generate_picture_images"
-        )
+        # pdf_pipeline 섹션 해석은 facade/common/pipeline_setup.py 로 모았다.
+        _pdf = ps.resolve_pdf_basics(pdf_cfg)
+        accelerator_options = _pdf.accelerator_options
+        images_scale = _pdf.images_scale
+        generate_page_images = _pdf.generate_page_images
+        generate_picture_images = _pdf.generate_picture_images
+        table_structure_mode = _pdf.table_structure_mode
 
         # 표 이미지(table_image) 옵션: 표를 picture 와 동일하게 이미지로 잘라 저장하고,
         # media_files 에 type='table_image' 로 기록한다(검색=청크 텍스트 / 답변=표 이미지).
@@ -1717,17 +491,18 @@ class DocumentProcessor:
             _parse_optional_bool(table_image_cfg.get("enable"), "table_image.enable")
         )
 
-        # markdown 표 compact(컬럼 정렬 패딩 제거) 여부. 기본 True. html 포맷엔 무관.
         output_cfg = _as_dict(cfg.get("output"))
-        self._compact_tables = bool(output_cfg.get("compact_tables", True))
-
-        table_mode_str = str(pdf_cfg.get("table_structure_mode", "accurate")).lower().strip()
-        table_structure_mode = _TABLE_FORMER_MODE_MAP.get(table_mode_str)
-        if table_structure_mode is None:
-            _log.warning(
-                f"[DocumentProcessor] Unknown pdf_pipeline.table_structure_mode '{table_mode_str}', fallback to 'accurate'"
-            )
-            table_structure_mode = TableFormerMode.ACCURATE
+        # 표 직렬화 형식. auto 는 여기서 확정하지 않는다 - 표마다 grid 구조를 봐야 정해진다.
+        # 파서와 청커는 별개 호출이라 이 값이 kwargs 로 넘어오지 않는다. 요청이 명시하지
+        # 않으면 이 설정이 유일한 경로다.
+        self._table_format = cp.resolve_table_format_setting(output_cfg)
+        # markdown 표 compact(컬럼 정렬 패딩 제거) 여부. 기본 True. html 포맷엔 무관.
+        self._compact_tables = cp.resolve_compact_tables(output_cfg)
+        # 병합 셀 표에 행 문장을 덧붙일지. 기본 off(청크가 커진다).
+        self._table_row_serialization = cp.resolve_table_row_serialization(output_cfg)
+        # 같은 청크 전문을 표만 다른 표기형태로 렌더한 텍스트를 추가 필드로 실을지.
+        # 기본은 빈 목록(추가 필드 없음) — 켜면 본문이 형식 수만큼 복제되어 페이로드가 커진다.
+        self._table_text_formats = cp.resolve_table_text_formats(output_cfg)
 
         # PDF 파이프라인 옵션 설정
         self.pipe_line_options = PdfPipelineOptions()
@@ -1746,77 +521,10 @@ class DocumentProcessor:
         self.pipe_line_options.images_scale = images_scale
 
         # layout 모델 선택. "genos_layout"(default) / "docling_layout". 잘못된 값은 경고 후 폴백.
-        layout_model_type_str = str(
-            layout_cfg.get("layout_model_type", cfg.get("layout_model_type", "genos_layout"))
-        ).lower().strip()
-        if layout_model_type_str == LayoutModelType.DOCLING_LAYOUT.value:
-            layout_model_type = LayoutModelType.DOCLING_LAYOUT
-        else:
-            if layout_model_type_str != LayoutModelType.GENOS_LAYOUT.value:
-                _log.warning(
-                    f"[DocumentProcessor] Unknown layout_model_type '{layout_model_type_str}', "
-                    f"fallback to '{LayoutModelType.GENOS_LAYOUT.value}'"
-                )
-            layout_model_type = LayoutModelType.GENOS_LAYOUT
-        self.pipe_line_options.layout_options.layout_model_type = layout_model_type
-        self.pipe_line_options.layout_options.genos_layout_options.endpoint = _as_dict(
-            layout_cfg.get("genos_layout")
-        ).get("endpoint", "http://192.168.75.174:26001/v1/chat/completions")
-        self.pipe_line_options.layout_options.genos_layout_options.api_key = _as_dict(
-            layout_cfg.get("genos_layout")
-        ).get("api_key", "")
-
-        # genos layout 모델은 batch size를 32로 설정
-        page_batch_size = _parse_optional_int(
-            _as_dict(layout_cfg.get("genos_layout")).get("page_batch_size"), "layout.genos_layout.page_batch_size"
-        )
-        if page_batch_size is None or page_batch_size <= 0:
-            page_batch_size = 128
-        settings.perf.page_batch_size = page_batch_size
-
-        max_completion_tokens = _parse_optional_int(
-            _as_dict(layout_cfg.get("genos_layout")).get("max_completion_tokens"),
-            "layout.genos_layout.max_completion_tokens",
-        )
-        if max_completion_tokens is None or max_completion_tokens <= 0:
-            max_completion_tokens = 16384
-        self.pipe_line_options.layout_options.genos_layout_options.max_completion_tokens = max_completion_tokens
-
-        # DotsOCR VLM 호출/생성 파라미터 (yaml 누락·무효 시 기본값 폴백)
-        genos_layout_cfg = _as_dict(layout_cfg.get("genos_layout"))
-        layout_model = genos_layout_cfg.get("model") or "dots-mocr"
-        layout_timeout = _parse_optional_int(
-            genos_layout_cfg.get("timeout"), "layout.genos_layout.timeout"
-        )
-        if layout_timeout is None or layout_timeout <= 0:
-            layout_timeout = 3600
-        layout_retry_count = _parse_optional_int(
-            genos_layout_cfg.get("retry_count"), "layout.genos_layout.retry_count"
-        )
-        if layout_retry_count is None or layout_retry_count < 0:
-            layout_retry_count = 2
-        layout_temperature = _parse_optional_float(
-            genos_layout_cfg.get("temperature"), "layout.genos_layout.temperature"
-        )
-        if layout_temperature is None or layout_temperature < 0:
-            layout_temperature = 0.1
-        layout_top_p = _parse_optional_float(
-            genos_layout_cfg.get("top_p"), "layout.genos_layout.top_p"
-        )
-        if layout_top_p is None or not (0 < layout_top_p <= 1):
-            layout_top_p = 0.9
-        layout_repetition_penalty = _parse_optional_float(
-            genos_layout_cfg.get("repetition_penalty"),
-            "layout.genos_layout.repetition_penalty",
-        )
-        if layout_repetition_penalty is None or layout_repetition_penalty <= 0:
-            layout_repetition_penalty = 1.15
-        self.pipe_line_options.layout_options.genos_layout_options.model = layout_model
-        self.pipe_line_options.layout_options.genos_layout_options.timeout = layout_timeout
-        self.pipe_line_options.layout_options.genos_layout_options.retry_count = layout_retry_count
-        self.pipe_line_options.layout_options.genos_layout_options.temperature = layout_temperature
-        self.pipe_line_options.layout_options.genos_layout_options.top_p = layout_top_p
-        self.pipe_line_options.layout_options.genos_layout_options.repetition_penalty = layout_repetition_penalty
+        # 해석·적용은 facade/common/pipeline_setup.py 로 모았다(조정 지점은 yaml 의 layout 섹션).
+        _layout = ps.resolve_layout_settings(cfg, layout_cfg)
+        ps.apply_layout_settings(self.pipe_line_options, _layout)
+        settings.perf.page_batch_size = _layout.page_batch_size
 
         self.pipe_line_options.do_table_structure = True
         self.pipe_line_options.table_structure_options.do_cell_matching = True
@@ -1854,10 +562,8 @@ class DocumentProcessor:
         self.image_description_enricher = ImageDescriptionEnricher(
             self.image_description_options
         )
-        self.custom_fields_enrichers: list = (
-            _build_document_custom_fields_enrichers(ec.custom_fields_cfgs)
-            if _build_document_custom_fields_enrichers is not None
-            else []
+        self.custom_fields_enrichers: list = _build_document_custom_fields_enrichers(
+            ec.custom_fields_cfgs
         )
         self.metadata_enricher = (
             _MetadataEnricher(
@@ -1876,7 +582,7 @@ class DocumentProcessor:
                 variables=ec.metadata.variables,
                 template_mode=ec.metadata.template_mode,
             )
-            if _MetadataEnricher is not None and ec.metadata.do_metadata and ec.metadata.has_custom_metadata
+            if ec.metadata.do_metadata and ec.metadata.has_custom_metadata
             else None
         )
         # 추출 메타데이터 → typed 벡터 필드 매핑(설정 기반). 설정이 비어있으면
@@ -1914,115 +620,23 @@ class DocumentProcessor:
             metadata_precheck_enabled=ec.metadata.precheck_enabled,
             metadata_max_context_tokens=ec.metadata.precheck_max_context_tokens,
             metadata_completion_reserved_tokens=ec.metadata.precheck_completion_reserved_tokens,
+            toc_thinking=ec.toc.thinking,
+            toc_thinking_dialect=ec.toc.thinking_dialect,
+            metadata_thinking=ec.metadata.thinking,
+            metadata_thinking_dialect=ec.metadata.thinking_dialect,
             toc_system_prompt=ec.toc.system_prompt,
             toc_user_prompt=ec.toc.user_prompt,
         )
 
     @staticmethod
     def _build_ocr_options(ocr_cfg: dict, paddle_endpoint: str):
-        """Build OcrOptions based on ocr.engine key in yaml.
-
-        Returns PaddleOcrOptions or UpstageOcrOptions. Default engine is "paddle".
-        For "upstage", api_key falls back to UPSTAGE_API_KEY env var when empty.
-        Unknown engine values fall back to "paddle" with a warning.
-        """
-        ocr_cfg = ocr_cfg if isinstance(ocr_cfg, dict) else {}
-        ocr_engine = str(ocr_cfg.get("engine", "paddle")).lower().strip()
-        if ocr_engine not in {"paddle", "upstage"}:
-            _log.warning(f"[DocumentProcessor] Unknown ocr.engine '{ocr_engine}', fallback to 'paddle'")
-            ocr_engine = "paddle"
-
-        if ocr_engine == "upstage":
-            upstage_cfg = _as_dict(ocr_cfg.get("upstage"))
-            upstage_api_key = upstage_cfg.get("api_key", "") or os.getenv("UPSTAGE_API_KEY", "")
-
-            raw_timeout = upstage_cfg.get("timeout", 60)
-            try:
-                upstage_timeout = int(raw_timeout)
-                if upstage_timeout <= 0:
-                    raise ValueError
-            except (TypeError, ValueError):
-                _log.warning(f"[DocumentProcessor] Invalid ocr.upstage.timeout '{raw_timeout}', fallback to 60")
-                upstage_timeout = 60
-
-            raw_text_score = upstage_cfg.get("text_score", 0.5)
-            try:
-                upstage_text_score = float(raw_text_score)
-            except (TypeError, ValueError):
-                _log.warning(f"[DocumentProcessor] Invalid ocr.upstage.text_score '{raw_text_score}', fallback to 0.5")
-                upstage_text_score = 0.5
-
-            return UpstageOcrOptions(
-                force_full_page_ocr=False,
-                lang=upstage_cfg.get("lang", ["ko", "en"]),
-                api_endpoint=upstage_cfg.get(
-                    "api_endpoint",
-                    "https://api.upstage.ai/v1/document-digitization",
-                ),
-                api_key=upstage_api_key,
-                model=upstage_cfg.get("model", "ocr"),
-                timeout=upstage_timeout,
-                text_score=upstage_text_score,
-            )
-
-        paddle_cfg = _as_dict(ocr_cfg.get("paddle"))
-
-        raw_lang = paddle_cfg.get("lang", ["korean"])
-        if isinstance(raw_lang, list) and raw_lang:
-            paddle_lang = raw_lang
-        else:
-            if raw_lang not in (None, [], ["korean"]):
-                _log.warning(f"[DocumentProcessor] Invalid ocr.paddle.lang '{raw_lang}', fallback to ['korean']")
-            paddle_lang = ["korean"]
-
-        raw_text_score = paddle_cfg.get("text_score", 0.3)
-        try:
-            paddle_text_score = float(raw_text_score)
-        except (TypeError, ValueError):
-            _log.warning(f"[DocumentProcessor] Invalid ocr.paddle.text_score '{raw_text_score}', fallback to 0.3")
-            paddle_text_score = 0.3
-
-        return PaddleOcrOptions(
-            force_full_page_ocr=False,
-            lang=paddle_lang,
-            ocr_endpoint=paddle_endpoint,
-            text_score=paddle_text_score,
-        )
+        return dops.build_ocr_options(ocr_cfg, paddle_endpoint)
 
     def _create_converters(self):
         """컨버터들을 생성하는 헬퍼 메서드"""
-        self.converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=self.pipe_line_options,
-                        backend=PyPdfiumDocumentBackend
-                    ),
-                }
-            )
-        self.second_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.pipe_line_options,
-                    backend=PyPdfiumDocumentBackend
-                ),
-            },
-        )
-        self.ocr_converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=self.ocr_pipe_line_options,
-                        backend=DoclingParseV4DocumentBackend
-                    ),
-                }
-            )
-        self.ocr_second_converter = DocumentConverter(
-            format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=self.ocr_pipe_line_options,
-                    backend=PyPdfiumDocumentBackend
-                ),
-            },
-        )
+        (self.converter, self.second_converter,
+         self.ocr_converter, self.ocr_second_converter) = dops.create_converters(
+            self.pipe_line_options, self.ocr_pipe_line_options)
 
     def load_documents_with_docling(self, file_path: str, **kwargs: dict) -> DoclingDocument:
         # kwargs에서 save_images 값을 가져와서 옵션 업데이트
@@ -2079,10 +693,27 @@ class DocumentProcessor:
             tokenizer = self._tokenizer,
             tokenizer_type = self._tokenizer_type,
             chunk_mode = chunk_mode,
+            # 크기 산정(_size)이 compose_vectors 의 실제 부착 여부와 같은 값을 보게 한다.
+            include_chunk_header = _resolve_include_chunk_header(kwargs, self._include_chunk_header),
+            table_as_chunk = cp.resolve_table_as_chunk(kwargs, self._table_as_chunk),
+            # 문서 접두(chunk_prefix_fields / first_chunk_fields) 몫 예약. compose_vectors 가
+            # 같은 metadata 로 같은 문자열을 만들어 실제로 붙인다.
+            chunk_prefix_text = dpx.reserved_prefix_text(
+                kwargs,
+                dpx.merge_context_metadata(extract_metadata_from_document(documents), kwargs)),
         )
 
-        kwargs.setdefault("compact_tables", self._compact_tables)
+        cp.apply_table_output_defaults(kwargs, self)
+        # 청크 텍스트 정규화(text_cleanup=safe): 문자 위생을 청킹 입력에 먼저 적용한다.
+        # 출력에서만 정규화하면 청크 경계가 노이즈 문자를 센 채로 잡힌다.
+        _cleanup = tn.prepare_document(documents, kwargs, self)
         chunks: List[DocChunk] = list(chunker.chunk(dl_doc=documents, **kwargs))
+        # 표별 분할 조각 수는 청커만 안다. compose_vectors 가 조각 순서 메타를 매길 때 읽는다.
+        self._table_split_totals = getattr(chunker, "_table_split_totals", {})
+        # 표 표기형태별 변형 텍스트도 같은 방식으로 청커에서 받는다.
+        self._table_variants = getattr(chunker, "_table_variants", None)
+        if _cleanup:
+            chunks = tn.drop_blank_chunks(chunks, rules=tn.rules_of(self))
         for chunk in chunks:
             if chunk.meta.doc_items[0].prov:
                 self.page_chunk_counts[chunk.meta.doc_items[0].prov[0].page_no] += 1
@@ -2133,18 +764,26 @@ class DocumentProcessor:
         title = ""
         _sensitive_infos: list = kwargs.get("_sensitive_infos") or []      # #315 분류 결과
         _gr_masking: bool = bool(kwargs.get("_guardrail_masking", False))   # #315 마스킹 치환 on/off
-        enrichment_context = kwargs.get("_enrichment_context")
-        context_metadata = (
-            dict(enrichment_context.get("metadata", {}))
-            if isinstance(enrichment_context, dict) and isinstance(enrichment_context.get("metadata"), dict)
-            else {}
-        )
-        document_metadata = extract_metadata_from_document(document)
-        merged_metadata = dict(document_metadata)
-        merged_metadata.update(context_metadata)
+        # 벡터 생성 직전 표현 정리(text_cleanup=safe). 마스킹 뒤에 적용해야
+        # 임베딩 텍스트와 n_char/n_word/n_line 통계가 일치한다.
+        _cleanup_out: bool = tn.enabled_for(kwargs, self)
+        # 청크 선두 "HEADER: <섹션 경로>" 부착 여부. split_documents 와 kwargs 를 각기 언패킹해서 받으므로
+        # setdefault 로 전달할 수 없어 양쪽이 같은 resolver 를 호출한다.
+        _include_header: bool = _resolve_include_chunk_header(kwargs, self._include_chunk_header)
+        # 표 표기형태별 변형 텍스트 기록부(청커가 남긴다). off 면 None 이라 필드가 아예 생기지 않는다.
+        _table_variants = getattr(self, "_table_variants", None)
+        if _table_variants is not None and not _table_variants.enabled():
+            _table_variants = None
+        merged_metadata = dpx.merge_context_metadata(
+            extract_metadata_from_document(document), kwargs)
         # 설정 기반 typed 필드 변환 (created_date 등). source/target 키는 passthrough 에서 제외.
         typed_values, consumed_keys = apply_field_transforms(
             self._metadata_field_transforms, merged_metadata, document)
+        # 본문과 동일한 값을 실을 메타 필드. 문서형 custom_fields yaml 이 정하고 파서가
+        # 문서 metadata 로 실어 보낸다.
+        _body_fields: list = cp.resolve_body_fields(kwargs, merged_metadata)
+        # 청크 본문 앞에 얹을 문서 단위 메타 값. 청커가 크기 산정에서 예약한 것과 같은 문자열이다.
+        _prefix_text, _first_prefix_text = dpx.resolve_prefix_texts(kwargs, merged_metadata)
 
         for item, _ in document.iterate_items():
             if hasattr(item, 'label'):
@@ -2181,7 +820,9 @@ class DocumentProcessor:
             "i_chunk_on_page", "n_chunk_of_page", "i_chunk_on_doc", "n_chunk_of_doc",
             "n_page", "reg_date", "chunk_bboxes", "media_files", "title",
             "created_date", "appendix", "file_path", "metadata", "guardrail_categories",
-        } | consumed_keys
+            cp.BODY_FIELDS_KEY, cp.CHUNK_PREFIX_FIELDS_KEY, cp.FIRST_CHUNK_FIELDS_KEY,
+            cp.FIELD_LABELS_KEY,
+        } | set(tv.field_names()) | consumed_keys
         for reserved_key in reserved_keys:
             passthrough_metadata.pop(reserved_key, None)
         passthrough_metadata = {
@@ -2201,15 +842,23 @@ class DocumentProcessor:
         if converted_pdf_path:
             global_metadata['file_path'] = converted_pdf_path
 
+        # 같은 표의 조각이 연속해서 나오는 순서가 곧 조각 번호다.
+        table_piece_seen: dict = {}
         current_page = None
         chunk_index_on_page = 0
         vectors = []
         upload_tasks = []
         for chunk_idx, chunk in enumerate(chunks):
             chunk_page = chunk.meta.doc_items[0].prov[0].page_no if chunk.meta.doc_items[0].prov else 0
-            # header 앞에 헤더 마커 추가 (HEADER: )
-            headers_text = "HEADER: " + ", ".join(chunk.meta.headings) + '\n' if chunk.meta.headings else ''
-            content = headers_text + chunk.text
+            # 청크 선두에 섹션 경로 부착 (HEADER: ). 여기가 유일한 부착 지점이며,
+            # 청커의 크기 산정도 같은 _build_header_line 을 쓴다(한도 초과 방지).
+            headers_text = _build_header_line(chunk.meta.headings, _include_header)
+            # 접두는 헤더 앞이다 — 문서 식별(카드명·문의유형)이 섹션 경로보다 앞에 와야
+            # 청크만 떼어 봤을 때 "무엇에 대한 글인지" 가 먼저 읽힌다.
+            # 첫 청크 전용 접두는 chunk_idx 0 에서만 붙는다(문서당 1회 계약).
+            content = (_prefix_text
+                       + (_first_prefix_text if chunk_idx == 0 else "")
+                       + headers_text + chunk.text)
 
             # appendix 추출 !! appendix feature (2025-09-30, geonhee kim) !!
             matched_appendices = self.check_appendix_keywords(content, appendix_list)
@@ -2222,8 +871,24 @@ class DocumentProcessor:
                 current_page = chunk_page
                 chunk_index_on_page = 0
 
+            # 표 표기형태별 변형은 마스킹·정제 이전 텍스트에서 치환하고, 변형에도 같은
+            # 후처리를 적용한다. 순서를 바꾸면 가드레일로 가린 값이 변형 필드로 평문 유출된다.
+            variant_values = _table_variants.field_values(
+                content, [getattr(item, "self_ref", "") for item in chunk.meta.doc_items],
+            ) if _table_variants else {}
+
             # #315 가드레일 분류 후처리: quote 매칭 → guardrail_categories 부착(항상) + 마스킹 치환(옵션)
             content, chunk_cats = gr.apply_to_text(content, _sensitive_infos, _gr_masking)
+            if _cleanup_out:
+                content = tn.tidy(content)
+            for field_name, variant_text in variant_values.items():
+                variant_text, _ = gr.apply_to_text(variant_text, _sensitive_infos, _gr_masking)
+                chunk_global_metadata[field_name] = (
+                    tn.tidy(variant_text) if _cleanup_out else variant_text)
+            # 본문이 확정된 뒤에 넣어야 헤더 접두·가드레일 마스킹·정제까지 반영된 값이
+            # 그대로 실린다. 문서 단위로 뽑힌 같은 이름의 값은 여기서 덮인다.
+            for field_name in _body_fields:
+                chunk_global_metadata[field_name] = content
 
             vector = (GenOSVectorMetaBuilder()
                       .set_text(content)
@@ -2232,6 +897,9 @@ class DocumentProcessor:
                       .set_global_metadata(**chunk_global_metadata) #!! appendix feature (2025-09-30, geonhee kim) !!
                       .set_chunk_bboxes(chunk.meta.doc_items, document)
                       .set_media_files(chunk.meta.doc_items, include_tables=self.table_image_enabled)
+                      .set_table_info(chunk.meta.doc_items,
+                                      getattr(self, "_table_split_totals", {}),
+                                      table_piece_seen)
                       .set_guardrail_categories(sorted(chunk_cats) if chunk_cats else None)
                       ).build()
             vectors.append(vector)
@@ -2254,300 +922,31 @@ class DocumentProcessor:
         image_dir: Path,
         reference_path: Optional[Path] = None,
     ) -> None:
-        """표 영역을 PNG 로 저장하고 TableItem.image.uri 를 설정한다(in-place).
-
-        docling 의 DoclingDocument._with_pictures_refs 가 PictureItem 만 디스크에
-        저장하므로, 동일 로직을 TableItem 에 대해 미러링한다. TableItem.get_image 는
-        item.image 가 없으면 페이지 이미지에서 prov bbox 로 잘라 반환한다
-        (generate_page_images 가 True 여야 함 — __init__ 에서 보장).
-        """
-        image_dir.mkdir(parents=True, exist_ok=True)
-        if not image_dir.is_dir():
-            return
-
-        img_count = 0
-        for item, _ in document.iterate_items(with_groups=False):
-            if not isinstance(item, TableItem):
-                continue
-            img = item.get_image(doc=document)
-            if img is None:
-                continue
-            hexhash = PictureItem._image_to_hexhash(img)
-            if hexhash is None:
-                continue
-            loc_path = image_dir / f"table_{img_count:06}_{hexhash}.png"
-            img.save(loc_path)
-            if reference_path is not None:
-                obj_path = relative_path(reference_path.resolve(), loc_path.resolve())
-            else:
-                obj_path = loc_path
-            # 파이프라인이 표 이미지를 미리 크롭하지 않으므로(generate_table_images 미사용)
-            # item.image 는 보통 None 이다. ImageRef 를 생성하되 uri 는 반드시 저장한
-            # PNG 파일 경로로 설정한다(from_pil 의 base64 data URI 가 남지 않도록).
-            if item.image is None:
-                scale = img.size[0] / item.prov[0].bbox.width
-                item.image = ImageRef.from_pil(image=img, dpi=round(72 * scale))
-            item.image.uri = Path(obj_path)
-            img_count += 1
+        dops.save_table_images(document, image_dir, reference_path)
 
     def get_media_files(self, doc_items: list, include_tables: bool = False):
-        temp_list = []
-        for item in doc_items:
-            if isinstance(item, PictureItem) and item.image:
-                path = str(item.image.uri)
-                name = path.rsplit("/", 1)[-1]
-                temp_list.append({'path': path, 'name': name})
-            elif include_tables and isinstance(item, TableItem) and item.image:
-                path = str(item.image.uri)
-                name = path.rsplit("/", 1)[-1]
-                temp_list.append({'path': path, 'name': name})
-        return temp_list
+        return dops.get_media_files(doc_items, include_tables)
 
     def check_glyph_text(self, text: str, threshold: int = 1) -> bool:
-        """텍스트에 GLYPH 항목이 있는지 확인하는 메서드"""
-        if not text:
-            return False
-
-        # GLYPH 항목이 있는지 정규식으로 확인
-        matches = re.findall(r'GLYPH\w*', text)
-        if len(matches) >= threshold:
-            # print(f"Text has glyphs. len(matches): {len(matches)}. ")
-            return True
-
-        return False
+        return dops.check_glyph_text(text, threshold)
 
     def check_glyphs(self, document: DoclingDocument) -> bool:
-        """문서에 글리프가 있는지 확인하는 메서드"""
-        for item, level in document.iterate_items():
-            if isinstance(item, TextItem) and hasattr(item, 'prov') and item.prov:
-                page_no = item.prov[0].page_no
-                # page_texts += item.text
+        return dops.check_glyphs(document, self._glyph_document_threshold)
 
-                # GLYPH 항목이 있는지 확인. 정규식사용
-                matches = re.findall(r'GLYPH\w*', item.text)
-                if len(matches) > self._glyph_document_threshold:
-                    # print(f"Document has glyphs on page {page_no}. len(matches): {len(matches)}. ")
-                    return True
+    def check_appendix_keywords(self, content: str, appendix_list: list) -> str:
+        return apx.check_appendix_keywords(content, appendix_list)
 
-        return False
-
-    def check_appendix_keywords(self, content: str, appendix_list: list) -> str: # !! appendix feature (2025-09-30, geonhee kim) !!
-        if not content or not appendix_list:
-            return ""
-
-        matched_appendices = []
-
-        # 1. Find appendix patterns in content first
-        found_patterns = []
-
-        # Complex patterns: 별지/별표/장부 + numbers (with hyphens, Roman numerals)
-        # Updated regex to capture full patterns like "별지 제 Ⅰ -1 호 서식" by matching until closing delimiters
-        content = re.sub(r"\s+", "", content)
-        complex_patterns = re.findall(r'(별지|별표|장부)(?:제)?([^<>()\[\]]+?)(?=(?:호|서식)|[<>\)\]]|$)', content)
-        for pattern_type, number in complex_patterns:
-            found_patterns.extend([
-                f"{pattern_type} {number}",
-                f"{pattern_type} 제{number}호",
-                f"{pattern_type}{number}",
-                f"{pattern_type}제{number}호"
-            ])
-
-        # Standalone patterns: (별표), (별지), (장부)
-        standalone_patterns = re.findall(r'[\(\[]+(별지|별표|장부)[\)\]]+', content)
-        for pattern_type in set(standalone_patterns):
-            found_patterns.extend([
-                pattern_type,
-                f"{pattern_type}",
-            ])
-
-        # 2. Check if found patterns match any appendix in the list
-        for appendix in appendix_list:
-            if not appendix or not isinstance(appendix, str):
-                continue
-
-            appendix_clean = appendix.replace('.pdf', '').lower().strip()
-            appendix_clean_no_space = re.sub(r"\s+", "", appendix_clean)
-
-            # If any found pattern exists in appendix filename, it's a match
-            for pattern in found_patterns:
-                pattern_no_space = re.sub(r"\s+", "", pattern).lower()
-                if pattern_no_space in appendix_clean_no_space:
-                    matched_appendices.append(appendix)
-                    break  # Prevent duplicates
-
-        return ', '.join(matched_appendices) if matched_appendices else ""
-
-    def ocr_all_table_cells(self, document: DoclingDocument, pdf_path) -> List[Dict[str, Any]]:
-        """
-        글리프 깨진 텍스트가 있는 테이블에 대해서만 OCR을 수행합니다.
-        Args:
-            document: DoclingDocument 객체
-            pdf_path: PDF 파일 경로
-        Returns:
-            OCR이 완료된 문서의 DoclingDocument 객체
-        """
-        import io
-        import base64
-        import requests
-        from PIL import Image
-
-        def post_ocr_bytes(img_bytes: bytes, timeout=60) -> dict:
-            HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
-            payload = {"file": base64.b64encode(img_bytes).decode("ascii"), "fileType": 1, "visualize": False}
-            r = requests.post(self.ocr_endpoint, json=payload, headers=HEADERS, timeout=timeout)
-            if not r.ok:
-                # 진단에 도움되도록 본문 일부 출력
-                raise RuntimeError(f"OCR HTTP {r.status_code}: {r.text[:500]}")
-            return r.json()
-
-        def extract_ocr_fields(resp: dict):
-            """
-            resp: 위와 같은 OCR 응답 JSON(dict)
-            return: (rec_texts, rec_scores, rec_boxes) — 모두 list
-            """
-            if resp is None:
-                return [], [], []
-
-            # 최상위 상태 체크
-            if resp.get("errorCode") not in (0, None):
-                return [], [], []
-
-            ocr_results = (
-                resp.get("result", {})
-                    .get("ocrResults", [])
-            )
-            if not ocr_results:
-                return [], [], []
-
-            pruned = (
-                ocr_results[0]
-                .get("prunedResult", {})
-            )
-            if not pruned:
-                return [], [], []
-
-            rec_texts  = pruned.get("rec_texts", [])   # list[str]
-            rec_scores = pruned.get("rec_scores", [])  # list[float]
-            rec_boxes  = pruned.get("rec_boxes", [])   # list[[x1,y1,x2,y2]]
-
-            # 길이 불일치 방어: 최소 길이에 맞춰 자르기
-            n = min(len(rec_texts), len(rec_scores), len(rec_boxes))
-            return rec_texts[:n], rec_scores[:n], rec_boxes[:n]
-
-        try:
-            for table_idx, table_item in enumerate(document.tables):
-                if not table_item.data or not table_item.data.table_cells:
-                    continue
-                if not table_item.prov:
-                    continue
-
-                b_ocr = False
-                for cell_idx, cell in enumerate(table_item.data.table_cells):
-                    if self.check_glyph_text(cell.text, threshold=self._glyph_table_cell_threshold):
-                        b_ocr = True
-                        break
-
-                if b_ocr is False:
-                    # 글리프 깨진 텍스트가 없는 경우, OCR을 수행하지 않음
-                    continue
-
-                # docling 이 이미 렌더해 둔 페이지 이미지(generate_page_images=True)를
-                # 재사용해 셀 영역을 crop 한다. PyMuPDF 재렌더(get_pixmap)는 일부 PDF 에서
-                # 네이티브 크래시(SIGSEGV, worker code 139)를 유발하므로 사용하지 않는다.
-                page_no = table_item.prov[0].page_no
-                page = document.pages.get(page_no)
-                if page is None or page.size is None or page.image is None:
-                    continue
-                page_image = page.image.pil_image
-                if page_image is None:
-                    continue
-                W, H = page_image.size
-
-                for cell_idx, cell in enumerate(table_item.data.table_cells):
-                    try:
-                        if cell.bbox is None:
-                            continue
-
-                        # docling 셀 bbox(BOTTOMLEFT) → 페이지 이미지 픽셀 좌표(TOPLEFT)
-                        crop = (
-                            cell.bbox
-                            .to_top_left_origin(page_height=page.size.height)
-                            .scale_to_size(old_size=page.size, new_size=page.image.size)
-                        )
-                        x0, y0, x1, y1 = crop.as_tuple()
-                        # 정규화 + 페이지 경계 클램프 + degenerate skip
-                        x0, x1 = sorted((x0, x1))
-                        y0, y1 = sorted((y0, y1))
-                        x0 = max(0, min(x0, W)); x1 = max(0, min(x1, W))
-                        y0 = max(0, min(y0, H)); y1 = max(0, min(y1, H))
-                        if (x1 - x0) < 1 or (y1 - y0) < 1:
-                            continue
-
-                        cell_img = page_image.crop((x0, y0, x1, y1))
-
-                        # 아주 작은 셀은 OCR 가독성을 위해 확대(기존 target_height=20, ≤4x)
-                        ch = y1 - y0
-                        zoom = min(max(20.0 / ch, 1.0), 4.0) if ch > 0 else 1.0
-                        if zoom > 1.0:
-                            cell_img = cell_img.resize(
-                                (max(1, round((x1 - x0) * zoom)), max(1, round(ch * zoom))),
-                                Image.LANCZOS,
-                            )
-
-                        buf = io.BytesIO()
-                        cell_img.save(buf, format="PNG")
-                        img_data = buf.getvalue()
-
-                        result = post_ocr_bytes(img_data, timeout=self._table_cell_ocr_timeout)
-                        rec_texts, rec_scores, rec_boxes = extract_ocr_fields(result)
-
-                        cell.text = ""
-                        for t in rec_texts:
-                            if len(cell.text) > 0:
-                                cell.text += " "
-                            cell.text += t if t else ""
-                    except Exception as cell_err:
-                        # 한 셀 실패가 나머지 셀/표를 막지 않도록 격리
-                        print(f"OCR cell processing failed (table={table_idx}, cell={cell_idx}): {cell_err}")
-                        continue
-        except Exception as e:
-            print(f"OCR processing failed: {e}")
-            pass
-
-        return document
-
-    def setup_logging(self, level_num: int):
-        """
-            5"DEBUG", 4"INFO", 3"WARNING", 2"ERROR", 1"CRITICAL", 0"NOLOG" 중 하나를 받아서 로깅 레벨을 설정하는 메서드
-        """
-        def get_level_name(level_num: int) -> str:
-            level_map = {
-                5: "DEBUG",
-                4: "INFO",
-                3: "WARNING",
-                2: "ERROR",
-                1: "CRITICAL",
-                0: "NOLOG"
-            }
-            return level_map.get(level_num, "INFO")
-        level_name = get_level_name(level_num)
-        print(f"Setting log level to: {level_name}")
-
-        if level_name == "NOLOG" or not hasattr(logging, level_name):
-            logging.disable(logging.CRITICAL)  # 모든 로그 비활성화
-            return
-
-        level = getattr(logging, level_name.upper())
-
-        # root logger 설정 (핸들러는 main에서만 설정)
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-            handlers=[logging.StreamHandler()]   # 콘솔 출력
+    def ocr_all_table_cells(self, document: DoclingDocument, pdf_path) -> DoclingDocument:
+        """글리프 깨진 텍스트가 있는 표에 대해서만 셀 단위 재OCR 을 수행한다."""
+        return dops.ocr_all_table_cells(
+            document,
+            ocr_endpoint=self.ocr_endpoint,
+            cell_threshold=self._glyph_table_cell_threshold,
+            timeout=self._table_cell_ocr_timeout,
         )
 
-        # root logger level 적용
-        logging.getLogger().setLevel(level)
+    def setup_logging(self, level_num: int):
+        rt.setup_logging(level_num)
 
     # ------------------------------------------------------------------
     # parse-format(비-docling) 공통 청킹
@@ -2558,17 +957,26 @@ class DocumentProcessor:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _single_marker_vector(text: str) -> GenOSVectorMeta:
+    def _single_marker_vector(text: str, cleanup: bool = False,
+                              **variant_kwargs) -> GenOSVectorMeta:
         """legacy return_vectormeta_format 과 동일한 단일(미분할) 벡터.
 
         audio([AUDIO]) / tabular([DA]) 처럼 분할하지 않고 통째로 1개 벡터로 반환한다.
         (attachment_processor.AudioLoader/TabularLoader.return_vectormeta_format 동일 형태)
+
+        legacy 는 n_char/n_word/n_line 을 1 로 고정해 통계가 실제와 달랐다. 다른 경로와
+        동일하게 실제 값을 계산한다.
         """
+        variant_values = tv.field_values_for_text(
+            text, tidy=tn.tidy if cleanup else None, **variant_kwargs)
+        if cleanup:
+            text = tn.tidy(text)
         return GenOSVectorMeta.model_validate({
+            **variant_values,
             'text': text,
-            'n_char': 1,
-            'n_word': 1,
-            'n_line': 1,
+            'n_char': len(text),
+            'n_word': len(text.split()),
+            'n_line': len(text.splitlines()),
             'i_page': 1,
             'e_page': 1,
             'n_page': 1,
@@ -2579,6 +987,21 @@ class DocumentProcessor:
             'chunk_bboxes': ".",
             'media_files': ".",
         })
+
+    def _text_variant_options(self, **kwargs: dict) -> dict:
+        """비-docling 경로에서 표기형태 필드를 만들 때 쓸 인자.
+
+        `_chunk_parse_format` 이 `apply_table_output_defaults` 로 kwargs 에 채워 둔 값을
+        읽는다. 설정 해석은 공용 모듈에만 둔다(facade 마다 헬퍼를 복제하지 않는다).
+        """
+        return {
+            "formats": cp.resolve_table_text_formats(kwargs),
+            "compact_tables": cp.resolve_compact_tables(kwargs),
+        }
+
+    def _isolate_tables_enabled(self, **kwargs: dict) -> bool:
+        """표를 독립 청크로 분리할지. docling 경로의 table_as_chunk 와 같은 스위치다."""
+        return cp.resolve_table_as_chunk(kwargs, getattr(self, "_table_as_chunk", True))
 
     def _resolve_recursive_split_params(self, **kwargs: dict) -> "tuple[int, int]":
         """RecursiveCharacterTextSplitter 용 (chunk_size, chunk_overlap) 결정.
@@ -2630,6 +1053,14 @@ class DocumentProcessor:
         # #315 민감정보 분류: __call__ 에서 문서 전체 1회 분류한 결과를 청크별 quote 매칭에 사용.
         _sensitive_infos: list = kwargs.get("_sensitive_infos") or []
         _gr_masking: bool = bool(kwargs.get("_guardrail_masking", False))
+        # 벡터 생성 직전 표현 정리(text_cleanup=safe). 마스킹 뒤에 적용해야
+        # 임베딩 텍스트와 n_char/n_word/n_line 통계가 일치한다.
+        _cleanup_out: bool = tn.enabled_for(kwargs, self)
+
+        # 표를 독립 청크로 분리한다(table_as_chunk). 표 조각을 별 Document 로 두면
+        # splitter 가 표와 앞뒤 본문을 한 청크로 다시 묶지 못한다.
+        _isolate_tables: bool = self._isolate_tables_enabled(**kwargs)
+        _variant_options = self._text_variant_options(**kwargs)
 
         # element → page 단위 Document 재구성 (빈 내용 제외)
         docs: list = []
@@ -2642,7 +1073,10 @@ class DocumentProcessor:
                 page = int(page)
             except (TypeError, ValueError):
                 page = 1
-            docs.append(Document(page_content=content, metadata={"page": page}))
+            parts = tbk.split_at_tables(content) if _isolate_tables else [content]
+            docs.extend(
+                Document(page_content=part, metadata={"page": page}) for part in parts
+            )
 
         if not docs:
             raise GenosServiceException(1, "chunk length is 0")
@@ -2651,7 +1085,11 @@ class DocumentProcessor:
             chunk_size=chunk_size, chunk_overlap=chunk_overlap,
         )
         chunks = splitter.split_documents(docs)
-        chunks = [c for c in chunks if c.page_content]
+        # 정규화 시 공백만 남는 청크도 제거한다(페이지 카운트 집계 전이어야 한다).
+        if _cleanup_out:
+            chunks = tn.drop_blank_chunks(chunks, "page_content", rules=tn.rules_of(self))
+        else:
+            chunks = [c for c in chunks if c.page_content]
         if not chunks:
             raise GenosServiceException(1, "chunk length is 0")
 
@@ -2674,9 +1112,23 @@ class DocumentProcessor:
             if page != current_page:
                 current_page = page
                 chunk_index_on_page = 0
+            # 표기형태 변형은 마스킹·정제 이전 텍스트에서 만들고 같은 후처리를 거친다
+            # (순서를 바꾸면 가드레일로 가린 값이 변형 필드로 평문 유출된다).
+            variant_values = tv.field_values_for_text(
+                text,
+                mask=lambda value: gr.apply_to_text(
+                    value, _sensitive_infos, _gr_masking)[0],
+                tidy=tn.tidy if _cleanup_out else None,
+                **_variant_options,
+            )
+            has_table = tbk.has_table(text)
             # #315 가드레일 분류 후처리: quote 매칭 → guardrail_categories 부착(항상) + 마스킹 치환(옵션)
             text, chunk_cats = gr.apply_to_text(text, _sensitive_infos, _gr_masking)
+            if _cleanup_out:
+                text = tn.tidy(text)
             vectors.append(GenOSVectorMeta.model_validate({
+                **variant_values,
+                'has_table': has_table,
                 'text': text,
                 'n_char': len(text),
                 'n_word': len(text.split()),
@@ -2692,12 +1144,27 @@ class DocumentProcessor:
             chunk_index_on_page += 1
         return vectors
 
+    def _expand_table_rows(self, rows: list, **kwargs: dict) -> list:
+        """표를 담은 행을 표 조각과 본문 조각으로 나눈다(table_as_chunk).
+
+        분리 규칙은 공용 모듈 한 벌이다 — xlsx 직접 경로(converters/xlsx_processor)도
+        같은 함수를 쓴다.
+        """
+        if not self._isolate_tables_enabled(**kwargs):
+            return rows
+        return tbk.expand_elements(rows)
+
     def _expand_splittable_rows(self, rows: list, **kwargs: dict) -> list:
         """`splittable` 표시가 있고 chunk_size 를 넘는 행을 여러 행으로 펼친다.
 
         레코드 1건이 chunk_size 를 넘으면 청크를 나누되 **레코드 metadata 는 모든 조각에 그대로**
         유지한다(적재 측에서 같은 레코드의 조각임을 metadata 로 식별). 플래그가 없는 기존
         tabular_row/faq_row 는 손대지 않으므로 회귀가 없다.
+
+        element 에 `chunk_prefix`(섹션 제목 또는 JSON/Excel 레코드 식별 필드)가 실려 있으면 접두를
+        뗀 본문만 분할하고 조각마다 접두를 다시 붙인다 — 안 그러면 두 번째 조각부터
+        "어느 카드/어느 섹션인지"가 사라진다(docling 경로가 헤더 몫을 분할 예산에서 미리 빼는
+        논리, `_header_line_for`/`:1300-1306` 와 같은 발상).
         """
         if not any(el.get("splittable") for el in rows):
             return rows
@@ -2705,9 +1172,6 @@ class DocumentProcessor:
         from langchain_text_splitters import RecursiveCharacterTextSplitter
 
         chunk_size, chunk_overlap = self._resolve_recursive_split_params(**kwargs)
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size, chunk_overlap=chunk_overlap
-        )
 
         expanded: list = []
         split_records = 0
@@ -2716,12 +1180,50 @@ class DocumentProcessor:
             if not el.get("splittable") or len(content) <= chunk_size:
                 expanded.append(el)
                 continue
-            pieces = [piece for piece in splitter.split_text(content) if piece.strip()]
+
+            prefix = str(el.get("chunk_prefix") or "")
+            body = content
+            budget = chunk_size
+            if prefix:
+                if content.startswith(prefix):
+                    body = content[len(prefix):].lstrip("\n")
+                    budget = chunk_size - len(prefix) - 1  # 접두와 본문 사이 개행 1자
+                    if budget <= 0:
+                        # 접두 하나가 chunk_size 이상인 병리 케이스 — 본문 기준으로 폴백(경고).
+                        _log.warning(
+                            "[chunker] chunk_prefix(%d자)가 chunk_size(%d) 이상 — 접두 몫 예약 "
+                            "생략, 청크가 한도를 초과할 수 있음", len(prefix), chunk_size,
+                        )
+                        budget = chunk_size
+                        prefix = ""
+                        body = content
+                else:
+                    # 접두와 본문이 어긋나면(설정 변경 등) 접두 재부착을 포기하고 전체를 분할한다.
+                    prefix = ""
+
+            # chunk_overlap 은 원래 chunk_size 기준으로 이미 클램프돼 있다(_resolve_recursive_
+            # split_params) — 접두를 뺀 budget 이 더 작으면 그 기준으로 다시 클램프해야
+            # RecursiveCharacterTextSplitter 가 "overlap > chunk_size" 로 죽지 않는다.
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=budget,
+                chunk_overlap=min(chunk_overlap, max(budget - 1, 0)),
+                # 마크다운 헤딩을 최우선 분리자로 둔다. 본문이 섹션으로 나뉘어 있으면 문장
+                # 한가운데가 아니라 섹션 경계에서 잘린다(custom_fields 의 text/html_text 렌더링,
+                # HTML/markdown 원천 모두 해당). 헤딩이 없는 평문은 종전 문단/문장 분리자로
+                # 조용히 폴백하므로 회귀가 없다.
+                separators=["\n## ", "\n### ", "\n#### ", "\n\n", "\n", " ", ""],
+                keep_separator=True,
+            )
+            pieces = [piece for piece in splitter.split_text(body if prefix else content) if piece.strip()]
             if len(pieces) <= 1:
                 expanded.append(el)
                 continue
+            pieces = _carry_over_section_headings(pieces)
             split_records += 1
-            expanded.extend({**el, "content": piece} for piece in pieces)
+            if prefix:
+                expanded.extend({**el, "content": f"{prefix}\n{piece}"} for piece in pieces)
+            else:
+                expanded.extend({**el, "content": piece} for piece in pieces)
 
         if split_records:
             _log.info(
@@ -2751,13 +1253,22 @@ class DocumentProcessor:
                 f"(rows={len(rows)}, total={len(elements)})"
             )
 
+        # 표를 독립 청크로 분리한다(table_as_chunk). 행 경로에는 TableItem 이 없으므로
+        # 청크 텍스트 안의 표 블록을 경계로 삼는다.
+        rows = self._expand_table_rows(rows, **kwargs)
+
         # splittable=True element(json_mapping 레코드)만 chunk_size 기준으로 나눈다.
         # 플래그가 없는 tabular_row/faq_row 는 종전대로 "행 1개 = 청크 1개" 다.
         rows = self._expand_splittable_rows(rows, **kwargs)
 
+        _variant_options = self._text_variant_options(**kwargs)
+
         # #315 민감정보 분류 결과(있으면 text 에 quote 매칭·라벨·마스킹 적용).
         _sensitive_infos: list = kwargs.get("_sensitive_infos") or []
         _gr_masking: bool = bool(kwargs.get("_guardrail_masking", False))
+        # 벡터 생성 직전 표현 정리(text_cleanup=safe). 마스킹 뒤에 적용해야
+        # 임베딩 텍스트와 n_char/n_word/n_line 통계가 일치한다.
+        _cleanup_out: bool = tn.enabled_for(kwargs, self)
 
         def _page_of(el: dict) -> int:
             # /chunk 는 호출자 인라인 payload 를 받으므로 손상/외부 JSON 의 비숫자 page 가 도달 가능.
@@ -2784,11 +1295,29 @@ class DocumentProcessor:
                 current_page = page
                 chunk_index_on_page = 0
             text = str(el.get("content", "") or "")
+            # 표기형태 변형은 마스킹·정제 이전 텍스트에서 만들고 같은 후처리를 거친다.
+            # 순서를 바꾸면 가드레일로 가린 값이 변형 필드로 평문 유출된다.
+            variant_values = tv.field_values_for_text(
+                text,
+                mask=lambda value: gr.apply_to_text(
+                    value, _sensitive_infos, _gr_masking)[0],
+                tidy=tn.tidy if _cleanup_out else None,
+                **_variant_options,
+            )
+            has_table = tbk.has_table(text)
             text, chunk_cats = gr.apply_to_text(text, _sensitive_infos, _gr_masking)
-            row_meta = el.get("metadata") or {}
+            if _cleanup_out:
+                text = tn.tidy(text)
+            row_meta = dict(el.get("metadata") or {})
+            # docling 경로와 같은 계약: body_fields 에 오른 필드는 청크 본문과 같은 값을 갖는다.
+            for field_name in cp.resolve_body_fields(kwargs, row_meta):
+                row_meta[field_name] = text
+            row_meta.pop(cp.BODY_FIELDS_KEY, None)  # 제어값은 청크 필드로 내보내지 않는다
             try:
                 vectors.append(GenOSVectorMeta.model_validate({
                     **row_meta,  # 목표 필드(question/answer_text/...) + doc_type. extra=allow 로 보존.
+                    **variant_values,
+                    'has_table': has_table,
                     'text': text,
                     'n_char': len(text),
                     'n_word': len(text.split()),
@@ -2830,6 +1359,17 @@ class DocumentProcessor:
         """
         elements = elements or []
 
+        # 파서와 청커가 별개 요청이라 표 출력 설정은 프로세서 속성에만 있다. docling 경로
+        # (split_documents)와 마찬가지로 kwargs 로 옮겨, 이 아래 경로들도 같은 설정을 본다.
+        cp.apply_table_output_defaults(kwargs, self)
+
+        # 청크 텍스트 정규화(text_cleanup=safe): 분할 전에 문자 위생을 적용한다.
+        # 행 기반 경로는 metadata 가 그대로 청크 property 로 나가므로 함께 정규화한다
+        # (text 만 정규화하면 같은 내용이 두 표현으로 저장된다).
+        _cleanup_in = tn.enabled_for(kwargs, self)
+        if _cleanup_in:
+            elements = tn.sanitize_elements(elements, tn.rules_of(self))
+
         # 0) 행 기반 tabular/custom_fields 가드. faq_row는 이전 산출물 하위 호환용이다.
         non_empty_all = [el for el in elements if isinstance(el, dict)]
         row_categories = {"tabular_row", "custom_fields_row", "faq_row"}
@@ -2840,7 +1380,8 @@ class DocumentProcessor:
         for el in elements:
             content = str((el or {}).get("content", "") or "")
             if content.startswith("[AUDIO]"):
-                return [self._single_marker_vector(content)]
+                return [self._single_marker_vector(
+                    content, _cleanup_in, **self._text_variant_options(**kwargs))]
 
         # 2) legacy tabular([DA]) 가드 — 이전 csv/xlsx parse payload 호환용.
         non_empty = [
@@ -2849,7 +1390,8 @@ class DocumentProcessor:
         ]
         if non_empty and all((el or {}).get("category") == "table" for el in non_empty):
             joined = "\n".join(str(el.get("content", "")) for el in non_empty)
-            return [self._single_marker_vector("[DA] " + joined)]
+            return [self._single_marker_vector(
+                "[DA] " + joined, _cleanup_in, **self._text_variant_options(**kwargs))]
 
         # 3) 공통 텍스트 경로
         return self._chunk_text_elements(elements, **kwargs)

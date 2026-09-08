@@ -13,6 +13,7 @@ from genon.preprocessor.facade.enrichment.json_records import (
     build_json_records_mappers,
     collect_records,
     find_field,
+    find_fields,
     html_to_text,
 )
 
@@ -50,15 +51,17 @@ key_map:
   EVENT_FROM:  [이벤트 시작일]
   EVENT_TO:    [이벤트 종료일]
   DETAIL_HTML: [htmlText]
+  DETAIL_TEXT: [htmlText]
 required: [TITLE]
-nulls: [KEYWORD]
+defaults:
+  KEYWORD: null
 transforms:
   EVENT_FROM: date_int_flex
   EVENT_TO:   date_int_flex
-html_text_fields:
-  DETAIL_TEXT: DETAIL_HTML
+  DETAIL_TEXT: html_text
 text_fields: [TITLE, DETAIL_TEXT]
 split: true
+chunk_prefix_fields: [TITLE]
 """
 
 
@@ -126,6 +129,14 @@ def test_find_field_returns_none_when_absent():
     assert find_field({"a": 1}, ["없는키"]) is None
 
 
+def test_find_fields_collects_repeated_nested_values_in_order():
+    record = {
+        "bubble": [{"serviceUrl": "첫째"}, {"serviceUrl": "둘째"}],
+        "nested": {"items": [{"service_url": "둘째"}, {"serviceUrl": "셋째"}]},
+    }
+    assert find_fields(record, ["serviceUrl"]) == ["첫째", "둘째", "셋째"]
+
+
 # ── 값 변환 ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("value,expected", [
@@ -161,15 +172,203 @@ def test_html_to_text_keeps_aria_hidden_and_collapsed_text():
     assert "중도 해지 시 회수" in text
 
 
-def test_html_to_text_drops_scripts_and_blank_lines():
+def test_html_to_text_drops_scripts():
+    """markdown 은 블록 사이에 빈 줄을 넣는다 — 내용 줄만 비교한다."""
     text = html_to_text("<div><p>본문</p><script>track()</script>\n\n<p>다음</p></div>")
     assert "track()" not in text
-    assert text.splitlines() == ["본문", "다음"]
+    assert [line for line in text.splitlines() if line.strip()] == ["본문", "다음"]
 
 
 def test_html_to_text_handles_empty_input():
     assert html_to_text(None) == ""
     assert html_to_text("   ") == ""
+
+
+def _pipe_rows(text: str) -> list[str]:
+    return [line for line in text.splitlines() if line.startswith("|")]
+
+
+def _cells(row: str) -> list[str]:
+    return [cell.strip() for cell in row.strip("|").split("|")]
+
+
+def _has_table(text: str, table_format: str) -> bool:
+    """table_format 에 맞는 표가 출력에 있는지."""
+    return bool("<table" in text) if table_format == "html" else bool(_pipe_rows(text))
+
+
+def test_html_to_text_renders_table_as_markdown_pipe_table():
+    """표는 docling 이 파이프 표로 만든다 — 예전 get_text 평문화는 행/열을 뭉갰다."""
+    html = (
+        "<div><table><thead><tr><th>구독료</th><th>할인</th></tr></thead>"
+        "<tbody><tr><td>5만원 이상</td><td>5,000원</td></tr>"
+        "<tr><td>10만원 이상</td><td>10,000원</td></tr></tbody></table></div>"
+    )
+    rows = _pipe_rows(html_to_text(html, table_format="markdown"))
+    # 헤더 + 구분줄 + 본문 2행
+    assert len(rows) == 4
+    assert _cells(rows[0]) == ["구독료", "할인"]
+    assert _cells(rows[2]) == ["5만원 이상", "5,000원"]
+    assert _cells(rows[3]) == ["10만원 이상", "10,000원"]
+
+
+def test_html_to_text_keeps_empty_cell_so_columns_stay_aligned():
+    """빈 셀이 소실되면 5열 표가 4줄이 되어 위치로도 복원할 수 없다(원 버그)."""
+    html = (
+        '<div class="overflow_wrap_scroll"><div class="inner"><table>'
+        "<thead><tr><th>전월 이용금액</th><th>1회차</th><th>2회차</th><th>3회차</th><th>합계</th></tr></thead>"
+        '<tbody><tr><td>150만원 이상</td><td>20,000원</td><td>20,000원</td><td> </td>'
+        "<td>720,000원</td></tr></tbody></table></div></div>"
+    )
+    rows = _pipe_rows(html_to_text(html, table_format="markdown"))
+    assert all(len(row.strip("|").split("|")) == 5 for row in rows)
+    assert _cells(rows[-1]) == ["150만원 이상", "20,000원", "20,000원", "", "720,000원"]
+
+
+@pytest.mark.parametrize("table_format", ["html", "markdown"])
+def test_html_to_text_keeps_table_inside_hidden_container(table_format):
+    """docling 백엔드는 숨김 컨테이너의 내용을 억제한다 — 상류에서 표시를 떼어 살린다."""
+    html = (
+        '<div><div style="display:none"><table><tr><th>K</th><th>V</th></tr>'
+        "<tr><td>a</td><td>1</td></tr></table></div>"
+        '<div aria-hidden="true"><p>혜택 문구</p></div></div>'
+    )
+    text = html_to_text(html, table_format=table_format)
+    assert _has_table(text, table_format)
+    assert "혜택 문구" in text
+
+
+@pytest.mark.parametrize("table_format", ["html", "markdown"])
+def test_html_to_text_keeps_table_before_a_later_heading(table_format):
+    """docling 은 첫 heading 앞을 furniture 로 본다 — 합성 heading 래퍼가 없으면 표가 사라진다."""
+    html = (
+        "<div><p>선두 문단</p><table><tr><th>A</th></tr><tr><td>1</td></tr></table>"
+        "<h2>중간 제목</h2><p>제목 뒤 문단</p></div>"
+    )
+    text = html_to_text(html, table_format=table_format)
+    assert "선두 문단" in text
+    assert _has_table(text, table_format)
+
+
+# ── output.table_format 반영 ─────────────────────────────────────────────────
+
+_TABLE_HTML = (
+    "<div><p>안내</p><table><thead><tr><th>구분</th><th>금액</th></tr></thead>"
+    "<tbody><tr><td>snake_case 항목</td><td>13,000원</td></tr>"
+    "<tr><td>빈칸행</td><td> </td></tr></tbody></table></div>"
+)
+
+
+def test_html_to_text_table_format_html_emits_html_table():
+    """config output.table_format=html → 표만 <table> 로, 본문은 markdown 그대로."""
+    text = html_to_text(_TABLE_HTML, table_format="html")
+    assert "<table" in text and "</table>" in text
+    assert not _pipe_rows(text)
+    assert "안내" in text                       # 표 밖 본문은 markdown 유지
+    assert "snake_case 항목" in text and "13,000원" in text
+
+
+def test_html_to_text_table_format_markdown_emits_pipe_table():
+    text = html_to_text(_TABLE_HTML, table_format="markdown")
+    assert "<table" not in text
+    assert len(_pipe_rows(text)) == 4
+
+
+def test_html_to_text_defaults_to_config_default_table_format():
+    """인자를 생략하면 parser config 의 기본값(html)과 같게 동작한다."""
+    assert html_to_text(_TABLE_HTML) == html_to_text(_TABLE_HTML, table_format="html")
+
+
+def test_html_to_text_invalid_table_format_falls_back_to_html(caplog):
+    with caplog.at_level("WARNING"):
+        text = html_to_text(_TABLE_HTML, table_format="csv")
+    assert "<table" in text
+    assert "지원하지 않는 table_format" in caplog.text
+
+
+def test_html_to_text_compact_tables_only_affects_markdown():
+    """compact_tables 는 markdown 표의 컬럼 정렬 패딩만 없앤다. html 에는 무관하다."""
+    compact = html_to_text(_TABLE_HTML, table_format="markdown", compact_tables=True)
+    padded = html_to_text(_TABLE_HTML, table_format="markdown", compact_tables=False)
+    assert compact != padded
+    # 구분줄로 판별한다 — compact 는 "-" 하나, 패딩본은 컬럼 폭만큼 늘어난다.
+    assert _cells(_pipe_rows(compact)[1]) == ["-", "-"]
+    assert all(len(cell) > 1 for cell in _cells(_pipe_rows(padded)[1]))
+    # 셀 값 자체는 두 모드가 같다
+    assert _cells(_pipe_rows(compact)[0]) == _cells(_pipe_rows(padded)[0])
+    assert _cells(_pipe_rows(compact)[-1]) == _cells(_pipe_rows(padded)[-1])
+
+    html_compact = html_to_text(_TABLE_HTML, table_format="html", compact_tables=True)
+    html_padded = html_to_text(_TABLE_HTML, table_format="html", compact_tables=False)
+    assert html_compact == html_padded
+
+
+def test_build_fields_applies_table_format_to_html_derived_fields(tmp_path):
+    """매퍼가 table_format 을 `transform: html_text` 필드까지 전달한다."""
+    payload = {
+        "eventList": [
+            {
+                "ID": "T1", "회사명": "모니모", "제목": "표 테스트",
+                "이벤트 시작일": "26.07.01", "이벤트 종료일": "26.07.31",
+                "wcmsHtml": {"htmlText": _TABLE_HTML},
+            }
+        ]
+    }
+    mapper = write_mapper(tmp_path)
+    as_html = mapper.build_fields(payload, "monimo_event", table_format="html")[0]["DETAIL_TEXT"]
+    as_md = mapper.build_fields(payload, "monimo_event", table_format="markdown")[0]["DETAIL_TEXT"]
+    assert "<table" in as_html and not _pipe_rows(as_html)
+    assert "<table" not in as_md and _pipe_rows(as_md)
+
+
+def test_html_to_text_keeps_table_caption():
+    html = "<div><table><caption>표 설명입니다</caption><tr><th>A</th></tr><tr><td>1</td></tr></table></div>"
+    assert "표 설명입니다" in html_to_text(html)
+
+
+def test_html_to_text_has_no_synthetic_heading_prefix():
+    """래퍼가 넣은 빈 heading 2개는 출력에 남지 않는다."""
+    text = html_to_text("<div><p>본문</p></div>")
+    assert text == "본문"
+
+
+@pytest.mark.parametrize(
+    "html",
+    ["<div></div>", "<div>   </div>", "<div><script>x</script></div>"],
+)
+def test_html_to_text_returns_empty_for_contentless_html(html):
+    """본문이 없으면 빈 문자열이어야 한다 — 합성 heading 이 새어 나가면 빈 값 판정이 깨진다."""
+    assert html_to_text(html) == ""
+
+
+def test_html_to_text_does_not_escape_entities_or_underscores():
+    """LLM 입력용 평문이라 markdown 이스케이프는 노이즈다."""
+    text = html_to_text("<div><p>A &amp; B &lt;태그&gt; snake_case</p></div>")
+    assert "&amp;" not in text and "&lt;" not in text
+    assert "snake_case" in text
+
+
+@pytest.mark.parametrize("table_format", ["html", "markdown", "auto"])
+def test_html_to_text_drops_hyperlink_url_keeps_label(table_format):
+    """`<a href>` 는 라벨만 남는다 - URL 은 검색에 기여하지 않고 청크 예산만 먹는다.
+
+    실측(상품카드): 라벨이 도메인 자체일 때 `[www.samsungfire.com](http://www.samsungfire.com/)`
+    처럼 같은 문자열이 두 번 실렸다.
+    """
+    html = (
+        '<div><p>애니카랜드 <a href="http://www.samsungfire.com/">www.samsungfire.com</a>'
+        ' , 1588-5114</p></div>'
+    )
+    text = html_to_text(html, table_format=table_format)
+    assert "](http" not in text
+    assert "http://www.samsungfire.com/" not in text
+    assert "애니카랜드 www.samsungfire.com , 1588-5114" in text
+
+
+def test_html_to_text_drops_image_placeholder_but_keeps_alt():
+    text = html_to_text('<div><img src="a.png" alt="대체문구"></div>')
+    assert "<!-- image -->" not in text
+    assert "대체문구" in text
 
 
 # ── 레코드 매핑 ─────────────────────────────────────────────────────────────
@@ -235,6 +434,7 @@ def test_to_parse_format_emits_row_elements(tmp_path):
     assert element["category"] == "custom_fields_row"
     assert element["page"] == 1
     assert element["splittable"] is True
+    assert element["chunk_prefix"] == "무신사 블랙 프라이데이 혜택 받기"
     # text_fields 선언 순서대로 개행 결합
     assert element["content"] == "무신사 블랙 프라이데이 혜택 받기\n이벤트 상세 내용"
     assert element["metadata"]["EVENT_TO"] == 20260731
@@ -243,7 +443,11 @@ def test_to_parse_format_emits_row_elements(tmp_path):
 def test_split_false_omits_splittable_flag(tmp_path):
     mapper = write_mapper(tmp_path, BASE_CONFIG.replace("split: true", "split: false"))
     fields_list = mapper.build_fields(SAMPLE_PAYLOAD, "monimo_event")
-    assert "splittable" not in mapper.to_parse_format(fields_list, "monimo_event")["elements"][0]
+    element = mapper.to_parse_format(fields_list, "monimo_event")["elements"][0]
+    assert "splittable" not in element
+    assert "chunk_prefix" not in element
+    # 접두는 본문 맨 앞으로 이동하므로 분할하지 않는 설정에서는 아예 무효화한다.
+    assert mapper.chunk_prefix_fields == []
 
 
 def test_text_fields_skip_empty_values(tmp_path):
@@ -253,8 +457,9 @@ def test_text_fields_skip_empty_values(tmp_path):
 
 def test_records_without_text_are_excluded(tmp_path, caplog):
     """본문이 빈 레코드는 element 로 내보내지 않는다(빈 text 벡터 적재 방지)."""
-    mapper = write_mapper(tmp_path, BASE_CONFIG.replace("text_fields: [TITLE, DETAIL_TEXT]",
-                                                        "text_fields: [CONTENT_HASH]"))
+    config = BASE_CONFIG.replace("text_fields: [TITLE, DETAIL_TEXT]", "text_fields: [CONTENT_HASH]")
+    config = config.replace("chunk_prefix_fields: [TITLE]\n", "")
+    mapper = write_mapper(tmp_path, config)
     fields_list = [
         {"TITLE": "요약 성공", "CONTENT_HASH": "요약본문"},
         {"TITLE": "요약 실패", "CONTENT_HASH": None},   # LLM 실패 → on_error=null
@@ -283,9 +488,21 @@ def test_wildcard_when_doc_type_unset(tmp_path):
     assert mapper.matches("아무거나") is True
 
 
-def test_key_map_is_required(tmp_path):
-    with pytest.raises(ValueError, match="key_map"):
+def test_source_reading_field_is_required(tmp_path):
+    """원천 key 를 읽는 필드가 하나도 없으면 거부한다(alias 도 collect 도 없는 설정)."""
+    with pytest.raises(ValueError, match="원천 key 를 읽는 필드"):
         write_mapper(tmp_path, "records: eventList\ntext_fields: [TITLE]\n")
+
+
+def test_collect_only_config_is_accepted(tmp_path):
+    """필드가 전부 collect 여도 정상 설정이다(예전에는 key_map 이 없다고 막혔다)."""
+    mapper = write_mapper(
+        tmp_path,
+        "records: eventList\ncollect_key_map:\n  URLS: [serviceUrl]\ntext_fields: [URLS]\n",
+    )
+    fields_list = mapper.build_fields(
+        {"eventList": [{"bubble": [{"serviceUrl": "a"}, {"serviceUrl": "b"}]}]}, "monimo_event")
+    assert fields_list[0]["URLS"] == ["a", "b"]
 
 
 def test_text_fields_is_required(tmp_path):
@@ -408,9 +625,10 @@ def test_shipped_monimo_event_config_loads(resource_dir):
         extractor="json_mapping",
     )
     assert mapper.records_key == "eventList"
-    # 요약본문 필드는 SUMMARY_TEXT 다. TB_* 의 CONTENT_HASH 는 RAW(32) 원문 검증 해시라
-    # 임베딩 입력이 아니다 — 과거에 이 이름으로 잘못 나가 있었으므로 회귀를 막는다.
-    assert mapper.text_fields == ["TITLE", "SUMMARY_TEXT"]
+    # LLM 요약 설정이 비활성화된 현재 출고 설정은 평문화한 상세 원문을 검색 본문으로 쓴다.
+    # TB_* 의 CONTENT_HASH 는 RAW(32) 원문 검증 해시이므로 임베딩 입력이 아니다.
+    assert mapper.text_fields == ["TITLE", "DETAIL_TEXT"]
+    assert mapper.chunk_prefix_fields == ["TITLE"]
     assert "CONTENT_HASH" not in mapper.key_map
 
     # llm_fields 는 모델서빙이 배정되기 전까지 주석으로 내려둘 수 있다(현재 resource/ 가 그 상태).
@@ -464,7 +682,16 @@ def test_shipped_monimo_event_config_maps_real_payload_schema(resource_dir):
     assert len(fields_list) == (2 if has_header_fallback else 1)
 
     first = fields_list[0]
-    assert first["BIZ_ID"] == "M261106191"                 # cmpId
+    # BIZ_ID 별칭은 사이트 운영 설정(커밋 263f53ea)이 cmpCntsId 로 바꿨다. 실 payload 에는
+    # 그 키가 없어 값이 비는데, 어느 원천 키를 업무키로 쓸지는 설정의 소관이므로 위 TITLE
+    # 별칭과 같은 방식으로 기대값을 설정에서 뽑는다.
+    src_record = next(v for v in payload.values() if isinstance(v, list))[0]
+    biz_expected = next(
+        (src_record[a] for a in mapper.key_map["BIZ_ID"]
+         if src_record.get(a) not in (None, "")),
+        None,
+    )
+    assert first["BIZ_ID"] == biz_expected
     assert first["TITLE"] == "하이마트 구독을 가볍게 매월 최대2만원 까지 혜택"   # evtTodayMainCopy 우선
     assert first["EVENT_FROM"] == 20260710                 # evtPtrmStrtDt (8자리 압축)
     assert first["EVENT_TO"] == 20261111                   # evtPtrmEndDt
@@ -508,3 +735,79 @@ def test_shipped_monimo_event_config_maps_real_payload_schema(resource_dir):
 ])
 def test_date_int_flex_handles_compact_forms(raw, expected):
     assert transform_date_int_flex(raw) == expected
+
+
+# ── 설정 형 오류 진단(검증 순서) ────────────────────────────────────────────
+
+def test_shape_error_reports_key_name_before_consumption(tmp_path):
+    """`transforms` 를 맵이 아닌 값으로 쓰면 키 이름과 파일명이 담긴 ValueError 가 나야 한다.
+
+    검증을 키 소비 뒤로 미루면 `'list' object has no attribute 'items'` 라는
+    AttributeError 가 먼저 나서 어느 파일 어느 키가 틀렸는지 알 수 없었다(tabular 와 순서 불일치).
+    """
+    with pytest.raises(ValueError) as exc:
+        write_mapper(tmp_path, """
+            key_map:
+              TITLE: [title]
+            text_fields: [TITLE]
+            transforms:
+              - date_int_flex
+        """)
+    message = str(exc.value)
+    assert "transforms" in message
+    assert "custom_field_json.yaml" in message
+
+
+# ── row_merge (tabular 와 공유) ─────────────────────────────────────────────
+
+def test_row_merge_folds_split_records_before_value_pipeline(tmp_path):
+    """원천이 값 하나를 여러 레코드에 쪼개 보내는 스키마를 한 건으로 접는다.
+
+    병합은 값 파이프라인 **전에** 돌아야 한다 — 조각마다 변환이 먼저 돌면 잘린 JSON
+    조각을 각각 평문화하게 되어 복원이 불가능하다.
+    """
+    whole = '{"종목명": "삼성전자", "투자의견": "매수"}'
+    mapper = write_mapper(tmp_path, """
+        key_map:
+          REGT_NO:     [regtNo]
+          LINE_NO:     [lineNo]
+          DETAIL_JSON: [detailDesc]
+          DETAIL_TEXT: [detailDesc]
+        row_merge:
+          group_by:  [REGT_NO]
+          order_by:  LINE_NO
+          concat:    [DETAIL_JSON, DETAIL_TEXT]
+          separator: ""
+        transforms:
+          DETAIL_TEXT: text
+        text_fields: [DETAIL_TEXT]
+    """, doc_type="stock")
+    rows = mapper.build_fields([
+        {"regtNo": "R1", "lineNo": 1, "detailDesc": whole[:12]},
+        {"regtNo": "R1", "lineNo": 2, "detailDesc": whole[12:]},
+        {"regtNo": "R2", "lineNo": 1, "detailDesc": '{"종목명": "SK하이닉스"}'},
+    ], "stock")
+
+    assert len(rows) == 2
+    assert rows[0]["DETAIL_JSON"] == whole
+    assert "삼성전자" in str(rows[0]["DETAIL_TEXT"])
+    assert "SK하이닉스" in str(rows[1]["DETAIL_JSON"])
+
+
+def test_row_merge_only_folds_consecutive_runs(tmp_path):
+    """떨어진 동일 키는 합치지 않는다 — 등록번호 재사용 시 다른 건이 뭉개지는 것을 막는다."""
+    mapper = write_mapper(tmp_path, """
+        key_map:
+          REGT_NO: [regtNo]
+          BODY:    [body]
+        row_merge:
+          group_by: [REGT_NO]
+          concat:   [BODY]
+        text_fields: [BODY]
+    """, doc_type="stock")
+    rows = mapper.build_fields([
+        {"regtNo": "R1", "body": "a"},
+        {"regtNo": "R2", "body": "b"},
+        {"regtNo": "R1", "body": "c"},
+    ], "stock")
+    assert [r["BODY"] for r in rows] == ["a", "b", "c"]

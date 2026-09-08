@@ -1,6 +1,9 @@
 """
-intelligent_processor.py에 대한 unit test
-PDF, HWPX, DOCX, MD 파일에 대해 테스트
+intelligent_processor.py 에 대한 unit test.
+
+실제 샘플 파일을 변환하던 테스트(load_documents / pdf_conversion /
+chunk_generation_with_real_files)는 tests/smoke/test_intelligent_processor_smoke.py
+로 옮겼다. 여기에는 문서 변환 없이 끝나는 설정 해석·배선 검증만 둔다.
 """
 
 import pytest
@@ -9,6 +12,7 @@ import os
 import tempfile
 import shutil
 from unittest.mock import Mock, AsyncMock
+from collections import defaultdict
 
 
 class TestIntelligentProcessor:
@@ -38,67 +42,6 @@ class TestIntelligentProcessor:
         file_path = temp_dir / filename
         file_path.write_text(content, encoding='utf-8')
         return file_path
-
-    @pytest.mark.parametrize("filename", [
-        "pdf_sample.pdf",
-        "hwpx_sample.hwpx",
-        "docx_sample.docx",
-        "md_sample.md"
-    ])
-    def test_load_documents(self, processor, sample_dir, filename):
-        """각 파일 타입에 대해 문서 로드 테스트"""
-        test_file = sample_dir / filename
-
-        # 파일이 존재하는지 확인
-        if not test_file.exists():
-            pytest.skip(f"Sample file {filename} not found")
-
-        try:
-            # 문서 로드 테스트
-            document = processor.load_documents(str(test_file))
-            assert document is not None, f"Document should be loaded from {filename}"
-            assert hasattr(document, 'num_pages'), "Document should have num_pages method"
-
-            # 페이지 수 확인
-            page_count = document.num_pages()
-            assert page_count > 0, f"Document {filename} should have at least 1 page"
-
-        except Exception as e:
-            pytest.fail(f"Failed to load document {filename}: {e}")
-
-    @pytest.mark.parametrize("filename", [
-        "docx_sample.docx",
-        "pptx_sample.pptx",
-        "md_sample.md"
-    ])
-    def test_pdf_conversion(self, processor, sample_dir, filename):
-        """PDF 변환 기능 테스트 (PDF 제외)"""
-        test_file = sample_dir / filename
-
-        # 파일이 존재하는지 확인
-        if not test_file.exists():
-            pytest.skip(f"Sample file {filename} not found")
-
-        # convert_to_pdf 함수 import
-        from facade.convert_processor import convert_to_pdf
-
-        # PDF 변환 시도
-        pdf_path = convert_to_pdf(str(test_file))
-
-        if pdf_path:
-            # PDF 경로가 반환된 경우
-            pdf_file = Path(pdf_path)
-            assert pdf_file.exists(), f"PDF file should exist at {pdf_path}"
-            assert pdf_file.suffix.lower() == ".pdf", "Converted file should have .pdf extension"
-
-            # 원본 파일과 같은 디렉토리에 생성되었는지 확인
-            assert pdf_file.parent == test_file.parent, "PDF should be in same directory as source"
-
-            # 파일 크기가 0보다 큰지 확인
-            assert pdf_file.stat().st_size > 0, f"PDF file {pdf_path} should not be empty"
-        else:
-            # 변환 실패는 예상되는 상황 (LibreOffice 없거나 파일 형식 문제)
-            pytest.skip(f"PDF conversion failed for {filename} - this is expected in test environment")
 
     # def test_split_documents_with_mock_document(self, processor):
     #     """Mock 문서로 청크 분할 테스트"""
@@ -142,44 +85,6 @@ class TestIntelligentProcessor:
 
     #     except Exception as e:
     #         pytest.skip(f"Chunking test skipped due to dependency issue: {e}")
-
-    @pytest.mark.parametrize("filename", [
-        "pdf_sample.pdf",
-        "hwpx_sample.hwpx",
-        "docx_sample.docx",
-        "md_sample.md"
-    ])
-    def test_chunk_generation_with_real_files(self, processor, sample_dir, filename):
-        """실제 샘플 파일로 청크 생성 테스트"""
-        test_file = sample_dir / filename
-
-        # 파일이 존재하는지 확인
-        if not test_file.exists():
-            pytest.skip(f"Sample file {filename} not found")
-
-        try:
-            # 문서 로드
-            document = processor.load_documents(str(test_file))
-            assert document is not None, f"Document should be loaded from {filename}"
-
-            # 청크 분할
-            chunks = processor.split_documents(document)
-
-            # 청크가 하나 이상 생성되었는지 확인
-            assert len(chunks) >= 1, f"At least one chunk should be generated from {filename}"
-
-            # 각 청크가 올바른 구조를 가지는지 확인
-            for i, chunk in enumerate(chunks):
-                assert hasattr(chunk, 'text'), f"Chunk {i} should have text attribute"
-                assert hasattr(chunk, 'meta'), f"Chunk {i} should have meta attribute"
-                assert hasattr(chunk.meta, 'doc_items'), f"Chunk {i} meta should have doc_items"
-                assert len(chunk.meta.doc_items) > 0, f"Chunk {i} should have at least one doc_item"
-
-                # 텍스트 내용이 있는지 확인 (빈 문자열이 아닌지)
-                assert isinstance(chunk.text, str), f"Chunk {i} text should be string"
-
-        except Exception as e:
-            pytest.fail(f"Chunk generation test failed for {filename}: {e}")
 
     # @pytest.mark.asyncio
     # async def test_compose_vectors_with_mock_data(self, processor, mock_request):
@@ -357,3 +262,56 @@ def test_metadata_config_parses_field_transforms():
         Path("."),
     )
     assert ec_default.metadata.field_transforms == []
+
+
+# ----------------------------------------------------------------------
+# PPT 페이지 기반 청킹 — resize_all 병합 시 섹션 경로(HEADER) 유지.
+#
+# 회귀 배경: 페이지 청크에는 headings 를 채우는데 연속 페이지 greedy 병합이 그걸
+# headings=None 으로 덮어써, 병합된 PPT 청크에만 HEADER 가 붙지 않았다. 병합 크기 판정에도
+# 헤더 라인이 빠져 있어 병합 후 chunk_size 를 넘을 수 있었다.
+# ----------------------------------------------------------------------
+
+@pytest.mark.unit
+@pytest.mark.parametrize("module_name", ["intelligent_processor", "convert_processor"])
+def test_ppt_page_merge_keeps_header_paths(module_name):
+    """resize_all 로 페이지를 병합해도 섹션 경로가 살아있고 한도를 지킨다."""
+    mod = pytest.importorskip(f"facade.{module_name}")
+    from docling_core.types import DoclingDocument
+    from docling_core.types.doc import BoundingBox, DocItemLabel, ProvenanceItem
+
+    doc = DoclingDocument(name="ppt_probe")
+    section = doc.add_heading(text="발표 개요", level=1)
+    for page in (1, 2, 3):
+        doc.add_text(
+            label=DocItemLabel.TEXT,
+            text=f"{page}쪽 본문입니다.",
+            parent=section,
+            prov=ProvenanceItem(page_no=page, bbox=BoundingBox(l=0, t=0, r=1, b=1), charspan=(0, 1)),
+        )
+
+    # __init__(config/prompt/네트워크) 우회 — split_documents_by_page 가 쓰는 속성만 채운다.
+    proc = object.__new__(mod.DocumentProcessor)
+    proc._chunk_size = 10000
+    proc._chunk_mode = "resize_all"
+    # tokenizer 필드는 char 모드에서도 pydantic 검증을 통과해야 한다(None 불가).
+    proc._tokenizer = mod.GenosSmartChunker.model_fields["tokenizer"].default
+    proc._tokenizer_type = "char"
+    proc._include_chunk_header = True
+    proc._table_format = "html"
+    proc._compact_tables = True
+    proc.page_chunk_counts = defaultdict(int)
+
+    chunks = proc.split_documents_by_page(doc, chunk_size=10000, chunk_mode="resize_all")
+
+    assert chunks, "페이지 청크가 생성되어야 한다"
+    assert len(chunks) < 3, "resize_all 이면 연속 페이지가 병합되어야 한다"
+    for ch in chunks:
+        assert ch.meta.headings, f"병합 청크에 섹션 경로가 없다: {ch.text[:60]!r}"
+        line = mod._build_header_line(ch.meta.headings, True)
+        assert line.startswith("HEADER: ")
+        assert len(line + ch.text) <= 10000, "병합 후 chunk_size 초과"
+    # 본문은 모두 남아야 한다.
+    joined = "\n".join(ch.text for ch in chunks)
+    for page in (1, 2, 3):
+        assert f"{page}쪽 본문입니다." in joined

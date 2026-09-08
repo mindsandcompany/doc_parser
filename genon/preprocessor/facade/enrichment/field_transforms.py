@@ -10,6 +10,7 @@ docling 타입은 타입 힌트 용도로만 참조하므로 TYPE_CHECKING 으�
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
@@ -26,6 +27,9 @@ _log = logging.getLogger(__name__)
 # null 값을 KeyValueItem 으로 왕복하기 위한 sentinel. 빈 값 셀은 extract 에서 skip 되어
 # key/value 페어링을 깨므로, None 을 비지 않는 이 토큰으로 저장하고 읽을 때 다시 None 으로 복원한다.
 NULL_SENTINEL = "\x00__CF_NULL__\x00"
+# 문자열 "9"와 정수 9를 구분하면서 parse→chunk API 경계를 왕복하기 위한 표식.
+# 표식 없는 기존 KeyValueItem은 종전 normalize_metadata_value 규칙으로 계속 읽는다.
+JSON_VALUE_SENTINEL = "\x00__CF_JSON__\x00"
 
 
 # 추출 메타데이터 → typed 벡터 필드 변환의 기본값.
@@ -176,8 +180,242 @@ def transform_text_norm(value: Any) -> Optional[str]:
         return None
     text = unicodedata.normalize("NFKC", str(value))
     text = text.replace("﻿", "").strip()
+    text = text.replace("<BR>", " ").replace("<br>", " ").replace("<br/>", " ").replace("<BR/>", " ").strip()
     text = re.sub(r"\s+", " ", text)
     return text.casefold() or None
+
+
+# ── 원천 값 → 사람이 읽는 평문 (`text`/`html_text` 변환기용) ─────────────────
+# 원천이 같은 컬럼에 JSON·HTML·평문을 섞어 보낸다(모니모 AI차트뷰 detail_desc). 정해진
+# 스키마가 없으므로 **종류를 자동 판별해 하나의 마크다운으로 수렴**시킨다. 설정은 없다.
+#
+# 원본(TB 는 "원천이 보낸 세부 내용을 그대로 보관")을 남긴 채 평문 사본만 따로 만들려면
+# 같은 alias 를 두 목표필드에 붙이고 한쪽에만 이 변환을 건다 — 예전에는 `text_from` 이라는
+# 파생 전용 블록이 그 일을 했는데, 그러면 원본 컬럼 생성이 강제되고 제자리 변환이 불가능했다.
+
+_BR_RE = re.compile(r"<\s*br\s*/?\s*>", re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]+>")
+# 인라인 태그만 있으면 경량 경로로 충분하다. 표·목록·문단 같은 **구조**가 섞여 있으면
+# docling 백엔드(json_records.html_to_text)에 태워야 행/열 대응이 살아남는다.
+_STRUCTURAL_HTML_RE = re.compile(
+    r"<\s*(table|thead|tbody|tr|td|th|ul|ol|li|dl|h[1-6]|p|div|section|article)\b",
+    re.IGNORECASE,
+)
+_ANY_TAG_RE = re.compile(r"<\s*[a-zA-Z][a-zA-Z0-9]*\b[^>]*>")
+
+# 값이 이보다 짧은 스칼라면 헤딩을 만들지 않고 한 줄 불릿으로 붙인다.
+# 안 그러면 평평한 20필드 JSON 이 헤딩 20개가 되어 본문보다 제목이 많아진다.
+_SHORT_SCALAR = 60
+# 헤딩은 두 단계까지만(## / ###). 그보다 깊으면 `- 경로: 값` 불릿으로 접는다 —
+# 깊은 트리에서 제목이 계단처럼 쌓여 본문을 밀어내는 것을 막는다.
+_HEADING_MAX_DEPTH = 2
+
+
+def strip_inline_html(value: Any) -> str:
+    """인라인 HTML 조각 → 평문. `<BR>` 은 개행으로, 나머지 태그는 제거한다."""
+    if value in (None, ""):
+        return ""
+    text = _BR_RE.sub("\n", str(value))
+    text = _TAG_RE.sub("", text)
+    text = html.unescape(text)
+    text = unicodedata.normalize("NFKC", text).replace("﻿", "")
+    # 줄 안의 연속 공백만 접는다. 개행은 <BR> 이 만든 문단 구분이라 살린다.
+    text = "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines())
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def detect_payload_kind(value: Any) -> str:
+    """값의 종류를 판별한다: json / html / html_inline / text / broken_json / empty.
+
+    `broken_json` 은 `{`·`[` 로 시작하는데 파싱이 안 되는 경우다. 원천이 한 JSON 을
+    문자 단위로 잘라 여러 행에 나눠 보내는 스키마가 있어(row_merge), 이 상태는 조용히
+    넘기면 안 되는 신호다. 브레이스로 시작하지 않는 평문은 그냥 text 다.
+    """
+    if value in (None, ""):
+        return "empty"
+    if isinstance(value, (dict, list)):
+        return "json"
+    text = str(value).strip()
+    if not text:
+        return "empty"
+    if text[0] in "{[":
+        try:
+            json.loads(text)
+        except (ValueError, TypeError):
+            return "broken_json"
+        return "json"
+    if _STRUCTURAL_HTML_RE.search(text):
+        return "html"
+    if _ANY_TAG_RE.search(text) or _BR_RE.search(text):
+        return "html_inline"
+    return "text"
+
+
+def humanize_key(key: Any) -> str:
+    """JSON 키를 제목으로 쓸 수 있게 다듬는다 — 사전 없이, 스키마와 무관하게.
+
+    `_`/`-` 를 공백으로, camelCase 를 단어로 나눈다. **대문자화는 하지 않는다** —
+    `RSI`·`MACD` 같은 약어가 망가진다. 한글 키는 그대로 나온다.
+    """
+    text = re.sub(r"[_\-]+", " ", str(key).strip())
+    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _leaf_text(value: Any, html_renderer: Optional[Callable[[str], str]]) -> str:
+    """리프 값 하나 → 평문. 리프 안에 HTML 이 섞여 있으면 같은 판별을 다시 건다."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bool):
+        return "예" if value else "아니오"
+    if not isinstance(value, str):
+        return str(value)
+    if detect_payload_kind(value) == "html" and html_renderer is not None:
+        return str(html_renderer(value) or "").strip()
+    return strip_inline_html(value)
+
+
+def _is_short(text: str) -> bool:
+    return len(text) <= _SHORT_SCALAR and "\n" not in text
+
+
+def _render_node(node: Any, key: Any, depth: int, path: str, lines: list[str],
+                 html_renderer: Optional[Callable[[str], str]]) -> None:
+    """`node` 하나를 마크다운 줄로 펼친다. `key=None` 이면 루트(제목 없음)."""
+    label = humanize_key(key) if key is not None else ""
+    full_path = f"{path}.{label}" if path and label else (label or path)
+    heading_ok = label and depth < _HEADING_MAX_DEPTH
+
+    def heading() -> None:
+        if heading_ok:
+            lines.append(f"{'#' * (depth + 2)} {label}")
+
+    # 헤딩을 냈으면 그 제목이 문맥을 담으므로 하위 불릿 경로를 거기서 다시 시작한다
+    # (`- deep.a.b.c:` 대신 `### a` 아래 `- b.c:`).
+    child_path = "" if heading_ok else full_path
+
+    if isinstance(node, dict):
+        heading()
+        # 루트는 깊이를 소비하지 않는다 — 최상위 키가 `##` 이 되도록.
+        child_depth = depth if key is None else depth + 1
+        if key is None:
+            # 한 줄 불릿으로 끝나는 항목을 앞으로 끌어올린다. 그러지 않으면 앞 섹션 뒤에
+            # 붙어 그 섹션의 하위 항목처럼 보인다(`## candle analysis` 다음의 `- nat c:`).
+            bullets: list[str] = []
+            sections: list[str] = []
+            for child_key, child in node.items():
+                rendered: list[str] = []
+                _render_node(child, child_key, child_depth, child_path, rendered, html_renderer)
+                (sections if any(l.startswith("#") for l in rendered) else bullets).extend(rendered)
+            lines.extend(bullets)
+            lines.extend(sections)
+            return
+        for child_key, child in node.items():
+            _render_node(child, child_key, child_depth, child_path, lines, html_renderer)
+        return
+
+    if isinstance(node, (list, tuple)):
+        items = [item for item in node if item not in (None, "")]
+        if not items:
+            return
+        if all(not isinstance(item, (dict, list, tuple)) for item in items):
+            rendered = [text for text in (_leaf_text(i, html_renderer) for i in items) if text]
+            if not rendered:
+                return
+            inline = ", ".join(rendered)
+            if label and _is_short(inline):
+                lines.append(f"- {label}: {inline}")
+                return
+            heading()
+            lines.extend(f"- {text}" for text in rendered)
+            return
+        for idx, item in enumerate(items, start=1):
+            _render_node(item, f"{key} {idx}" if key is not None else str(idx),
+                         depth, child_path, lines, html_renderer)
+        return
+
+    text = _leaf_text(node, html_renderer)
+    if not text:
+        return
+    if not heading_ok:
+        lines.append(f"- {full_path}: {text}" if full_path else text)
+        return
+    # 짧은 스칼라는 헤딩을 만들지 않고 한 줄로 — 제목이 본문보다 많아지지 않게.
+    if _is_short(text):
+        lines.append(f"- {label}: {text}")
+        return
+    heading()
+    lines.append(text)
+
+
+def json_to_markdown(parsed: Any, html_renderer: Optional[Callable[[str], str]] = None) -> str:
+    """파싱된 JSON → 마크다운. 최상위 키가 `##`, 한 단계 아래가 `###` 이 된다.
+
+    헤딩을 만드는 이유는 읽기 좋으라고가 아니라 **청킹 때문**이다. 청커가 `## ` 를 우선
+    분리자로 써서 섹션 경계에서 자르고, 분할된 뒷 조각에 직전 섹션 제목을 다시 붙인다
+    (`_expand_splittable_rows`). 헤딩이 없으면 "8월 17일 2544만" 같은 조각이 무엇에
+    대한 값인지 알 수 없는 상태로 검색에 노출된다.
+    """
+    lines: list[str] = []
+    _render_node(parsed, None, 0, "", lines, html_renderer)
+    out: list[str] = []
+    for line in lines:
+        # 헤딩 앞에는 빈 줄을 둔다(청커의 문단 분리자와 마크다운 렌더링 양쪽에 필요).
+        if line.startswith("#") and out and out[-1] != "":
+            out.append("")
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def render_field_text(
+    value: Any,
+    *,
+    kind: Optional[str] = None,
+    html_renderer: Optional[Callable[[str], str]] = None,
+) -> Optional[str]:
+    """원천 값 하나 → 청크 본문에 실을 평문. 종류는 자동 판별한다.
+
+    `kind` 로 "json"/"html"/"text" 를 주면 판별을 건너뛰고 그 경로로 강제한다
+    (`transform: html_text` 가 `kind="html"` 로 쓴다).
+    `html_renderer` 는 구조 HTML 을 처리할 함수다(json_records.html_to_text). 주지 않으면
+    경량 태그 제거로 폴백한다 — 표가 한 줄씩 뭉개지므로 표가 오는 경로에서는 반드시 넘긴다.
+    """
+    if kind == "html":
+        # 원본을 그대로 넘긴다 — html_to_text 는 리스트(collect_key_map 결과)까지 처리하므로
+        # 여기서 문자열로 눌러 버리면 `html_text` 가 배열을 못 다룬다.
+        if html_renderer is not None:
+            return str(html_renderer(value) or "").strip() or None
+        return strip_inline_html(value) or None
+
+    detected = detect_payload_kind(value)
+    if detected == "empty":
+        return None
+
+    if kind == "text":
+        return strip_inline_html(value) or None
+    if kind == "json" and detected == "text":
+        # 강제했는데 JSON 이 아니면 파싱 실패로 취급해 신호를 남긴다.
+        detected = "broken_json"
+
+    if detected == "broken_json":
+        raw = str(value).strip()
+        _log.warning(
+            f"[text] JSON 파싱 실패 — 원문을 평문화만 합니다"
+            f"(len={len(raw)}, head={raw[:80]!r}). 여러 행으로 쪼개진 값이라면 "
+            f"row_merge 의 group_by/order_by 를 확인하세요."
+        )
+        return strip_inline_html(raw) or None
+
+    if detected == "json":
+        parsed = value if isinstance(value, (dict, list)) else json.loads(str(value).strip())
+        if not isinstance(parsed, (dict, list)):
+            return _leaf_text(parsed, html_renderer) or None
+        return json_to_markdown(parsed, html_renderer) or None
+
+    if detected == "html" and html_renderer is not None:
+        return str(html_renderer(value) or "").strip() or None
+
+    return strip_inline_html(value) or None
 
 
 # ── 보조 추출(fallback) ──────────────────────────────────────────────────────
@@ -224,6 +462,100 @@ VALUE_TRANSFORMS: dict[str, Callable[[Any], Any]] = {
     "date_int_flex": transform_date_int_flex,
     "text_norm": transform_text_norm,
 }
+
+
+# ── 인자를 받는 변환기 ───────────────────────────────────────────────────────
+# 위 3종은 인자가 없어 "값에서 숫자만 남긴다", "패턴으로 잘라낸다" 같은 흔한 요건을
+# 표현하지 못했다. 그때마다 이 파일에 함수를 추가해 왔는데, 그게 곧 "새 요건 = 코드 수정"의
+# 주된 통로였다. 설정에서 인자를 줄 수 있으면 그 통로가 닫힌다.
+#
+# 화이트리스트를 유지하는 것이 중요하다 — yaml 이 임의 코드를 부르게 하지 않는다.
+# 정규식은 설정자가 쓰는 것이므로, 잘못된 패턴은 기동 시에 컴파일해 걸러낸다.
+
+def transform_regex_sub(value: Any, *, pattern: str, repl: str = "") -> Any:
+    """정규식으로 치환한다. `"18,000원"` → `"18000"` 처럼 값을 정규화할 때 쓴다."""
+    if value in (None, ""):
+        return value
+    return re.sub(pattern, repl, str(value))
+
+
+def transform_regex_extract(value: Any, *, pattern: str, group: int = 1) -> Any:
+    """정규식으로 오려낸다. 매칭이 없으면 None — 원값을 남기면 "안 뽑혔다"를 못 가린다."""
+    if value in (None, ""):
+        return value
+    match = re.search(pattern, str(value))
+    if match is None:
+        return None
+    try:
+        return match.group(group)
+    except (IndexError, re.error):
+        return None
+
+
+def transform_to_int(value: Any, *, on_error: Any = None) -> Any:
+    """숫자만 남겨 정수로. 콤마·단위가 섞인 금액에 쓴다(`"18,000원"` → 18000)."""
+    if value in (None, ""):
+        return value
+    digits = re.sub(r"[^0-9-]", "", str(value))
+    if digits in ("", "-"):
+        return on_error
+    try:
+        return int(digits)
+    except ValueError:
+        return on_error
+
+
+def transform_truncate(value: Any, *, length: int, suffix: str = "") -> Any:
+    """길이를 자른다. 적재 DB 컬럼 길이에 맞출 때 쓴다."""
+    if value in (None, ""):
+        return value
+    text = str(value)
+    if len(text) <= length:
+        return text
+    return text[: max(0, length - len(suffix))] + suffix
+
+
+def transform_html_text(value: Any, *, html_renderer: Optional[Callable[[str], str]] = None) -> Any:
+    """HTML 로 **강제** 평문화한다(표·목록 구조 유지). 옛 표기 `as: html` 과 같다."""
+    return render_field_text(value, kind="html", html_renderer=html_renderer)
+
+
+def transform_text(value: Any, *, html_renderer: Optional[Callable[[str], str]] = None) -> Any:
+    """값의 종류(JSON / HTML / 평문)를 자동 판별해 평문화한다. 옛 표기 `as: auto` 와 같다.
+
+    같은 컬럼에 세 종류가 섞여 오는 원천(모니모 AI차트뷰 `detail_desc`)이 있어 강제
+    변환만으로는 부족하다.
+    """
+    return render_field_text(value, html_renderer=html_renderer)
+
+
+# 인자를 받는 변환기. 위 VALUE_TRANSFORMS 와 이름이 겹치지 않아야 한다(기동 시 검사).
+PARAM_TRANSFORMS: dict[str, Callable[..., Any]] = {
+    "regex_sub": transform_regex_sub,
+    "regex_extract": transform_regex_extract,
+    "to_int": transform_to_int,
+    "truncate": transform_truncate,
+    "html_text": transform_html_text,
+    "text": transform_text,
+}
+
+# 각 변환기의 필수 인자. 빠뜨리면 요청 때가 아니라 기동 때 알려 준다.
+PARAM_TRANSFORM_REQUIRED: dict[str, tuple[str, ...]] = {
+    "regex_sub": ("pattern",),
+    "regex_extract": ("pattern",),
+    "to_int": (),
+    "truncate": ("length",),
+    "html_text": (),
+    "text": (),
+}
+
+# 설정이 아니라 **런타임**이 주는 인자(`html_renderer`)를 받는 변환기. 표 모양을 살리려면
+# 요청의 table_format/compact_tables 를 물려야 해서 yaml 로는 표현할 수 없다 — 적용 시점에
+# 호출부가 주입한다(tabular_custom_fields.apply_transforms).
+RENDERER_TRANSFORMS = frozenset({"html_text", "text"})
+
+ALL_TRANSFORM_NAMES = tuple(sorted({*VALUE_TRANSFORMS, *PARAM_TRANSFORMS}))
+assert not (set(VALUE_TRANSFORMS) & set(PARAM_TRANSFORMS)), "변환기 이름이 겹칩니다"
 FALLBACK_STRATEGIES: dict[str, Callable[["DoclingDocument"], Any]] = {
     "doc_text_scan": extract_created_date_from_document_text,
 }
@@ -326,7 +658,8 @@ def extract_metadata_from_document(document: "DoclingDocument") -> dict[str, Any
                 continue
             if label == "value" and pending_key:
                 metadata[pending_key] = (
-                    None if text == NULL_SENTINEL else normalize_metadata_value(text)
+                    None if text == NULL_SENTINEL
+                    else _deserialize_stored_metadata_value(text)
                 )
                 pending_key = None
                 continue
@@ -335,10 +668,23 @@ def extract_metadata_from_document(document: "DoclingDocument") -> dict[str, Any
                 pending_key = text
             else:
                 metadata[pending_key] = (
-                    None if text == NULL_SENTINEL else normalize_metadata_value(text)
+                    None if text == NULL_SENTINEL
+                    else _deserialize_stored_metadata_value(text)
                 )
                 pending_key = None
     return metadata
+
+
+def _deserialize_stored_metadata_value(text: str) -> Any:
+    """새 typed 표식과 기존 무표식 metadata를 모두 읽는다."""
+    if text.startswith(JSON_VALUE_SENTINEL):
+        candidate = text[len(JSON_VALUE_SENTINEL):]
+        try:
+            return json.loads(candidate)
+        except Exception:
+            _log.warning("typed metadata JSON 복원 실패 — 문자열로 유지")
+            return candidate
+    return normalize_metadata_value(text)
 
 
 def serialize_metadata_value_for_output(value: Any) -> Any:
@@ -349,7 +695,10 @@ def serialize_metadata_value_for_output(value: Any) -> Any:
 
 
 def store_metadata_in_document(
-    document: "DoclingDocument", metadata: dict, preserve_nulls: bool = False
+    document: "DoclingDocument",
+    metadata: dict,
+    preserve_nulls: bool = False,
+    typed_keys: "set[str] | None" = None,
 ) -> None:
     """추출한 key→value 메타데이터를 문서의 KeyValueItem 으로 저장한다.
 
@@ -364,7 +713,17 @@ def store_metadata_in_document(
       null 은 애초에 emit 하지 않는다.
     - preserve_nulls=True(custom_fields): 선언된 output_fields 를 값이 null 이어도 결과에
       모두 남기기 위해, None 을 비지 않는 NULL_SENTINEL 로 저장한다(읽을 때 다시 None 으로 복원).
+
+    typed_keys: 값의 **타입까지** chunk API 경계 너머로 보존할 키 집합(예: md front matter 의
+        `source_pages: 9`). 여기 든 키만 JSON_VALUE_SENTINEL 로 직렬화되어 읽을 때 int/bool/
+        list 원형으로 복원된다.
+        **의도적으로 opt-in 이다** — 전 필드에 적용하면 문서 단위 custom_fields 를 쓰는 모든
+        doc_type 의 청크 property 타입이 함께 바뀐다(실측: card 의 annual_fee_amount 가
+        '18000' → 18000). 이미 text 로 생성된 벡터 컬렉션 property 에 int 가 들어가면 적재가
+        깨지므로, 기존 doc_type 은 종전 직렬화 규칙(dict/list → json.dumps, 그 외 → str)을
+        그대로 유지한다.
     """
+    typed_keys = typed_keys or set()
     try:
         from docling_core.types.doc.document import GraphData, GraphCell, GraphCellLabel
     except ImportError:
@@ -378,7 +737,17 @@ def store_metadata_in_document(
             if not preserve_nulls:
                 continue  # null 필드는 저장하지 않음(빈 value 셀 skip → 페어링 붕괴 방지)
             value_str = NULL_SENTINEL  # 페어링을 깨지 않는 sentinel 로 왕복
+        elif isinstance(value, str):
+            value_str = value
+        elif key in typed_keys:
+            # 숫자/bool/배열/객체의 타입을 별도 chunk API 까지 보존한다. JSON 직렬화가
+            # 불가능한 사용자 객체는 기존 동작처럼 문자열로 안전하게 내린다.
+            try:
+                value_str = JSON_VALUE_SENTINEL + json.dumps(value, ensure_ascii=False)
+            except (TypeError, ValueError):
+                value_str = str(value)
         else:
+            # 기존 규칙(하위 호환): dict/list 는 표식 없는 JSON, 그 외는 문자열.
             value_str = (
                 json.dumps(value, ensure_ascii=False)
                 if isinstance(value, (dict, list))

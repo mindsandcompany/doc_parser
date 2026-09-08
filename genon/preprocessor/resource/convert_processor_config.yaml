@@ -96,8 +96,18 @@ table_image:
 
 # 표 텍스트 직렬화 형식(청크 text 내 docling 표 표현). tabular 모드(행=벡터)는 무관.
 output:
-  table_format: "html"   # "html"(default) | "markdown"
+  # "auto" 는 표마다 구조를 보고 고른다 - 병합 셀이나 2단 헤더가 있으면 html,
+  # 단순 격자면 markdown. markdown 은 병합 셀을 표현하지 못해 헤더 계층이 사라진다.
+  table_format: "html"   # "html"(default) | "markdown" | "auto"
   compact_tables: true    # markdown 표 컬럼 정렬 패딩 제거(대형 표 청크 축소). html 포맷엔 무관.
+  # 병합 셀 표에 한해 표 뒤에 "컬럼=값 | 컬럼=값" 행 문장을 덧붙인다. 어느 헤더에 걸린
+  # 값인지 문장으로 드러나 검색이 쉬워지지만 청크가 커진다. 단순 격자 표에는 적용 안 됨.
+  table_row_serialization: false
+
+  # 같은 청크 전문을 표만 다른 표기형태로 렌더한 텍스트를 청크에 추가로 싣는다.
+  # 표가 없는 청크는 text 와 같은 값이 들어간다. 켜면 본문이 형식 수만큼 복제된다.
+  # 빈 목록(기본)=추가 안 함 | "html" -> text_table_html | "markdown" -> text_table_md
+  table_text_formats: []
 
 # enrichment
 # 각 항목은 {이름: {옵션}} 형식의 list.
@@ -198,6 +208,32 @@ enrichment:
         enable: false
         prompt_file: prompt_table_refine_combined.md   # 재구성 HTML + 요약 통합 프롬프트
 
+  # 텍스트 기반(HTML/Markdown) 표 RAG 설명. 기존 custom_fields LLM과 통합 호출한다.
+  # LLM 연결/생성 파라미터는 매칭된 문서형 custom_fields YAML 값을 공유한다.
+  # url/model 을 채우면 이 연결로 표 설명을 직접 만든다(custom_fields 의 LLM 사용 여부와 무관).
+  # 비워 두면 매칭된 문서형 custom_fields 호출에 통합된다.
+  - table_text_description:
+      enable: false           # true 또는 런타임 table_text_desc=1
+      url: ""
+      api_key: ""
+      model: ""
+      prompt_template_file: prompt_table_text_description_rag.md
+      input_format: auto      # auto | markdown | html
+      before_items: 3
+      after_items: 2
+      max_context_chars: 1500
+      max_context_tokens: 128000
+      completion_reserved_tokens: 8000
+      overflow_policy: batch  # batch | skip | error
+      conflict_policy: prefer_text # prefer_text | prefer_image | error
+      rag:
+        retrieval_context_max_chars: 350
+        key_fact_limit: 3
+        key_fact_max_chars: 160
+        search_terms_limit: 8
+        include_search_terms: false
+        repeat_context_on_split: true
+
   # ── 문서유형별 custom_fields 추출 ──────────────────────────────────────────
   # extractor=llm 은 문서 단위 LLM 추출, tabular_mapping 은 Excel/CSV 행별 직접 매핑.
   # doc_type(요청 kwargs)과 일치하는 설정만 동작. 배포 시 enable/serving ID 설정 후 사용.
@@ -220,6 +256,43 @@ chunking:
   # 청킹 모드: split_only(기본) = chunk_size 초과 청크만 분할(구조 보존) |
   #           resize_all = 모든 청크를 chunk_size 에 맞게 병합/분할. 우선순위: kwargs.chunk_mode > 아래.
   chunk_mode: split_only
+  # 표를 본문과 섞지 않고 독자 청크로 만들지 여부(기본 true).
+  # 표 청크에는 섹션 제목·표 캡션·표 설명이 함께 실리고, chunk_size 를 넘는 큰 표는
+  # 행 단위로 나뉘며 조각마다 표 헤더 행이 반복된다.
+  # false 로 내리면 예전처럼 표가 앞뒤 본문과 한 청크로 묶인다.
+  # 우선순위: kwargs.table_as_chunk > 아래 > true.
+  table_as_chunk: true
+  # 청크 텍스트 선두에 "HEADER: <섹션 경로>" 라인을 붙일지 여부(기본 true).
+  # false 면 순수 본문만 산출된다(검색 시 섹션 문맥이 사라지므로 기본값 변경은 신중히).
+  # 섹션 경로는 이 라인 한 곳에서만 붙는다 — 본문 내 제목 반복은 제거되었다.
+  # 우선순위: kwargs.include_chunk_header > 아래 > true.
+  include_chunk_header: true
+  # 청크 텍스트 정제(RAG 검색용). off(기본) | safe
+  # safe 로 켜면 검색 매칭을 방해하는 문자 노이즈만 결정적으로 제거한다.
+  #   - 한글 자모 분리(NFD) 복원, BOM/제로폭/제어문자 제거
+  #   - NBSP 등 특수 공백을 일반 공백으로, 줄바꿈을 LF 로 통일
+  #   - 전각 영숫자를 반각으로, 따옴표/대시를 통일
+  #   - 줄 끝 공백 제거, 연속 빈 줄 최대 1개, 내용 없는 청크 제거
+  # 표/코드 블록 안의 구조와 원문 의미는 건드리지 않는다(문장 재작성/공백 병합 없음).
+  # 우선순위: 호출 kwargs 의 text_cleanup > 아래 > off.
+  text_cleanup: off
+  #
+  # 그 사이트의 원천에만 있는 노이즈는 위 문자 위생으로 지워지지 않는다. 블록으로 쓰면
+  # 정규식 규칙을 줄 수 있다(기본은 규칙 없음 — 적지 않으면 산출이 바뀌지 않는다).
+  #
+  #   text_cleanup:
+  #     mode: safe
+  #     rules:                                        # 적은 순서대로 적용
+  #       - {line: "^\\s*목차\\s*$"}                   # 매칭되는 줄을 지운다
+  #       - {find: "\\[이미지[^\\]]*\\]", replace: ""}  # 부분 치환(replace 생략 시 삭제)
+  #       - {chunk: "^본 문서는 참고용"}                # 청크를 통째로 버린다
+  #
+  # line/find 는 **청킹 입력**에 적용된다 — 그래야 삭제가 청크 경계와 n_char 에 반영된다.
+  # chunk 만 출력 단계에서 판정한다.
+  # 코드 블록(``` 펜스·인라인 백틱)과 마크다운 표 행은 규칙을 타지 않는다. 표가 깨지거나
+  # 예제 코드가 훼손되는 것을 막기 위해서다.
+  # 잘못된 정규식·모르는 액션 키는 요청 때가 아니라 **기동 시** 실패한다.
+  # 규칙을 켜면 청크 본문이 바뀌므로 재색인이 필요하다.
   # 토큰 수 계산 방식. "char"(default)=문자 수 기준 | "huggingface"=HF 토크나이저 기준
   tokenizer_type: "char"
   # 청킹용 토크나이저(huggingface 모드에서만 사용). tokenizer_path 가 실제 존재하면 그 경로,

@@ -976,7 +976,7 @@ return self._normalize_response(result)
 
 | 판별 | 경로 | 결과 |
 |---|---|---|
-| `category` 가 `tabular_row`/`custom_fields_row`/`faq_row` 인 element 가 있음 | `_chunk_custom_fields_rows` | **행 1개 = 청크 1개.** element `metadata` 를 청크 property 로 승격. 단 element 에 `"splittable": true` 가 있으면(json_mapping 레코드) `chunk_size` 초과분만 여러 청크로 나누고 metadata 는 조각마다 동일하게 붙임 |
+| `category` 가 `tabular_row`/`custom_fields_row`/`faq_row` 인 element 가 있음 | `_chunk_custom_fields_rows` | **행 1개 = 청크 1개.** element `metadata` 를 청크 property 로 승격. 단 element 에 `"splittable": true` 가 있으면(custom_field yaml 에 `split: true` 를 켠 json_mapping 레코드 / tabular_mapping 행) `chunk_size` 초과분만 여러 청크로 나누고 metadata 는 조각마다 동일하게 붙임. `chunk_prefix` 가 함께 실려 있으면 그 접두를 뗀 본문만 나누고 조각마다 접두를 다시 붙임(`chunk_prefix_fields` 설정) |
 | `content` 이 `[AUDIO]` 로 시작 | `_single_marker_vector` | 전사 전체가 단일 청크 |
 | 비어있지 않은 element 가 전부 `category=="table"` | `_single_marker_vector` | `[DA]` 단일 청크 (**예전 csv/xlsx parse 결과 하위호환**) |
 | 그 외 | `_chunk_text_elements`(2583) | 문자 단위 분할 |
@@ -1004,7 +1004,11 @@ return self._normalize_response(result)
 | 분할 기준 변경 | `split_items_evenly_by_tokens` (930–978) | 반환 구간은 **폭이 0 이 아니어야** 합니다. 0 이면 그 청크가 에러 없이 사라집니다 |
 | parse-format 청킹 방식 | `_chunk_text_elements` (2583), 라우팅은 `_chunk_parse_format` (2759) | `chunk_size: 0`(미분할) 계약과 표 입력의 하위호환 가드를 유지 |
 | 표 직렬화 형식 | `_extract_table_text` (624), 큰 표는 `_table_item_to_texts` (726) | 요청 `params` 의 `export_to_html: 0` 으로도 markdown 전환 가능(코드 수정 불필요). 다만 큰 표 분할 경로는 HTML 전제 |
-| `HEADER:` 접두 형식 | `compose_vectors` (2211) + `_generate_section_text_with_heading` (844) | 헤더 문자열이 **두 군데서 두 번** 붙습니다. 한쪽만 고치면 중복 또는 누락 |
+| `HEADER:` 접두 형식 | 조립은 `_build_header_line` **한 곳**, 부착은 `compose_vectors` 한 곳 | `chunk.meta.headings` 의 **원소 하나가 완전한 경로**입니다. 경로 내부는 `_CHUNK_HEADER_SEP`(` > `), 형제 경로 사이는 `_CHUNK_PATH_SEP`(` | `)이며, 형제가 여럿이면 공통 조상을 factor 하고 리프는 `_CHUNK_PATH_MAX_LEAVES` 까지만 나열합니다 — `상품 안내 > (우대금리 조건 | 가입 제한 … 외 3개)`. **크기 산정(`_size` · 분할 예산 · 병합 재검증)도 같은 `_build_header_line` 을 써야 합니다.** 조립이 흩어져 있던 동안 분할 예산과 병합이 헤더 몫을 빼먹어 청크가 chunk_size 를 넘었습니다. 본문에 제목을 다시 넣던 옛 동작(제목이 3번, 청크의 30~56%)은 되살리지 마십시오 |
+| 청크 선두 헤더 on/off | 요청 `params` 의 `include_chunk_header` (yaml `chunking.include_chunk_header`, 기본 true) | **코드 수정 없이** 끌 수 있습니다. 0/1 과 `on`/`off` 모두 허용. off 면 순수 본문만 나옵니다(검색 시 섹션 문맥 소실). parse-format 경로는 애초에 헤더가 없어 no-op |
+| chunk_size 예산 (알려진 한계) | split_only·resize_all 분할이 헤더 몫 + `delim` 비용을 예약하고, 아이템 하나가 예산보다 크면 `_split_text_to_budget`(semchunk)으로 내부 분할합니다(조각들은 표 분할과 마찬가지로 bbox 를 공유) | **표 분할(`_table_item_to_texts` · `_split_table_text`)은 아직 헤더 몫을 예약하지 않습니다.** 그 경로에서는 청크가 헤더 길이만큼 chunk_size 를 넘을 수 있습니다. 헤더 라인이 chunk_size 보다 긴 경우(조문 전체가 SECTION_HEADER 로 승격)는 예약을 생략하고 warning 을 남깁니다 |
+| 헤더-only 청크 병합 | `_merge_heading_only_chunks` (`_is_heading_only` · `_text_covered`) | 판정은 **아이템 유형**(`_is_section_header`)입니다. 문자열 replace 로 되돌리지 마십시오 — 본문이 헤더 문자열로만 구성된 정상 청크를 오판해 본문이 사라졌습니다(실측: 헤더 `가` + 본문 `가가가가가` → 소실). `_text_covered` 가 donor 텍스트가 헤더 경로에 남는지 최종 확인하며, 크기(`_fits`)와 함께 둘 다 통과할 때만 병합합니다 |
+| 섹션 병합 지점의 크기 검사 | 2·3·4·5·5.5단계 + PPT 페이지 병합 | **섹션을 합치는 모든 지점이 헤더 라인을 포함해 크기를 재야 합니다.** 3단계(단독 타이틀 병합)에 검사가 없어서, 예산에 맞춰 잘라둔 조각을 다시 붙여 한도를 넘긴 전례가 있습니다. 표 분할 경로(`_table_item_to_texts` · `_split_table_text`)는 아직 헤더 몫을 예약하지 않습니다(알려진 한계) |
 
 ### 5.6 enrichment 모듈
 
@@ -1027,7 +1031,7 @@ return self._normalize_response(result)
 
 | 필드 | 의미 |
 |---|---|
-| `text` | 청크 본문. 앞에 `HEADER: <섹션 제목들>` 줄이 붙습니다 |
+| `text` | 청크 본문. 앞에 `HEADER: <섹션 제목들>` 줄이 붙습니다(`include_chunk_header: 0` 으로 끌 수 있음). 섹션 제목은 이 줄에만 붙고 본문에서 반복되지 않습니다 |
 | `n_char` · `n_word` · `n_line` | 본문에서 자동 계산 |
 | `i_page` · `e_page` · `n_page` | 시작/끝/전체 페이지 |
 | `i_chunk_on_page` · `n_chunk_of_page` | 페이지 내 순번/총수 |
@@ -1208,8 +1212,8 @@ facade 별로 받는 키가 다릅니다. 자주 쓰는 것만:
 | facade | 자주 쓰는 `params` 키 |
 |---|---|
 | parser | `toc`, `img_desc`, `chart_desc`, `table_desc`, `table_refine`, `doc_summary`, [`doc_type`](#g-새-doc_type-추가하기), `save_images`, `use_hwp_sdk`, `log_level` |
-| chunking | `document`(`file_path` 가 서버 안의 `.json` 이면 생략 가능), `chunk_size`, `chunk_mode`, `chunk_overlap`, `table_as_chunk`, `export_to_html`, `log_level` |
-| intelligent / convert | 위 parser 키 + `chunk_size`, `chunk_mode`, `use_pdf_sdk`, `table_format`, `export_to_html` |
+| chunking | `document`(`file_path` 가 서버 안의 `.json` 이면 생략 가능), `chunk_size`, `chunk_mode`, `include_chunk_header`, `chunk_overlap`, `table_as_chunk`, `export_to_html`, `log_level` |
+| intelligent / convert | 위 parser 키 + `chunk_size`, `chunk_mode`, `include_chunk_header`, `use_pdf_sdk`, `table_format`, `export_to_html` |
 | attachment | `chunker_type`, `chunk_size`, `chunk_overlap`, `use_pdf_sdk`, `use_hwp_sdk` |
 | **공통** | `llm_cache`, `interim_root`, `workflow_id`, `run_id`, `error_policy`(`strict`/`lenient`), `request_deadline`(초), `guardrail_call` |
 
@@ -1377,13 +1381,37 @@ placeholder 이므로, LLM 을 쓰는 항목은 그 값을 채우기 전까지 �
 | 대상 | 문서 전체 (pdf/html/docx …) | csv / xlsx / xlsm | json (레코드 배열) |
 | LLM 호출 | **함** (항목당 1회) | **안 함** | `llm_fields` 선언 시 **레코드마다 1회** |
 | 실행 시점 | 파싱 후 enrichment 단계 | 파싱 **이전**, 확장자 분기에서 조기 반환 | 파싱 **이전**, 확장자 분기에서 조기 반환 |
-| 설정 파일 키(전체) | `url`·`api_key`·`model`·`max_tokens`·`temperature`·`timeout`·`system_prompt`·`user_prompt`·`system_prompt_file`·`user_prompt_file`·`prompt`·`output_fields`·`constants`·`parser`·`pages`·`variables`·`template` | `column_map`·`value_map`·`constants`·`defaults`·`nulls`·`required`·`transforms`·`llm_fields`·`text_fields` | 왼쪽 tabular 키에서 `column_map` → `key_map`, 그리고 `records`·`html_text_fields`·`split`·`missing_policy` 추가 |
+| 설정 파일 키(전체) | `url`·`api_key`·`model`·`max_tokens`·`temperature`·`timeout`·`system_prompt`·`user_prompt`·`system_prompt_file`·`user_prompt_file`·`prompt`·`output_fields`·`constants`·`parser`·`pages`·`variables`·`template`·`body_fields`·`chunk_prefix_fields`·`first_chunk_fields` | `column_map`·`value_map`·`constants`·`defaults`·`nulls`·`required`·`transforms`·`llm_fields`·`text_fields`·`split`·`chunk_prefix_fields` | 왼쪽 tabular 키에서 `column_map` → `key_map`, 그리고 `records`·`html_text_fields`·`missing_policy` 추가 |
 | 결과 | 문서 metadata → 모든 청크에 부착 | 행별 `custom_fields_row` element → 행마다 청크 1개 | 레코드별 `custom_fields_row` element → 레코드마다 청크 1개(길면 분할) |
 | 복사할 템플릿 | `resource/templates/custom_field_TEMPLATE_llm.yaml` | `..._TEMPLATE_tabular.yaml` | `..._TEMPLATE_json.yaml` |
 | 출고 실례 | `custom_field_card.yaml` | `custom_field_faq.yaml`·`custom_field_term.yaml` | `custom_field_monimo_event.yaml` |
 
 > `extractor` 를 생략하면 `llm` 로 간주합니다. 표에 없는 값을 쓰면 기동 시
 > `지원하지 않는 custom_fields extractor: …` 로 실패합니다.
+
+문서형(`llm`)의 청크 본문 관련 키 3개는 값이 아니라 **규칙**입니다. 프롬프트나
+`output_fields` 에 넣지 않고, 파서가 문서 metadata 로 실어 청커가 소비합니다.
+
+| 키 | 하는 일 |
+|---|---|
+| `body_fields` | 여기 올린 필드가 **그 청크의 본문(text)과 글자 그대로 같은 값**을 받습니다. 소비계층의 검색 대상 본문 컬럼(`CONTENT`)용 |
+| `chunk_prefix_fields` | 필드 값을 **모든 청크 본문 앞에** 반복해 얹습니다. 매 청크가 단독으로 검색돼야 하는 식별자(카드명 `PRODUCT_NM`)용 |
+| `first_chunk_fields` | 필드 값을 **문서의 첫 청크에만 1회** 얹습니다. 매 청크에 반복하기엔 `chunk_size` 가 아까운 문서 단위 분류(`CS_CATEGORY`)용 |
+
+뒤의 두 키는 `body_fields` 의 반대 방향입니다(메타 → 본문). 문서 단위 값은 metadata
+컬럼에만 두면 필터 검색에만 걸리고 임베딩 검색에는 안 걸리므로, 청크 본문에 실어야
+`"삼성 iD ON 카드 연회비"` 같은 질의가 그 카드의 연회비 청크를 집습니다.
+
+> ⚠️ `first_chunk_fields` 만 쓰면 **그 값으로 임베딩 검색을 할 때 첫 청크만 걸립니다.**
+> 값 자체는 모든 청크의 metadata 에 그대로 실리므로 필터 검색은 전 청크에서 됩니다.
+> 두 목록에 같은 필드를 넣으면 `chunk_prefix_fields` 가 이깁니다(첫 청크에 두 번 넣지 않음).
+>
+> 접두는 청크마다 `chunk_size` 를 그만큼 깎습니다(청커가 크기 산정에서 미리 예약합니다).
+> 짧은 식별 필드 1~2개로 제한하세요. 값이 비었거나 `PRODUCT_ATTRS` 같은 중첩 객체인
+> 필드는 조용히 건너뜁니다.
+>
+> 행 매핑형·레코드 매핑형의 `chunk_prefix_fields` 는 이름만 같고 자리가 다릅니다 —
+> 그쪽은 `split: true` 로 쪼갠 조각마다 접두를 다시 붙이는 설정입니다.
 
 > ⚠️ **설정 파일의 모르는 키는 조용히 무시됩니다.** 위 표에 없는 최상위 키(오타 포함)를 쓰면
 > 에러도 경고도 없이 그냥 읽히지 않습니다 — `column_maps` 처럼 한 글자만 틀려도 매핑이 0개가
@@ -1486,6 +1514,8 @@ enrichment:
 | `constants` | 모든 행에 같은 값으로 넣을 필드. `defaults` 와 달리 **원천 값이 있어도 덮어씁니다** |
 | `llm_fields` | 원천에 없는 필드를 **행마다 LLM 으로** 생성. 스키마는 경로 C 와 같습니다(아래 참고). ⚠️ parser 경로에서만 실행됩니다 |
 | `text_fields` | 청크 `text` 본문을 구성할 필드와 그 순서 (개행으로 이어붙임). 생략하면 행의 모든 값 |
+| `split` | `true` 면 행 본문이 `chunk_size` 를 넘을 때 여러 청크로 나눕니다(metadata 는 조각마다 동일). 생략하면 행 1개 = 청크 1개 |
+| `chunk_prefix_fields` | 분할된 **모든** 조각 앞에 반복할 식별 필드(예: `QUESTION`, `MENU_NM`). `split: true` 일 때만 유효. 접두는 본문 맨 앞으로 이동하고 `text_fields` 에서는 빠집니다(중복 방지) |
 
 > ⚠️ **`text_fields` 에 아무도 만들지 않는 필드를 적으면 그 부분이 조용히 빠집니다.**
 > `column_map`·`constants`·`defaults`·`llm_fields[].output_fields` 중 어디에도 없는 이름을 쓰면
@@ -1545,6 +1575,7 @@ enrichment:
 | `llm_fields` | JSON 에 없는 필드를 LLM 으로 생성. 아래 참고 |
 | `text_fields` | 청크 `text` 본문을 구성할 필드와 순서 (경로 B 와 동일) |
 | `split` | `true` 면 레코드 본문이 `chunk_size` 를 넘을 때 여러 청크로 나눕니다(metadata 는 조각마다 동일). 생략하면 레코드 1건 = 청크 1개 |
+| `chunk_prefix_fields` | 경로 B 와 동일 — 분할된 모든 조각 앞에 반복할 식별 필드(예: `TITLE`). `split: true` 일 때만 유효 |
 | `missing_policy` | `records` 키를 못 찾았을 때. `error`(기본, 즉시 실패) / `skip`(경고 후 0건) |
 
 **`llm_fields`** — 항목마다 레코드 1건당 LLM 을 1회 호출합니다.

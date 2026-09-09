@@ -906,6 +906,12 @@ class SmartChunkerBase(BaseChunker):
                 (isinstance(item, TextItem) and
                  item.label in [DocItemLabel.SECTION_HEADER, DocItemLabel.TITLE]))
 
+    def _is_table_title(self, item: DocItem) -> bool:
+        """표 바로 위 아이템이 그 표의 제목 한 줄인가(80자 이하 단독 줄 문단)."""
+        text = (getattr(item, "text", "") or "").strip()
+        return (bool(text) and "\n" not in text and len(text) <= 80
+                and not self._is_section_header(item))
+
     def _get_section_header_level(self, item: DocItem) -> Optional[int]:
         """Section header의 level을 반환"""
         if isinstance(item, SectionHeaderItem):
@@ -1173,9 +1179,15 @@ class SmartChunkerBase(BaseChunker):
             # 앞의 섹션을 끊고 표 하나만 담은 섹션을 만든 뒤 다시 끊는다. 이후 단계가
             # 이 경계를 존중하므로 표가 앞뒤 본문과 한 청크로 묶이지 않는다.
             if table_as_chunk and isinstance(item, TableItem):
-                if cur_items:
-                    sections.append((cur_items, cur_h_infos, cur_h_short))
-                sections.append(([item], [h_info], [h_short]))
+                # 표 바로 위 한 줄짜리 제목 문단은 표와 같은 섹션에 남긴다. 떼어 놓으면
+                # 표는 이름을 잃고 제목만 담긴 고아 청크가 남는다(실측: `ㅁ 피해물이 상품인
+                # 경우 보상 기준` 19자 청크). 유형이 섹션 헤더인 것은 손대지 않는다 —
+                # _merge_heading_only_chunks 가 유실 검사까지 하며 이미 병합한다.
+                keep = len(cur_items) - (1 if cur_items and self._is_table_title(cur_items[-1]) else 0)
+                if cur_items[:keep]:
+                    sections.append((cur_items[:keep], cur_h_infos[:keep], cur_h_short[:keep]))
+                sections.append((cur_items[keep:] + [item], cur_h_infos[keep:] + [h_info],
+                                 cur_h_short[keep:] + [h_short]))
                 cur_items, cur_h_infos, cur_h_short = [], [], []
             # 섹션 헤더를 만나면
             elif self._is_section_header(item):

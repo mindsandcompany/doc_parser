@@ -285,6 +285,36 @@ def normalize_degenerate(text: str) -> str:
     return "".join(pieces)
 
 
+# 표 바로 위 한 줄이 그 표의 섹션 제목인지 판정하는 규칙.
+# 마크다운 헤딩(`## 제목`)과, HTML `<p><b>제목</b></p>` 이 평문화된 결과인 줄 전체 굵은
+# 글씨(`**제목**`) 두 가지다. 굵은 글씨는 줄 전체가 하나의 span 일 때만 제목으로 본다 —
+# `**A** 는 **B** 다` 같은 본문 문장을 제목으로 오인하지 않기 위해서다.
+_MD_HEADING_LINE_RE = re.compile(r"^#{1,6}\s+\S")
+_SECTION_TITLE_MAX_CHARS = 80
+
+
+def _is_section_title_line(line: str) -> bool:
+    """한 줄이 단독 섹션 제목 모양인가."""
+    title = line.strip()
+    if not title or len(title) > _SECTION_TITLE_MAX_CHARS:
+        return False
+    if _MD_HEADING_LINE_RE.match(title):
+        return True
+    if len(title) > 4 and title.startswith("**") and title.endswith("**"):
+        return "**" not in title[2:-2]
+    return False
+
+
+def _peel_section_title(before: str) -> tuple:
+    """표 앞 본문에서 마지막 줄이 섹션 제목이면 떼어 낸다. `(남은 본문, 제목)`."""
+    if not before:
+        return before, ""
+    head, _, last = before.rpartition("\n")
+    if not _is_section_title_line(last):
+        return before, ""
+    return head.strip(), last.strip()
+
+
 def split_at_tables(text: str) -> list:
     """표 블록마다 자기 조각을 갖도록 텍스트를 나눈다.
 
@@ -294,6 +324,12 @@ def split_at_tables(text: str) -> list:
     표 바로 앞의 `[표 검색 설명]` 블록은 그 표의 것이므로 표 조각에 함께 둔다. docling
     경로도 설명을 표 청크 선두에 싣는다 — 떼어 놓으면 표만 담긴 청크가 무슨 표인지
     설명하는 문장을 잃고, 설명 청크는 근거가 될 표를 잃는다.
+
+    표 바로 위의 섹션 제목 한 줄도 같은 이유로 표 조각에 함께 둔다. 그 제목은 표가
+    무엇을 담은 표인지 말하는 유일한 문장인데, 떼어 놓으면 제목만 담긴 조각은 근거가
+    없고 표 조각은 이름이 없다(실측: 고객센터 원천에서 `**소지품(보상가능)**` 이 표와
+    갈라진 청크로 나왔다). 제목이 본문의 마지막 줄이면 남는 본문이 없어 조각 수가
+    하나 줄어든다 — 제목만 담긴 청크가 사라지는 것이 이 처리의 목적이다.
     """
     blocks = find_blocks(text)
     if not blocks:
@@ -309,12 +345,13 @@ def split_at_tables(text: str) -> list:
             # 줄 선두에 있는 라벨만 설명 블록으로 본다(본문에 인용된 라벨과 구분).
             if index >= 0 and (index == 0 or before[index - 1] == "\n"):
                 before, description = before[:index], before[index:].strip()
-        before = before.strip()
+        # 설명 블록을 떼어 낸 뒤라야 본문의 마지막 줄이 섹션 제목 자리에 온다.
+        before, title = _peel_section_title(before.strip())
         if before:
             pieces.append(before)
         table = text[block.start:block.end].strip()
-        if description:
-            table = f"{description}\n{table}" if table else description
+        # 제목 → 설명 → 표 순서로 싣는다(문서에 있던 순서 그대로).
+        table = "\n".join(part for part in (title, description, table) if part)
         if table:
             pieces.append(table)
         cursor = block.end

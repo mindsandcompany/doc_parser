@@ -863,22 +863,23 @@ def build_chunk_text(
     column_map = column_map or {}
     field_labels = field_labels or {}
 
-    def label_for(field: str) -> str | None:
-        """이 필드를 `항목명: 값` 으로 낼 때 쓸 이름. 이름이 없으면 None(값만 낸다).
+    def explicit_label(field: str) -> str | None:
+        """사람이 설정의 `labels`(내부 표기 `field_labels`)에 직접 적어 준 이름."""
+        name = field_labels.get(field)
+        return str(name) if name else None
 
-        우선순위는 `field_labels`(사람이 붙인 이름) > `column_map` 별칭 첫 값(엑셀/CSV 원천
-        헤더) 이다. json_mapping 은 `column_map` 이 없는데, 그 자리의 `key_map` 별칭은
-        `depth4`·`htmlText` 같은 시스템 key 라 라벨로 쓰면 잡음만 된다 — 그래서 폴백하지 않고
-        `field_labels` 에 이름이 있는 필드만 항목명과 함께 나간다.
+    def fallback_label(field: str) -> str | None:
+        """이름을 안 적었을 때 쓸 원천 헤더(`column_map` 별칭 첫 값). 없으면 None.
+
+        json_mapping 은 `column_map` 이 없는데, 그 자리의 `key_map` 별칭은 `depth4`·`htmlText`
+        같은 시스템 key 라 라벨로 쓰면 잡음만 된다 — 그래서 폴백하지 않고 `field_labels` 에
+        이름이 있는 필드만 항목명과 함께 나간다.
 
         `column_map` 이 있어도 **거기 없는 필드는 이름 없이 값만 낸다**. 엑셀 헤더로 폴백하는
         근거는 그 헤더가 사람이 읽는 말이라는 것뿐인데, constants·llm_fields 출력처럼
         column_map 에 없는 필드에는 그런 헤더가 없다. 목표필드명으로 폴백하면 `SUMMARY_TEXT: `
         같은 적재 DB 컬럼명이 청크마다 임베딩에 실린다.
         """
-        explicit = field_labels.get(field)
-        if explicit:
-            return str(explicit)
         source_spec = column_map.get(field)
         if isinstance(source_spec, list) and source_spec:
             return str(source_spec[0])
@@ -887,15 +888,23 @@ def build_chunk_text(
         return None
 
     def labeled(name: str) -> str:
-        """짧은 값은 `항목명: 값`, 여러 줄 블록은 값만.
+        """`항목명: 값`. 값이 여러 줄이면 항목명만 한 줄로 앞세워 블록 구조를 지킨다.
 
-`text`/`html_text` 변환이 만든 값은 `## 제목` 헤딩을 가진 마크다운 블록이다. 거기에
-        `detail_desc: ` 라벨을 덧붙이면 첫 줄만 라벨 뒤에 붙어 구조가 깨지고, 임베딩에는
-        의미 없는 컬럼명이 하나 더 들어간다. 블록은 자기 제목을 이미 갖고 있다.
+        여러 줄이면 항목명을 통째로 버리는 규칙이었다. 근거는 `text`/`html_text` 변환이 만든
+        값이 자기 제목을 가진 마크다운 블록이라는 것이었는데, 실제 산출은 표·목록으로 시작해
+        제목이 없는 경우가 대부분이라 설정에 적어 둔 이름이 조용히 사라졌다. 사람이 적어 준
+        이름은 그래서 여러 줄 값에도 낸다 — 다만 `내용: | 구 분 |` 처럼 첫 줄에 붙이면 표가
+        깨지므로 이름만 한 줄로 낸다.
+
+        원천 헤더로 폴백한 이름은 종전대로 여러 줄 값에 붙이지 않는다. 그 헤더가 그 블록을
+        설명한다는 근거가 사람이 적어 준 이름만큼 강하지 않다.
         """
         value = _chunk_text_value(fields[name])
-        label = label_for(name)
-        return value if ("\n" in value or not label) else f"{label}: {value}"
+        label = explicit_label(name)
+        if label:
+            return f"{label}:\n{value}" if "\n" in value else f"{label}: {value}"
+        label = fallback_label(name)
+        return f"{label}: {value}" if label and "\n" not in value else value
 
     prefix_names = set(chunk_prefix_fields)
     prefix = "\n".join(

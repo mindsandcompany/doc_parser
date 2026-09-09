@@ -93,11 +93,25 @@ def test_json_path_without_labels_stays_value_only():
 
 
 @pytest.mark.unit
-def test_multiline_block_keeps_no_label():
-    """여러 줄 블록은 자기 제목을 이미 갖고 있어 항목명을 붙이지 않는다."""
+def test_multiline_value_keeps_the_named_label_on_its_own_line():
+    """사람이 적어 준 항목명은 여러 줄 값에도 나간다 — 첫 줄에 붙이지 않고 따로 낸다.
+
+    `html_text` 가 만드는 값은 표·목록으로 시작해 자기 제목이 없는 경우가 대부분이라,
+    여러 줄이면 라벨을 버리는 종전 규칙에서는 설정의 `labels` 가 조용히 무시됐다.
+    """
+    content, _ = build_chunk_text(
+        {"CONTENT": "| 구 분 | 내 용 |\n| - | - |"}, ["CONTENT"], [],
+        field_labels={"CONTENT": "내용"},
+    )
+    assert content == "내용:\n| 구 분 | 내 용 |\n| - | - |"
+
+
+@pytest.mark.unit
+def test_multiline_value_drops_the_fallback_header_label():
+    """원천 헤더로 폴백한 이름은 종전대로 여러 줄 값에 붙이지 않는다."""
     content, _ = build_chunk_text(
         {"DETAIL_TEXT": "## 혜택\n- 5% 적립"}, ["DETAIL_TEXT"], [],
-        field_labels={"DETAIL_TEXT": "상세내용"},
+        column_map={"DETAIL_TEXT": ["상세설명"]},
     )
     assert content == "## 혜택\n- 5% 적립"
 

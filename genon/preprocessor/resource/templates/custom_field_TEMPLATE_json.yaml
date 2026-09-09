@@ -77,6 +77,10 @@ source:
 #   values     : 값의 표기 흔들림을 표준 코드로 접는다. 매핑표에 없는 값은 원값을 두고 경고만
 #   transform  : 값 변환. 이름 하나 또는 목록(순서대로 적용). 아래 [변환기] 참고
 #   template   : 여러 필드를 합쳐 새 필드를 만든다(`{{목표필드}}`). 변환 뒤에 돈다
+#   pack       : 여러 필드를 **JSON 한 칸**에 담는다(`[FIELD_A, FIELD_B]` →
+#                `{"FIELD_A": ..., "FIELD_B": ...}` 문자열). 적재 컬럼을 늘리지 않고
+#                부가정보를 실을 때 쓴다. 값이 없는 키도 null 로 남고 원천 필드는 그대로
+#                남는다. 파이프라인 맨 뒤라 template 산출도 담긴다. 본문 키에는 못 쓴다
 #   seq        : 원천에 **항목 번호가 없을 때** 번호를 만든다.
 #                `{prefix: "FAQ-", width: 4, start: 1}` → FAQ-0001, FAQ-0002 …
 #                접두도 자리수도 없으면(`{}`) 정수 1, 2, 3 … 으로 나간다.
@@ -123,7 +127,7 @@ fields:
 
 # ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
 #   alias/collect 원시 매핑 → (merge_rows 병합) →
-#   default → const → values → transform → template → from/as → filter → require 검사
+#   default → const → values → transform → template → pack → from/as → filter → require 검사
 #   → seq 번호 부여(걸러진 레코드가 번호를 소비하지 않게 맨 뒤에 붙는다)
 # default 가 빈 값을 채운 뒤에 const 가 덮어쓰므로 둘 다 선언했다면 언제나 const 가 이긴다.
 

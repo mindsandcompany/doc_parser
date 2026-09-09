@@ -97,9 +97,11 @@ from genon.preprocessor.facade.common import config_parse as cp
 from genon.preprocessor.facade.enrichment import config_v2 as cv2
 from .tabular_custom_fields import (
     apply_derive,
+    apply_pack,
     apply_transforms,
     apply_value_map,
     compile_derive,
+    compile_pack,
     compile_transforms,
     compile_value_map,
     normalize_column_name,
@@ -668,6 +670,7 @@ class SemanticJsonMapper:
         self.value_map = compile_value_map(cfg.get("value_map"))
         self.transforms = compile_transforms(cfg.get("transforms"), label=label)
         self.derive = compile_derive(cfg, label=label)
+        self.pack = compile_pack(cfg, label=label)
 
         # 본문 접두에 실릴 수 있는 공통 필드 이름(선언 순서). alias 로 원천에서 찾는 필드만이
         # 공통 필드가 아니다 — `default`/`const` 로만 만드는 필드나 `template` 으로 합쳐
@@ -769,12 +772,14 @@ class SemanticJsonMapper:
                 identity[key] = value
         identity.update(self.constants)
 
-        # 값 정규화 -> 변환 -> 결합. rows/records 와 같은 자리(constants 뒤)에 같은 순서로
+        # 값 정규화 -> 변환 -> 결합 -> 묶기. rows/records 와 같은 자리(constants 뒤)에 같은 순서로
         # 건다 — 별칭을 표준값으로 접은 뒤 타입을 바꾸고, 결합은 정규화된 값으로 해야
         # 표기가 흔들리지 않는다.
         apply_value_map(identity, self.value_map)
         apply_transforms(identity, self.transforms)
         apply_derive(identity, self.derive)
+        # 묶기는 맨 뒤에 — derive 로 만든 필드까지 담을 수 있어야 한다.
+        apply_pack(identity, self.pack)
 
         missing = [f for f in self.required_shared_fields if identity.get(f) in (None, "")]
         if missing:

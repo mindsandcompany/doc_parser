@@ -62,6 +62,7 @@ TOP_LEVEL_KEYS = frozenset({
 # `TARGET_A:` 처럼 값을 빠뜨린 오타가 null 로 파싱돼 조용히 통과하는 것을 막기 위해서다.
 FIELD_SPEC_KEYS = frozenset({
     "alias", "const", "default", "values", "transform", "collect", "template", "seq",
+    "pack",
 })
 SOURCE_KEYS = frozenset({
     "kind", "records_at", "table_at", "on_missing", "merge_rows",
@@ -115,6 +116,7 @@ _SPEC_TO_BLOCK = {
     "transform": "transforms",
     "template": "derive",
     "seq": "sequence",
+    "pack": "pack",
 }
 _BLOCK_TO_SPEC = {v: k for k, v in _SPEC_TO_BLOCK.items()}
 
@@ -275,6 +277,8 @@ def _normalize_fields(fields: Any, kind: str, out: dict, label: str) -> None:
             value = spec[spec_key]
             if spec_key == "values":
                 value = _require_dict(value, where, "values")
+            elif spec_key == "pack":
+                value = _require_list(value, where, "pack")
             out.setdefault(block, {})[target] = value
 
 

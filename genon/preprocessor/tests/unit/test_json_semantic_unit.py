@@ -1209,6 +1209,34 @@ transforms:
         write_mapper(tmp_path, config)
 
 
+def test_pack_bundles_shared_fields_into_json(tmp_path):
+    """`pack` — 공통 필드 여럿을 적재 컬럼 하나에 JSON 으로 담는다(rows/records 와 같은 자리)."""
+    _mapper, fields = pipeline_fields(tmp_path, PIPELINE_CONFIG + """
+pack:
+  DETAIL_JSON: [BRAND_NM, ANNUAL_FEE, DISPLAY_NM]
+""")
+
+    # 파이프라인 마지막이므로 transform 을 지난 값(정수)과 derive 산출까지 담긴다.
+    assert json.loads(fields["DETAIL_JSON"]) == {
+        "BRAND_NM": "다올신협",
+        "ANNUAL_FEE": 18000,
+        "DISPLAY_NM": "다올신협 다올신협 체크카드",
+    }
+
+
+def test_pack_referencing_an_unknown_field_fails_at_startup(tmp_path):
+    config = """
+shared_fields:
+  PRODUCT_NM: [cardTitle]
+sections:
+  htmlList: 상품 문서
+pack:
+  DETAIL_JSON: [NO_SUCH_FIELD]
+"""
+    with pytest.raises(ValueError, match="NO_SUCH_FIELD"):
+        write_mapper(tmp_path, config)
+
+
 def test_derive_referencing_an_unknown_field_fails_at_startup(tmp_path):
     """`template` 이 아무도 만들지 않는 필드를 참조하면 기동 시에 잡는다."""
     config = """

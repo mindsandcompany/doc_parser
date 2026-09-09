@@ -70,6 +70,12 @@ source:
 #   transform  : 값 변환. 이름 하나 또는 목록(순서대로 적용). 아래 [변환기] 참고
 #   template   : 여러 필드를 합쳐 새 필드를 만든다. `{{목표필드}}` 를 값으로 채우고,
 #                값이 없는 자리는 지우고 양끝 공백을 다듬는다. 변환 뒤에 돈다
+#   pack       : 여러 필드를 **JSON 한 칸**에 담는다. `[FIELD_A, FIELD_B]` 로 적으면
+#                `{"FIELD_A": ..., "FIELD_B": ...}` 문자열이 된다. 적재 컬럼을 늘리지 않고
+#                부가정보를 싣는 자리다. 값이 없는 키도 null 로 남고, 묶은 원천 필드는
+#                그대로 남는다. 파이프라인 **맨 뒤**라 template 산출까지 담을 수 있다.
+#                청크 본문 관련 키(body 계열)에는 쓸 수 없다 — JSON 덩어리는 본문에
+#                실을 모양이 아니라 기동에서 막는다
 #   seq        : 원천에 **항목 번호가 없을 때** 번호를 만든다.
 #                `{prefix: "FAQ-", width: 4, start: 1}` → FAQ-0001, FAQ-0002 …
 #                접두도 자리수도 없으면(`{}`) 정수 1, 2, 3 … 으로 나간다.
@@ -119,11 +125,12 @@ fields:
   # <DETAIL>:      {alias: [세부내용], transform: text}
   # <DISPLAY_NM>:  {template: "{{<TARGET_FIELD_1>}} {{<TARGET_FIELD_2>}}"}
   # <ROW_NO>:      {seq: {prefix: "FAQ-", width: 4}}   # FAQ-0001, FAQ-0002 …
+  # <DETAIL_JSON>: {pack: [<TARGET_FIELD_1>, <TARGET_FIELD_2>]}
 
 # ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
 # 행 하나가 청크가 되기까지 이 순서로 처리된다:
 #   alias 원시 매핑 → (merge_rows 가 있으면 연속 행 병합) →
-#   default → const → values → transform → template → from/as → filter → require 검사
+#   default → const → values → transform → template → pack → from/as → filter → require 검사
 #   → seq 번호 부여(걸러진 레코드가 번호를 소비하지 않게 맨 뒤에 붙는다)
 # values 가 transform 보다 먼저 걸린다 — 표기 흔들림을 표준값으로 접은 뒤에 타입 변환을 건다.
 # default 가 빈 값을 채운 **뒤에** const 가 덮어쓴다. 그래서 둘 다 선언했다면 언제나 const 가

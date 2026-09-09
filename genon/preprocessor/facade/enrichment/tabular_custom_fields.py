@@ -9,6 +9,7 @@ extractor=tabular_mapping 설정을 적용해 행별 metadata element를 만든�
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
@@ -345,6 +346,8 @@ def collect_target_field_names(cfg: dict) -> set[str]:
     # derive 는 다른 필드를 합쳐 새 목표필드를 만든다. 여기 넣지 않으면 그 필드를
     # text_fields 에 쓰면 오탐 경고가 나고, chunk_prefix_fields/filter 에 쓰면 기동이 실패한다.
     names |= set(cfg.get("derive") or {})
+    # pack 도 다른 필드를 묶어 새 목표필드를 만든다(derive 와 같은 이유로 여기 넣는다).
+    names |= set(cfg.get("pack") or {})
     names |= {
         str(f)
         for spec in (cfg.get("llm_fields") or [])
@@ -615,6 +618,80 @@ def apply_derive(fields: dict, compiled: dict[str, str]) -> None:
         text = _DERIVE_VAR_RE.sub(_sub, template).strip()
         fields[target] = text or None
 
+
+# ── 필드 묶기(pack) ─────────────────────────────────────────
+#
+#   pack:
+#     DETAIL_JSON: [BENEFIT, LIMIT, PERIOD]   # {"BENEFIT": "...", "LIMIT": null, ...}
+#
+# `derive` 는 필드를 **문자열**로 잇는다. 적재 컬럼 하나에 값 여럿을 구조째 담아야 할 때는
+# 그것으로 JSON 을 만들 수 없다 — 문자열 치환이라 값에 따옴표나 줄바꿈이 섞이면 깨진 JSON 이
+# 조용히 만들어진다(실측: `{"a": "연 18,000원 "무이자""}`). 직렬화까지 여기서 맡는다.
+#
+# 산출은 **항상 JSON 문자열**이다. dict 로 두면 경로마다 모양이 갈린다 — 문서형은 청크 출력
+# 직전에 `serialize_metadata_value_for_output` 이 문자열로 낮추지만, 행 경로는 metadata 를
+# 그대로 청크 property 에 실어 객체가 그대로 나간다.
+#
+# 값이 없는 키도 null 로 남긴다. 선언한 필드는 값이 없어도 결과에 남긴다는 custom_fields
+# 계약(`preserve_nulls`)과 같은 규칙이다 — 적재쪽이 보는 JSON 키 집합이 문서마다 바뀌지 않는다.
+
+# pack 필드를 쓸 수 없는 본문 관련 키. JSON 덩어리는 청크 본문에 실을 모양이 아니고,
+# 실제로 실리는지도 경로마다 다르다 — 문서형 접두는 dict 를 조용히 버리고(doc_prefix.render_value)
+# 행 경로는 문자열을 그대로 싣는다. 기동 시에 막아 그 비대칭을 표면화시키지 않는다.
+_PACK_FORBIDDEN_BODY_KEYS = (
+    "text_fields", cp.CHUNK_PREFIX_FIELDS_KEY, cp.FIRST_CHUNK_FIELDS_KEY, cp.BODY_FIELDS_KEY,
+)
+
+
+def compile_pack(cfg: dict, *, label: str) -> dict[str, list[str]]:
+    """`pack` 을 검증해 컴파일한다. 참조하는 필드가 없으면 기동 시 실패한다."""
+    spec = cfg.get("pack")
+    if not spec:
+        return {}
+    if not isinstance(spec, dict):
+        raise ValueError(
+            f"{label}: pack 은 '목표필드: [원천필드…]' 형태의 object 여야 합니다."
+        )
+
+    packed = {str(target) for target in spec}
+    for body_key in _PACK_FORBIDDEN_BODY_KEYS:
+        used = sorted(packed & {str(f) for f in (cfg.get(body_key) or [])})
+        if used:
+            raise ValueError(
+                f"{label}: {body_key} 에 pack 필드 {used} 를 쓸 수 없습니다 — "
+                f"JSON 덩어리는 청크 본문에 실을 모양이 아니고, 실리는지도 경로마다 다릅니다. "
+                f"본문에 실을 값은 묶기 전 필드를 그대로 쓰세요."
+            )
+
+    # pack 으로 만든 필드는 다시 묶을 수 없다 — 허용하면 JSON 안에 JSON 문자열이
+    # 중첩되고, 적용 순서가 yaml 의 키 순서에 조용히 의존하게 된다.
+    known = collect_target_field_names(cfg) - packed
+    compiled: dict[str, list[str]] = {}
+    for target, sources in spec.items():
+        target = str(target)
+        if not isinstance(sources, (list, tuple)):
+            raise ValueError(
+                f"{label}: pack.{target} 는 묶을 필드명 목록이어야 합니다(예: `[FIELD_A, FIELD_B]`)."
+            )
+        names = [str(name) for name in sources]
+        if not names:
+            raise ValueError(f"{label}: pack.{target} 에 묶을 필드가 없습니다.")
+        unknown = sorted(set(names) - known)
+        if unknown:
+            raise ValueError(
+                f"{label}: pack.{target} 가 참조하는 {unknown} 를 만드는 설정이 없습니다 "
+                f"(pack 으로 만든 필드는 다시 묶을 수 없습니다)."
+            )
+        compiled[target] = names
+    return compiled
+
+
+def apply_pack(fields: dict, compiled: dict[str, list[str]]) -> None:
+    """묶은 필드들을 JSON 문자열 하나로 만든다(값이 없는 키는 null 로 남는다)."""
+    for target, sources in compiled.items():
+        payload = {name: fields.get(name) for name in sources}
+        # default=str: 직렬화할 수 없는 값(datetime 등)이 섞여도 요청이 터지지 않게 한다.
+        fields[target] = json.dumps(payload, ensure_ascii=False, default=str)
 
 # ── 항목 순번(sequence) ──────────────────────────────────────────────────────
 #
@@ -955,6 +1032,7 @@ class TabularCustomFieldsMapper:
             self.config.get("transforms"), label=f"tabular custom_fields({config_file})"
         )
         self.derive = compile_derive(self.config, label=f"tabular custom_fields({config_file})")
+        self.pack = compile_pack(self.config, label=f"tabular custom_fields({config_file})")
         self.filter = compile_filter(self.config, label=f"tabular custom_fields({config_file})")
         self.sequence = compile_sequence(
             self.config, label=f"tabular custom_fields({config_file})"
@@ -1178,6 +1256,8 @@ class TabularCustomFieldsMapper:
                 apply_transforms(fields, self.transforms, html_renderer)
                 # 결합은 변환 뒤에 — 정규화된 값으로 합쳐야 표기가 흔들리지 않는다.
                 apply_derive(fields, self.derive)
+                # 묶기는 맨 뒤에 — derive 로 만든 필드까지 담을 수 있어야 한다.
+                apply_pack(fields, self.pack)
 
                 # 대상이 아닌 레코드는 여기서 빠진다. required 보다 **먼저** 보는 것이 중요하다 —
                 # 뒤에 두면 정상 제외가 "필수값 누락" 경고로 찍혀 데이터 사고처럼 보인다.

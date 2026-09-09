@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -147,6 +148,29 @@ def test_value_pipeline_is_shared_with_llm(tmp_path: Path):
     assert stored["MISSING"] == "기본값"    # default
     # 추출기는 "ABC" 를 돌려줬는데 text_norm(대소문자·공백 정규화)이 걸려 "abc" 가 된다.
     assert stored["CODE"] == "abc"
+
+
+def test_pack_bundles_fields_into_json(tmp_path: Path):
+    """`pack` — 문서형도 rows/records 와 같은 자리에서 같은 결과를 낸다.
+
+    묶은 값은 문서 metadata 에 **문자열**로 실린다. dict 로 두면 청크 출력 경로마다
+    모양이 갈린다(문서형은 문자열로 낮추고, 행 경로는 객체를 그대로 싣는다).
+    """
+    stored = _run(_enricher(
+        tmp_path,
+        constants={"SRC": "REGEX"},
+        defaults={"MISSING": None},
+        pack={"DETAIL_JSON": ["CODE", "SRC", "MISSING"]},
+    ))
+    assert isinstance(stored["DETAIL_JSON"], str)
+    assert json.loads(stored["DETAIL_JSON"]) == {
+        "CODE": "ABC", "SRC": "REGEX", "MISSING": None,
+    }
+
+
+def test_pack_referencing_an_unknown_field_fails_at_startup(tmp_path: Path):
+    with pytest.raises(ValueError, match="NO_SUCH_FIELD"):
+        _enricher(tmp_path, pack={"DETAIL_JSON": ["NO_SUCH_FIELD"]})
 
 
 def test_output_fields_filter_applies(tmp_path: Path):

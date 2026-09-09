@@ -61,6 +61,7 @@ from .custom_fields_enricher import (
 from .field_transforms import VALUE_TRANSFORMS
 from .tabular_custom_fields import (
     apply_derive,
+    apply_pack,
     apply_sequence,
     apply_transforms,
     apply_value_map,
@@ -68,6 +69,7 @@ from .tabular_custom_fields import (
     compile_chunk_prefix_fields,
     compile_derive,
     compile_filter,
+    compile_pack,
     compile_row_merge,
     compile_sequence,
     compile_transforms,
@@ -524,6 +526,7 @@ class JsonRecordsMapper:
         label = f"json custom_fields({config_file})"
         self.transforms = compile_transforms(cfg.get("transforms"), label=label)
         self.derive = compile_derive(cfg, label=label)
+        self.pack = compile_pack(cfg, label=label)
         self.filter = compile_filter(cfg, label=label)
         self.sequence = compile_sequence(cfg, label=label)
 
@@ -661,6 +664,8 @@ class JsonRecordsMapper:
         )
         # 결합은 변환 뒤에 — 정규화된 값으로 합쳐야 표기가 흔들리지 않는다.
         apply_derive(fields, self.derive)
+        # 묶기는 맨 뒤에 — derive 로 만든 필드까지 담을 수 있어야 한다.
+        apply_pack(fields, self.pack)
 
         return fields
 

@@ -1197,8 +1197,27 @@ Docling 파이프라인(PDF/HTML/HWP/HWPX/DOCX) 출력 기준:
 | 값 접기 | `values` (`value_map`) | ✔ | ✔ | ✔ | ✔ |
 | 변환(9종 체이닝) | `transform` (`transforms`) | ✔ | ✔ | ⚠ 표 뭉갬 | ⚠ 표 뭉갬 |
 | 필드 결합 | `template` (**`derive`**) | ✔ | ✔ | ✔ | ✔ |
+| JSON 한 칸에 묶기 | `pack` | ✔ | ✔ | ✔ | ✔ |
 
-적용 순서는 kind 공통입니다: `default`(빈 값만) → `const`(덮어씀) → `values` → `transform` → `template`
+적용 순서는 kind 공통입니다: `default`(빈 값만) → `const`(덮어씀) → `values` → `transform` → `template` → `pack`
+
+`pack` 은 값 여럿을 적재 컬럼 **하나**에 JSON 으로 담습니다. 컬럼을 늘리지 않고 부가정보를
+실을 때 씁니다.
+
+```yaml
+fields:
+  DETAIL_JSON: {pack: [BENEFIT, LIMIT, PERIOD]}
+  # → '{"BENEFIT": "…", "LIMIT": null, "PERIOD": "…"}' (항상 문자열)
+```
+
+- 값이 없는 키도 `null` 로 남습니다 — 적재쪽이 보는 키 집합이 문서마다 바뀌지 않습니다.
+- 묶은 원천 필드는 결과에 **그대로 남습니다**(빠지지 않습니다).
+- 파이프라인 맨 뒤라 `template` 산출까지 담을 수 있고, `pack` 으로 만든 필드를 다시 묶는 것은
+  기동에서 막습니다.
+- `body.fields`/`body.repeat`/`body.once`/`body.mirror_to` 에는 쓸 수 없습니다(기동 실패).
+  JSON 덩어리는 청크 본문에 실을 모양이 아닙니다.
+- `template` 로도 흉내 낼 수 있어 보이지만 그것은 문자열 치환이라 값에 따옴표·줄바꿈이
+  섞이면 깨진 JSON 이 조용히 만들어집니다. 직렬화는 `pack` 이 맡습니다.
 
 **청크 본문에 싣기 (`body:`)**
 

@@ -3,6 +3,7 @@
 지금까지 코드 수정 없이는 불가능하던 요건들이다. 새 요건이 올 때마다
 field_transforms.py 에 함수를 추가하던 통로를 설정으로 옮긴 것이 이 세 기능의 목적이다.
 """
+import json
 import textwrap
 
 import pytest
@@ -129,6 +130,57 @@ def test_derive_field_is_usable_downstream(tmp_path):
     assert [r["D"] for r in rows] == ["a-b"]
 
 
+def test_pack_bundles_fields_into_one_json_column(tmp_path):
+    """`pack` — 값 여럿을 적재 컬럼 하나에 JSON 으로 담는다.
+
+    `derive` 로는 만들 수 없다. 문자열 치환이라 값에 따옴표가 섞이면 깨진 JSON 이 조용히
+    만들어진다 — 그래서 직렬화까지 이 기능이 맡는다.
+    """
+    rows = _rows(tmp_path, """
+        column_map:
+          BENEFIT: [혜택]
+          LIMIT:   [한도]
+          BRAND:   [브랜드]
+          MISSING: [없음]
+        derive:
+          DISPLAY_NM: "{{BRAND}} 카드"
+        pack:
+          DETAIL_JSON: [BENEFIT, LIMIT, MISSING, DISPLAY_NM]
+        text_fields: [BENEFIT]
+    """, [{"혜택": '연 18,000원 "무이자"', "한도": "500만원", "브랜드": "삼성"}])
+
+    assert json.loads(rows[0]["DETAIL_JSON"]) == {
+        "BENEFIT": '연 18,000원 "무이자"',
+        "LIMIT": "500만원",
+        "MISSING": None,        # 값이 없어도 키는 남는다(적재쪽 키 집합이 흔들리지 않는다)
+        "DISPLAY_NM": "삼성 카드",   # derive 산출도 담을 수 있다(pack 이 파이프라인 마지막)
+    }
+    assert rows[0]["BENEFIT"] == '연 18,000원 "무이자"'  # 묶은 원천은 그대로 남는다
+
+
+def test_pack_result_is_always_a_string(tmp_path):
+    """dict 로 두면 경로마다 모양이 갈린다 — 행 경로는 metadata 를 그대로 청크에 싣는다."""
+    rows = _rows(tmp_path, """
+        column_map: {A: [에이]}
+        pack: {J: [A]}
+        text_fields: [A]
+    """, [{"에이": "a"}])
+
+    assert isinstance(rows[0]["J"], str)
+
+
+def test_pack_json_path_gets_the_same_feature(tmp_path):
+    rows = _rows(tmp_path, """
+        key_map: {TITLE: [title], FEE_AMT: [fee]}
+        transforms: {FEE_AMT: {name: to_int}}
+        pack: {DETAIL_JSON: [TITLE, FEE_AMT]}
+        text_fields: [TITLE]
+    """, [{"title": "연회비 안내", "fee": "18,000원"}], kind="json")
+
+    # 변환 뒤의 값을 담는다(정수는 JSON 숫자로 나간다)
+    assert json.loads(rows[0]["DETAIL_JSON"]) == {"TITLE": "연회비 안내", "FEE_AMT": 18000}
+
+
 def test_json_path_gets_the_same_features(tmp_path):
     rows = _rows(tmp_path, """
         key_map: {TITLE: [title], FEE_AMT: [fee], DEL_YN: [delYn]}
@@ -154,6 +206,14 @@ def test_json_path_gets_the_same_features(tmp_path):
         ("filter:\n  - {field: NOPE, in: [Y]}\n", "만드는 설정이 없"),
         ("filter:\n  - {field: T}\n", "정확히 하나"),
         ("filter:\n  - {field: T, in: []}\n", "비어 있지 않은"),
+        ("pack:\n  J: [NOPE]\n", "만드는 설정이 없"),
+        ("pack:\n  J: T\n", "목록이어야"),
+        ("pack:\n  J: []\n", "묶을 필드가 없"),
+        # pack 산출을 다시 묶으면 JSON 안에 JSON 문자열이 중첩되고 적용 순서가 yaml 키
+        # 순서에 조용히 의존한다.
+        ("pack:\n  J: [T]\n  K: [J]\n", "만드는 설정이 없"),
+        # 본문 관련 키는 pack 필드를 받지 않는다(문서형은 조용히 버리고 행 경로는 싣는다).
+        ("pack:\n  J: [T]\nchunk_prefix_fields: [J]\nsplit: true\n", "쓸 수 없습니다"),
     ],
 )
 def test_misconfiguration_is_caught_at_startup(tmp_path, body, expect):

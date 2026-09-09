@@ -28,7 +28,7 @@ fields:
   BIZ_ID:
     alias: [ID, 아이디]
     default: null
-  REGT_NO:
+  REGT_NO_ORG:
     alias: [등록번호, regt_no, REGT_NO]
     default: null
   NTC_OBJLINE_NO:
@@ -42,8 +42,8 @@ fields:
     alias: [뉴스일자, news_date, NEWS_DATE]
     transform: date_int_flex
   # 등록번호+뉴스일자 결합 키. template 은 값 파이프라인 마지막에 돌아 변환된 값을 본다.
-  REGT_NEWS_KEY:
-    template: "{{REGT_NO}}_{{NEWS_DATE}}"
+  REGT_NO:
+    template: "{{REGT_NO_ORG}}_{{NEWS_DATE}}"
   DETAIL_DESC:
     alias: [상세내용, detail_desc, DETAIL_DESC, 세부내용]
     default: null

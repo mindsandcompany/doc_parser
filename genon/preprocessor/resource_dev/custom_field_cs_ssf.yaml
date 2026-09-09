@@ -46,33 +46,48 @@ source:
       separator: "|@|"
       columns: [대분류, 중분류, 소분류, 제목, 내용]
 fields:
-  CS_CATEGORY:
+  BIZ_ID:
+    alias: [ID, id]
+    default: null
+  GROUP_C:
+    const: SSF
+  CS_CATEGORY_1:
     alias: [대분류]
-  CS_CATEGORY_MID:
+  CS_CATEGORY_2:
     alias: [중분류]
     default: null
-  CS_CATEGORY_SUB:
+  CS_CATEGORY_3:
     alias: [소분류]
+    default: null
+  CS_CATEGORY:
+    template: "{{CS_CATEGORY_1}}_{{CS_CATEGORY_2}}_{{CS_CATEGORY_3}}"
     default: null
   TITLE:
     alias: [제목]
     transform: text_norm
   # 원본 HTML. 청크마다 복제되면 산출이 크게 부풀므로 본문에는 싣지 않는다.
-  DETAIL_HTML:
-    alias: [내용]
+  # DETAIL_HTML:
+  #   alias: [내용]
   # 같은 원천을 한 번 더 읽어 평문 사본을 만든다. html_text 는 표·목록 구조를 유지한다.
   # 임베딩 입력은 이쪽을 쓴다.
-  DETAIL_TEXT:
+  CONTENT:
     alias: [내용]
     transform: html_text
-  GROUP_C:
-    const: SSF
+  RELATED_KEYWORDS:
+    alias: [related_keywords, 연관 키워드]
+    default: null
+  DEEP_LINK_URL:
+    alias: [딥링크, 앱 딥링크]
+    default: null
+  SRC_LAST_MOD_DT:
+    default: null
 require:
   fields: [GROUP_C, TITLE]
 body:
-  fields: [TITLE, DETAIL_TEXT]
+  fields: [CS_CATEGORY, TITLE, CONTENT]
   labels:
+    CS_CATEGORY: 카테고리
     TITLE: 제목
-    DETAIL_TEXT: 내용
+    CONTENT: 내용
   split: true
-  repeat: [TITLE]
+  repeat: [CS_CATEGORY, TITLE]

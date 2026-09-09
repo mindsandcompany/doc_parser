@@ -61,6 +61,7 @@ from .custom_fields_enricher import (
 from .field_transforms import VALUE_TRANSFORMS
 from .tabular_custom_fields import (
     apply_derive,
+    apply_sequence,
     apply_transforms,
     apply_value_map,
     build_chunk_text,
@@ -68,6 +69,7 @@ from .tabular_custom_fields import (
     compile_derive,
     compile_filter,
     compile_row_merge,
+    compile_sequence,
     compile_transforms,
     compile_value_map,
     merge_row_records,
@@ -523,6 +525,7 @@ class JsonRecordsMapper:
         self.transforms = compile_transforms(cfg.get("transforms"), label=label)
         self.derive = compile_derive(cfg, label=label)
         self.filter = compile_filter(cfg, label=label)
+        self.sequence = compile_sequence(cfg, label=label)
 
         # 원천이 값 하나를 여러 레코드에 쪼개 보내는 스키마용. tabular 와 같은 구현을 공유한다
         # (연속 런 기준 병합 — 멀리 떨어진 동일 키는 다른 레코드로 남긴다).
@@ -729,6 +732,10 @@ class JsonRecordsMapper:
             _log.warning(
                 f"[json_records] skipped {skipped}/{len(records)} records (missing required)"
             )
+
+        # 순번은 filter/required 를 통과한 목록에만 매긴다 — 걸러진 레코드가 번호를 소비하면
+        # 적재된 값에 구멍이 생긴다(tabular 와 같은 규칙).
+        apply_sequence(mapped, self.sequence)
         return mapped
 
     def build_text(self, fields: dict) -> str:

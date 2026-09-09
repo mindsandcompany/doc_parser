@@ -61,7 +61,7 @@ TOP_LEVEL_KEYS = frozenset({
 # 필드 스펙 안에 쓸 수 있는 키. 값은 **항상 dict** 다 — 리스트/스칼라 단축형을 받지 않는다.
 # `TARGET_A:` 처럼 값을 빠뜨린 오타가 null 로 파싱돼 조용히 통과하는 것을 막기 위해서다.
 FIELD_SPEC_KEYS = frozenset({
-    "alias", "const", "default", "values", "transform", "collect", "template",
+    "alias", "const", "default", "values", "transform", "collect", "template", "seq",
 })
 SOURCE_KEYS = frozenset({
     "kind", "records_at", "table_at", "on_missing", "merge_rows",
@@ -114,6 +114,7 @@ _SPEC_TO_BLOCK = {
     "values": "value_map",
     "transform": "transforms",
     "template": "derive",
+    "seq": "sequence",
 }
 _BLOCK_TO_SPEC = {v: k for k, v in _SPEC_TO_BLOCK.items()}
 

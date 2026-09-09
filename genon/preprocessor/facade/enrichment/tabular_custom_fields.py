@@ -187,7 +187,7 @@ _MAP_SHAPED_KEYS = (
     "column_map", "key_map", "collect_key_map", "constants", "defaults", "value_map", "transforms",
     "field_labels",
     "shared_fields", "sections",
-    "row_merge",
+    "row_merge", "sequence",
 )
 
 
@@ -270,7 +270,7 @@ def validate_chunk_prefix_fields(cfg: dict, *, label: str) -> None:
     if unknown:
         raise ValueError(
             f"{label}: chunk_prefix_fields 의 {unknown} 를 만드는 설정이 없습니다. "
-            f"column_map/key_map/constants/defaults/derive/llm_fields 중 하나에 "
+            f"column_map/key_map/constants/defaults/derive/sequence/llm_fields 중 하나에 "
             f"필드를 선언하세요."
         )
 
@@ -355,6 +355,9 @@ def collect_target_field_names(cfg: dict) -> set[str]:
     # 필드다. 넣지 않으면 그 이름을 `template` 이 참조할 때 "만들 수 없는 필드" 로 막힌다.
     names |= {str(f) for f in (cfg.get("output_fields") or [])}
     names |= set(cfg.get("front_matter_map") or {})
+    # 순번 필드는 값 파이프라인 뒤에 붙지만 목표필드인 것은 같다. 여기 넣지 않으면 그 이름을
+    # body.fields 에 쓸 때 오탐 경고가 나고, body.repeat/filter 에 쓰면 기동이 실패한다.
+    names |= set(cfg.get("sequence") or {})
     return names
 
 
@@ -613,6 +616,98 @@ def apply_derive(fields: dict, compiled: dict[str, str]) -> None:
         fields[target] = text or None
 
 
+# ── 항목 순번(sequence) ──────────────────────────────────────────────────────
+#
+#   sequence:
+#     ROW_NO: {prefix: "FAQ-", width: 4, start: 1}   # FAQ-0001, FAQ-0002 …
+#
+# 원천에 항목 번호가 없을 때 목표필드로 만들어 준다. 번호는 **레코드 단위**이고 문서 1건
+# 안에서만 유일하다 — 파서가 파일 단위로 도는 이상 여러 파일에 걸친 전역 유일번호는 여기서
+# 만들 수 없다(접두를 파일명·수집일자로 잡거나 적재 쪽 시퀀스를 쓴다).
+#
+# 부여 시점이 중요하다. `filter`/`required` 로 걸러진 **뒤**에 매겨야 번호에 구멍이 생기지
+# 않으므로, 값 파이프라인이 아니라 확정된 레코드 목록에 후처리로 건다(엑셀 시트도 넘어간다).
+# 그래서 `derive`(v2 `template`)가 순번을 참조할 수는 없다 — 접두는 `prefix` 로 붙인다.
+_SEQUENCE_OPTION_KEYS = frozenset({"prefix", "width", "start"})
+
+
+def _sequence_int(value: Any, *, where: str, default: int, minimum: int) -> int:
+    """sequence 옵션의 정수값. 문자열·실수를 조용히 받으면 zfill 이 요청마다 터진다."""
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{where} 는 정수여야 합니다: {value!r}")
+    if value < minimum:
+        raise ValueError(f"{where} 는 {minimum} 이상이어야 합니다: {value}")
+    return value
+
+
+def compile_sequence(cfg: dict, *, label: str) -> dict[str, dict]:
+    """`sequence` 를 검증해 컴파일한다. 미선언이면 빈 dict(순번 없음)."""
+    spec = cfg.get("sequence")
+    if not spec:
+        return {}
+    if not isinstance(spec, dict):
+        raise ValueError(
+            f"{label}: sequence 는 '목표필드: {{prefix, width, start}}' 형태의 object 여야 합니다."
+        )
+
+    # 다른 블록이 이미 만드는 필드에 순번을 매기면 그 값이 말없이 사라진다. 순번은 파이프라인
+    # 맨 뒤에서 덮어쓰므로 원천 값이 남을 여지가 없다 — 이름 충돌은 기동 시에 막는다.
+    # sequence 블록만 뺀 나머지가 만드는 이름과 대조한다. `collect_target_field_names` 에서
+    # 통째로 빼면 자기 자신뿐 아니라 **진짜 충돌까지** 지워져 검사가 아무것도 못 잡는다.
+    produced = collect_target_field_names({k: v for k, v in cfg.items() if k != "sequence"})
+    compiled: dict[str, dict] = {}
+    for target, options in spec.items():
+        target = str(target)
+        where = f"{label}: sequence.{target}"
+        if target in produced:
+            raise ValueError(
+                f"{where} 는 다른 설정이 이미 만드는 필드입니다 — 순번이 그 값을 덮어씁니다. "
+                f"순번 필드에 다른 이름을 쓰세요."
+            )
+        if options is None:
+            options = {}
+        if not isinstance(options, dict):
+            raise ValueError(
+                f"{where} 는 '키: 값' 형태의 object 여야 합니다"
+                f'(예: `{{prefix: "FAQ-", width: 4}}`).'
+            )
+        unknown = sorted(set(map(str, options)) - _SEQUENCE_OPTION_KEYS)
+        if unknown:
+            raise ValueError(
+                f"{where}: 모르는 옵션 {unknown}. "
+                f"쓸 수 있는 옵션: {sorted(_SEQUENCE_OPTION_KEYS)}."
+            )
+        compiled[target] = {
+            "prefix": "" if options.get("prefix") is None else str(options["prefix"]),
+            "width": _sequence_int(
+                options.get("width"), where=f"{where}.width", default=0, minimum=0
+            ),
+            "start": _sequence_int(
+                options.get("start"), where=f"{where}.start", default=1, minimum=0
+            ),
+        }
+    return compiled
+
+
+def apply_sequence(fields_list: list[dict], compiled: dict[str, dict]) -> None:
+    """확정된 레코드 목록에 순번을 채운다(목록 순서가 곧 문서 안 등장 순서다).
+
+    `prefix` 도 `width` 도 없으면 **정수**로 넣는다. 적재 컬럼이 숫자인 경우가 많고, 둘 중
+    하나라도 있으면 값은 필연적으로 문자열이다("FAQ-0001" 을 숫자로 담을 수는 없다).
+    """
+    if not compiled:
+        return
+    for index, fields in enumerate(fields_list):
+        for target, option in compiled.items():
+            number = option["start"] + index
+            if not option["prefix"] and not option["width"]:
+                fields[target] = number
+                continue
+            fields[target] = f"{option['prefix']}{str(number).zfill(option['width'])}"
+
+
 # ── 값 기반 레코드 필터(filter) ──────────────────────────────────────────────
 #
 #   filter:
@@ -852,6 +947,9 @@ class TabularCustomFieldsMapper:
         )
         self.derive = compile_derive(self.config, label=f"tabular custom_fields({config_file})")
         self.filter = compile_filter(self.config, label=f"tabular custom_fields({config_file})")
+        self.sequence = compile_sequence(
+            self.config, label=f"tabular custom_fields({config_file})"
+        )
         # 선언만 컴파일한다. 실제 호출은 parser 가 행 목록을 들고 수행한다(json_mapping 과 동일).
         self.llm_field_specs = build_llm_field_specs(self.config)
         self.split = bool(self.config.get("split", False))
@@ -1119,6 +1217,9 @@ class TabularCustomFieldsMapper:
                     f"(missing required) sheet={sheet_name}"
                 )
 
+        # 순번은 시트 루프 **밖**에서 매긴다 — 문서 1건 전체로 이어지고, filter/required 로
+        # 걸러진 레코드는 이미 빠진 뒤라 번호에 구멍이 생기지 않는다.
+        apply_sequence(fields_list, self.sequence)
         return fields_list
 
     def to_parse_format_from_fields(self, fields_list: list[dict], runtime_doc_type: Any) -> dict:

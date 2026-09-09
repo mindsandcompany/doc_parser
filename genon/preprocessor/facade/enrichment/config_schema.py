@@ -72,9 +72,11 @@ _RECORD_COMMON = frozenset({
 
 # extractor 별 지원 키. 값은 "그 extractor 의 매퍼/enricher 가 실제로 읽는 키" 다.
 EXTRACTOR_KEYS: dict[str, frozenset[str]] = {
-    "tabular_mapping": _RECORD_COMMON | {"column_map", "row_merge"},
+    # `sequence`(v2 `fields.<이름>.seq`)는 레코드 루프가 있는 두 kind 전용이다. 섹션형·문서형은
+    # "항목 N번째"가 정의되지 않아(문서형은 항상 1) 여기 넣지 않는다.
+    "tabular_mapping": _RECORD_COMMON | {"column_map", "row_merge", "sequence"},
     "json_mapping": _RECORD_COMMON | {
-        "records", "key_map", "collect_key_map", "missing_policy", "row_merge",
+        "records", "key_map", "collect_key_map", "missing_policy", "row_merge", "sequence",
     },
     # json_semantic 은 섹션 본문을 섹션 워커가 만들지만, 공통 필드(적재 DB 컬럼이 되는 값)의
     # 파이프라인은 레코드형과 같다 — `value_map`/`transforms`/`derive` 를 같은 순서로 읽는다.

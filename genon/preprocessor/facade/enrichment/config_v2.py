@@ -568,13 +568,22 @@ def _record_llm_item(spec: dict) -> dict:
 
 
 def load(loaded: dict, *, label: str) -> tuple[dict, str | None]:
-    """설정 파일 내용 → `(내부(v1) 형태, v2 면 extractor 이름)`.
+    """설정 파일 내용 → `(내부 형태, extractor 이름)`.
 
-    v1 이면 그대로 돌려준다(`extractor` 는 None). 매퍼의 `_load_config` 끝에서 이 함수를
-    한 번 거치게 하면, 그 아래 코드는 v1/v2 를 구분할 필요가 없다.
+    매퍼의 `_load_config` 끝에서 이 함수를 한 번 거치게 하면, 그 아래 코드는 표기를
+    신경 쓸 필요가 없다.
+
+    설정이 비어 있으면(`config_file` 미지정) 번역할 것이 없으므로 그대로 통과시킨다.
+    그 밖에 `schema: v2` 가 없으면 **기동을 막는다** — 폐기된 v1 표기를 조용히 다른
+    해석 모드로 받으면, `schema` 줄의 사소한 사고가 에러가 아니라 스키마 전환이 된다.
     """
+    if not loaded:
+        return {}, None
     if not is_v2(loaded):
-        return loaded, None
+        raise ConfigV2Error(
+            f"{label}: 최상위에 `schema: v2` 가 없습니다. v1 표기는 더 이상 지원하지 "
+            f"않습니다(필드 규칙은 `fields.<목표>` 한 자리에 모읍니다)."
+        )
     return normalize(loaded, label=label)
 
 

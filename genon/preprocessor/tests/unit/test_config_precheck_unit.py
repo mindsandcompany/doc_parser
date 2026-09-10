@@ -105,7 +105,8 @@ def test_precheck_passes_on_shipped_resource():
 )
 def test_precheck_detects_blocking_problems(tmp_path, mutate, expect):
     precheck = _load_precheck()
-    cfg = {"column_map": {"Q": ["질문"]}, "text_fields": ["Q"]}
+    cfg = {"schema": "v2", "source": {"kind": "rows"},
+           "fields": {"Q": {"alias": ["질문"]}}, "body": {"fields": ["Q"]}}
     mutate(cfg)
     (tmp_path / "custom_field_x.yaml").write_text(
         yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8"
@@ -119,7 +120,8 @@ def test_precheck_detects_blocking_problems(tmp_path, mutate, expect):
 def test_precheck_detects_removed_extractor_alias(tmp_path):
     precheck = _load_precheck()
     (tmp_path / "custom_field_x.yaml").write_text(
-        "column_map:\n  Q: [질문]\ntext_fields: [Q]\n", encoding="utf-8"
+        "schema: v2\nsource: {kind: rows}\n"
+        "fields: {Q: {alias: [질문]}}\nbody: {fields: [Q]}\n", encoding="utf-8"
     )
     block = {"doc_type": "t", "extractor": "column_mapping",
              "config_file": "custom_field_x.yaml"}

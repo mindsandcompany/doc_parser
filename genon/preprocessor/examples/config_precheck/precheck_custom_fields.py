@@ -123,8 +123,15 @@ def check_block(source: str, block: dict, root: Path, seen_files: set[str]) -> l
 
     cfg = load_yaml(path)
     label = f"{config_file}"
-    if cv2.is_v2(cfg):
-        # v2 는 내부(v1) 형태로 번역된 뒤에야 extractor 지원키와 대조할 수 있다.
+    if cfg and not cv2.is_v2(cfg):
+        # 폐기된 v1 표기. 기동에서 막히므로 여기서도 같은 판정을 낸다.
+        problems.append(
+            f"[기동실패] {label}: 최상위에 `schema: v2` 가 없습니다. "
+            f"v1 표기는 더 이상 지원하지 않습니다."
+        )
+        return problems
+    if cfg:
+        # 내부 형태로 번역된 뒤에야 extractor 지원키와 대조할 수 있다.
         # 번역 전 원본을 그대로 검사하면 v2 키가 전부 "모르는 키"로 잡힌다.
         try:
             cfg, extractor = cv2.normalize(cfg, label=label)

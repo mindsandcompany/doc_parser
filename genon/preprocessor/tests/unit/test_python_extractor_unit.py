@@ -54,8 +54,10 @@ def _site(tmp_path: Path, config: dict, py: str = _EXTRACTOR_PY) -> tuple[str, s
 
 
 def _enricher(tmp_path: Path, *, callable_name: str = "extract", **config_extra):
-    config = {"file": "site_extract.py", "callable": callable_name,
-              "output_fields": ["CODE"], **config_extra}
+    config = {"schema": "v2", "source": {"kind": "document"},
+              "python": {"file": "site_extract.py", "callable": callable_name,
+                         "out": ["CODE"]},
+              **config_extra}
     config_file, resource_path = _site(tmp_path, config)
     return cfe.CustomFieldsEnricher(
         doc_type="site", extractor="python",
@@ -87,7 +89,9 @@ def test_python_is_a_document_scope_extractor():
 
 
 def test_builder_creates_an_enricher_for_python(tmp_path: Path):
-    config_file, resource_path = _site(tmp_path, {"file": "site_extract.py"})
+    config_file, resource_path = _site(tmp_path, {
+        "schema": "v2", "source": {"kind": "document"},
+        "python": {"file": "site_extract.py"}})
     enrichers = cfe.build_document_custom_fields_enrichers([
         {"extractor": "python", "config_file": config_file, "resource_path": resource_path},
     ])
@@ -96,7 +100,9 @@ def test_builder_creates_an_enricher_for_python(tmp_path: Path):
 
 def test_missing_file_fails_at_startup(tmp_path: Path):
     """오설정은 첫 요청이 아니라 기동에서 드러나야 한다."""
-    config_file, resource_path = _site(tmp_path, {"file": "없는파일.py"})
+    config_file, resource_path = _site(tmp_path, {
+        "schema": "v2", "source": {"kind": "document"},
+        "python": {"file": "없는파일.py"}})
     with pytest.raises(FileNotFoundError):
         cfe.CustomFieldsEnricher(
             extractor="python", config_file=config_file, resource_path=resource_path)
@@ -140,9 +146,9 @@ def test_non_dict_result_is_reported_not_stored(tmp_path: Path):
 def test_value_pipeline_is_shared_with_llm(tmp_path: Path):
     stored = _run(_enricher(
         tmp_path,
-        constants={"SRC": "REGEX"},
-        defaults={"MISSING": "기본값"},
-        transforms={"CODE": ["text_norm"]},
+        fields={"SRC": {"const": "REGEX"},
+                "MISSING": {"default": "기본값"},
+                "CODE": {"transform": ["text_norm"]}},
     ))
     assert stored["SRC"] == "REGEX"        # const
     assert stored["MISSING"] == "기본값"    # default
@@ -158,9 +164,9 @@ def test_pack_bundles_fields_into_json(tmp_path: Path):
     """
     stored = _run(_enricher(
         tmp_path,
-        constants={"SRC": "REGEX"},
-        defaults={"MISSING": None},
-        pack={"DETAIL_JSON": ["CODE", "SRC", "MISSING"]},
+        fields={"SRC": {"const": "REGEX"},
+                "MISSING": {"default": None},
+                "DETAIL_JSON": {"pack": ["CODE", "SRC", "MISSING"]}},
     ))
     assert isinstance(stored["DETAIL_JSON"], str)
     assert json.loads(stored["DETAIL_JSON"]) == {
@@ -177,9 +183,11 @@ def test_to_json_applies_on_the_document_path(tmp_path: Path):
     """
     stored = _run(_enricher(
         tmp_path,
-        constants={"ATTRS": '{"annual_fee":  18000}', "FEE_TEXT": "국내전용 18,000원"},
-        transforms={"ATTRS": ["to_json"],
-                    "FEE_TEXT": [{"name": "to_json", "key": "fee_text"}]},
+        fields={
+            "ATTRS": {"const": '{"annual_fee":  18000}', "transform": ["to_json"]},
+            "FEE_TEXT": {"const": "국내전용 18,000원",
+                         "transform": [{"name": "to_json", "key": "fee_text"}]},
+        },
     ))
     assert json.loads(stored["ATTRS"]) == {"annual_fee": 18000}
     assert json.loads(stored["FEE_TEXT"]) == {"fee_text": "국내전용 18,000원"}
@@ -188,13 +196,13 @@ def test_to_json_applies_on_the_document_path(tmp_path: Path):
 def test_to_json_on_a_body_field_fails_at_startup(tmp_path: Path):
     """변환은 필드를 제자리에서 덮으므로, 본문에도 쓰이는 필드에 걸면 본문에 JSON 이 실린다."""
     with pytest.raises(ValueError, match="쓸 수 없습니다"):
-        _enricher(tmp_path, transforms={"CODE": ["to_json"]},
-                  chunk_prefix_fields=["CODE"])
+        _enricher(tmp_path, fields={"CODE": {"transform": ["to_json"]}},
+                  body={"repeat": ["CODE"]})
 
 
 def test_pack_referencing_an_unknown_field_fails_at_startup(tmp_path: Path):
     with pytest.raises(ValueError, match="NO_SUCH_FIELD"):
-        _enricher(tmp_path, pack={"DETAIL_JSON": ["NO_SUCH_FIELD"]})
+        _enricher(tmp_path, fields={"DETAIL_JSON": {"pack": ["NO_SUCH_FIELD"]}})
 
 
 def test_output_fields_filter_applies(tmp_path: Path):

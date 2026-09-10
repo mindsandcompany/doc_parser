@@ -356,14 +356,21 @@ class TestCustomFieldsLoadConfig:
 
     def test_yaml_with_resource_path(self, tmp_path):
         cfg = tmp_path / "fields.yaml"
-        cfg.write_text("url: http://x\nmodel: m\n", encoding="utf-8")
+        cfg.write_text(
+            "schema: v2\nsource:\n  kind: document\n"
+            "llm:\n  - endpoint:\n      url: http://x\n      model: m\n",
+            encoding="utf-8",
+        )
         enr = object.__new__(CustomFieldsEnricher)
         loaded = enr._load_config("fields.yaml", str(tmp_path))
         assert loaded == {"url": "http://x", "model": "m"}
 
     def test_bare_name_with_resource_path(self, tmp_path):
         cfg = tmp_path / "authors.yaml"
-        cfg.write_text("output_fields: [authors]\n", encoding="utf-8")
+        cfg.write_text(
+            "schema: v2\nsource:\n  kind: document\nllm:\n  - out: [authors]\n",
+            encoding="utf-8",
+        )
         enr = object.__new__(CustomFieldsEnricher)
         loaded = enr._load_config("authors", str(tmp_path))
         assert loaded == {"output_fields": ["authors"]}
@@ -413,7 +420,9 @@ class TestCustomFieldsPromptFiles:
     def test_inline_yaml_prompt_loaded(self, tmp_path):
         """프롬프트를 config yaml 안에 직접 써도 파일과 동일하게 로드된다(자족 설정)."""
         (tmp_path / "cf.yaml").write_text(
-            'system_prompt: |\n  SYS_INLINE\nuser_prompt: |\n  USER_INLINE {{raw_text}}\n',
+            "schema: v2\nsource:\n  kind: document\nllm:\n  - prompt:\n"
+            "      system: |\n        SYS_INLINE\n"
+            "      user: |\n        USER_INLINE {{raw_text}}\n",
             encoding="utf-8",
         )
         enr = _make_custom_fields_enricher(

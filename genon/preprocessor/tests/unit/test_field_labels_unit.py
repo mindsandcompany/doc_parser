@@ -149,12 +149,16 @@ def test_resolve_field_labels_prefers_kwargs_over_document_metadata():
 def test_unknown_field_label_warns_but_does_not_fail(tmp_path, caplog):
     """이름을 잘못 적으면 라벨만 조용히 사라진다 — 기동 시 경고로 드러낸다."""
     cfg = """
-    key_map:
-      TITLE: [title]
-    field_labels:
-      TITLE: 제목
-      TITEL: 제목
-    text_fields: [TITLE]
+    schema: v2
+    source:
+      kind: records
+    fields:
+      TITLE: {alias: [title]}
+    body:
+      fields: [TITLE]
+      labels:
+        TITLE: 제목
+        TITEL: 제목
     """
     path = tmp_path / "custom_field_json.yaml"
     path.write_text(textwrap.dedent(cfg), encoding="utf-8")

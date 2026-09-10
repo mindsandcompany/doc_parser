@@ -40,7 +40,8 @@ def _write(tmp_path, name, body):
 def configured(tmp_path):
     (tmp_path / "p.md").write_text("표 설명 프롬프트", encoding="utf-8")
     _write(tmp_path, "off_llm.yaml", {
-        "url": "http://x", "model": "m", "output_fields": ["k"],
+        "schema": "v2", "source": {"kind": "document"},
+        "llm": [{"endpoint": {"url": "http://x", "model": "m"}, "out": ["k"]}],
         "table_text_description": {"enable": False}})
     _write(tmp_path, "off_records.yaml", {
         "schema": "v2", "source": {"kind": "records"}, "fields": {"A": {"alias": ["a"]}},

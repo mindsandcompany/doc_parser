@@ -200,9 +200,13 @@ def test_actual_md_html_samples_parse_describe_once_and_chunk(
 def test_doc_type_yaml_overrides_processor_common_table_text_description(tmp_path):
     """문서유형 YAML 값이 프로세서 공통값을 덮고, rag 하위는 키 단위로 병합된다."""
     (tmp_path / "cf.yaml").write_text(
-        "url: http://llm.invalid\n"
-        "model: test-model\n"
-        "output_fields: [document_kind]\n"
+        "schema: v2\n"
+        "source:\n  kind: document\n"
+        "llm:\n"
+        "  - endpoint:\n"
+        "      url: http://llm.invalid\n"
+        "      model: test-model\n"
+        "    out: [document_kind]\n"
         "table_text_description:\n"
         "  enabled: true\n"
         "  prompt_template: 문서유형 프롬프트\n"

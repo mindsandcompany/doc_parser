@@ -180,20 +180,29 @@ async def test_plain_md_is_unchanged_by_alias_support(parser_processor, tmp_path
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_unaliased_unknown_extension_falls_back_to_catchall(parser_processor, tmp_path: Path):
-    """별칭 설정이 없으면 기존 캐치올 경로 그대로다(회귀 방지)."""
+async def test_unaliased_unknown_extension_is_not_treated_as_markdown(parser_processor, tmp_path: Path):
+    """별칭 설정이 없으면 md 로 해석하지 않는다(회귀 방지).
+
+    캐치올은 내용이 텍스트인 파일을 `<pre>` 로 감싸 docling 에 태운다. 그래도 별칭
+    경로와는 구분돼야 한다 — 별칭이면 `.md` 이름의 원문 사본이 docling 입력이 되어
+    heading·표가 살지만, 별칭이 없으면 원문이 평문 한 덩어리로 남아야 한다.
+    """
     src = tmp_path / "sample.parsed"
     src.write_text(MIXED_MD_HTML, encoding="utf-8")
 
     dp = _stub_processor(parser_processor, {})
-    dp._parse_docling = MagicMock()
-    dp._parse_other = MagicMock(return_value=[])
-    dp._langchain_to_parse_format = MagicMock(return_value={"elements": []})
+    seen = _record_parse_docling(dp)
 
     await dp(MagicMock(), str(src))
 
-    dp._parse_docling.assert_not_called()
-    dp._parse_other.assert_called_once()
+    # 별칭 사본(.md)이 아니라 <pre> 로 감싼 평문 HTML 이 입력이다.
+    assert Path(seen["path"]).suffix == ".html"
+    assert "<pre" in seen["content"]
+    # 원문은 이스케이프돼 태그가 아니라 글자로 들어간다(md/html 로 해석되지 않는다).
+    assert "&lt;table&gt;" in seen["content"]
+    assert MIXED_MD_HTML not in seen["content"]
+    # artifacts(이미지) 경로 기준은 파생 파일이 아니라 원본이어야 한다.
+    assert seen["artifacts_from"] == str(src)
 
 
 # ---------------------------------------------------------------------------

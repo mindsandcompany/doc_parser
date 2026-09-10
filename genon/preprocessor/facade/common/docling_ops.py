@@ -43,7 +43,14 @@ from docling.document_converter import (
 )
 from docling.pipeline.simple_pipeline import SimplePipeline
 from docling_core.types import DoclingDocument
-from docling_core.types.doc import ImageRef, PictureItem, TableItem, TextItem
+from docling_core.types.doc import (
+    CodeItem,
+    DocItemLabel,
+    ImageRef,
+    PictureItem,
+    TableItem,
+    TextItem,
+)
 from docling_core.types.doc.utils import relative_path
 
 from genon.preprocessor.facade.common.config_parse import as_dict
@@ -224,6 +231,37 @@ def get_media_files(doc_items: list, include_tables: bool = False) -> list:
             path = str(item.image.uri)
             temp_list.append({"path": path, "name": path.rsplit("/", 1)[-1]})
     return temp_list
+
+
+# ── 라벨 보정 ───────────────────────────────────────────────────────────────
+
+def demote_code_items(document: DoclingDocument) -> DoclingDocument:
+    """CodeItem 을 같은 내용의 TextItem 으로 바꾼다(제자리 수정 후 같은 문서 반환).
+
+    평문 텍스트를 `<pre>` 로 감싸 HTML 백엔드에 태우면(`converters/plain_text.py`)
+    docling 이 이를 코드 블록으로 읽는다. `<pre>` 는 줄바꿈·들여쓰기를 보존하는 유일한
+    표현이라 감싸는 방식은 유지하고, 라벨만 여기서 되돌린다. 그대로 두면 마크다운
+    출력이 원문을 ``` 펜스로 감싸고, 청크가 코드 블록 하나로 굳는다.
+
+    `CodeItem.label` 은 `Literal[DocItemLabel.CODE]` 라 대입으로는 못 바꾼다. 그래서
+    `document.texts` 의 해당 자리를 새 TextItem 으로 교체한다. `self_ref` 를 그대로
+    물려주므로 `body.children` 의 참조는 끊기지 않는다.
+
+    코드 블록이 실제로 코드인 문서(md/html 원본)에는 쓰지 않는다 — 호출부는 평문 경로뿐이다.
+    """
+    for idx, item in enumerate(document.texts):
+        if not isinstance(item, CodeItem):
+            continue
+        document.texts[idx] = TextItem(
+            self_ref=item.self_ref,
+            parent=item.parent,
+            children=list(item.children),
+            label=DocItemLabel.TEXT,
+            orig=item.orig,
+            text=item.text,
+            prov=list(item.prov),
+        )
+    return document
 
 
 # ── 글리프 판정 ─────────────────────────────────────────────────────────────

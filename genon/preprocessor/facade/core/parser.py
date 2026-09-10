@@ -47,6 +47,7 @@ from docling_core.types.doc import (
 
 from genon.preprocessor.facade.enrichment.custom_fields_enricher import normalize_doc_type
 from genon.preprocessor.converters import delimited_text as dt
+from genon.preprocessor.converters.plain_text import text_to_html
 from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
     build_tabular_custom_fields_mappers,
     claimed_row_pages,
@@ -252,7 +253,10 @@ install_packages = ld.install_packages
 
 
 class TextLoader(ld.TextLoaderBase):
-    pass
+    # parser 는 페이지 메타를 쓰지 않으므로 A4 렌더 왕복을 하지 않는다. 렌더 경로는
+    # 파생 PDF 를 입력 파일 옆에 남기고(요청이 끝나도 지워지지 않는다) 원문에 없던
+    # 줄바꿈을 끼워 넣는다. attachment 는 페이지 번호가 필요해 기본값(True)을 쓴다.
+    RENDER_PDF = False
 
 
 
@@ -1676,8 +1680,9 @@ class ParserCore:
           레코드 모드(extractor: json_mapping) — 레코드별 목표필드 element
           문서 모드(json: text_fields)        — 본문 텍스트를 합쳐 docling 파싱
 
-        매칭 설정이 없으면 None 을 돌려 캐치올 경로로 폴백한다 — 기존 .json 동작 보존
-        (xlsx 분기와 같은 게이팅 패턴).
+        매칭 설정이 없으면 None 을 돌려 캐치올로 넘긴다. 캐치올은 내용이 텍스트인 파일을
+        docling 으로 보내므로(route_other), 설정이 없는 .json 도 원문 그대로 docling 을
+        탄다 — 예전처럼 PDF 렌더를 거치는 텍스트 경로로 빠지지 않는다.
         """
         # 1순위: 레코드 매핑(json_mapping) — 레코드마다 청크/메타데이터를 따로 만든다.
         #        docling 을 거치지 않으므로 xlsx 의 tabular 조기 분기와 같은 성격이다.
@@ -1697,7 +1702,7 @@ class ParserCore:
             return await self._docling_response(doc, ctx, **kwargs)
 
         _log.info(
-            "[parser] custom_fields json 매칭 설정 없음 — 기존 텍스트 경로로 처리: "
+            "[parser] custom_fields json 매칭 설정 없음 — 원문을 그대로 docling 으로 처리: "
             f"{os.path.basename(file_path)}"
         )
         return None
@@ -1714,9 +1719,50 @@ class ParserCore:
         # TODO(#315): PII 마스킹 미적용(보류) — langchain 폴백 경로. docling 아닌 파서 산출은 별도 논의.
         return self._langchain_to_parse_format(self._parse_other(file_path, **kwargs))
 
+    async def _parse_text_docling(self, file_path: str, text: str, ctx: dict, **kwargs) -> dict:
+        """평문 텍스트 → `<pre>` HTML → docling. 캐치올에 떨어진 텍스트가 여기로 온다.
+
+        docling 에는 평문 백엔드가 없어 HTML 을 거친다(`converters/plain_text.py` 참고).
+        구조는 `_parse_json` 의 문서 모드와 같다 — 파생 HTML 은 요청 임시 디렉터리에만
+        쓰고, artifacts 경로는 원본 기준으로 유지한다.
+
+        docling 을 태우는 이유는 enrichment 다. 레거시 TextLoader 경로에는 후처리 훅이
+        없어 custom_fields·문서요약·표 설명이 텍스트 원천에만 적용되지 않았다.
+        """
+        stem = Path(file_path).stem
+        with tempfile.TemporaryDirectory(prefix="parser_text_") as work_dir:
+            html_path = os.path.join(work_dir, f"{stem}.html")
+            with open(html_path, "w", encoding="utf-8") as fp:
+                fp.write(text_to_html(text))
+            doc = self._parse_docling(
+                html_path, artifacts_from=file_path,
+                _enrichment_context=ctx["enrichment_context"], **kwargs,
+            )
+        # `<pre>` 를 코드 블록으로 읽은 것을 되돌린다. 후처리 enrichment 전에 해야
+        # custom_fields·문서요약 프롬프트가 본문을 코드로 보지 않는다.
+        doc = dops.demote_code_items(doc)
+        return await self._docling_response(doc, ctx, **kwargs)
+
     async def route_other(self, file_path: str, ext: str, ctx: dict, **kwargs) -> dict:
-        """캐치올: doc, txt, json, md, jpg, jpeg, png 등."""
-        # TODO(#315): PII 마스킹 미적용(보류) — langchain 경로(doc/txt/md/이미지 등)는 별도 논의 후 적용.
+        """캐치올: doc, txt, json, md, jpg, jpeg, png 등.
+
+        내용이 텍스트면 docling 으로 보낸다. `.txt`, custom_fields 미매칭 `.json`,
+        `formats.md.processing_mode=text`, 그리고 확장자를 모르지만 본문이 텍스트인
+        파일이 모두 여기로 흘러든다. 나머지(doc/이미지 등)는 기존 langchain 경로다.
+        """
+        if _file_looks_like_text(file_path):
+            try:
+                text = read_text_with_fallback(file_path)
+            except UnicodeDecodeError as exc:
+                # 후보 인코딩(utf-8-sig/utf-8/cp949)이 전부 실패한 원천. 레거시 TextLoader 는
+                # chardet 감지와 errors="replace" 까지 있어 더 넓으므로 그쪽으로 넘긴다.
+                _log.warning(
+                    f"[parser] 텍스트 디코딩 실패({exc.encoding}) — 레거시 경로로 폴백: "
+                    f"{os.path.basename(file_path)}"
+                )
+            else:
+                return await self._parse_text_docling(file_path, text, ctx, **kwargs)
+        # TODO(#315): PII 마스킹 미적용(보류) — langchain 경로(doc/이미지 등)는 별도 논의 후 적용.
         return self._langchain_to_parse_format(self._parse_other(file_path, **kwargs))
 
     async def run(self, request: Request, file_path: str, **kwargs) -> dict:

@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import html
 import logging
 import math
 import os
@@ -27,6 +26,7 @@ import requests
 from langchain_community.document_loaders import DataFrameLoader, PyMuPDFLoader
 from langchain_core.documents import Document
 
+from genon.preprocessor.converters.plain_text import text_to_html
 from genon.preprocessor.facade.common.file_probe import get_pdf_path
 
 try:
@@ -57,6 +57,11 @@ def install_packages(packages):
 
 
 class TextLoaderBase:
+    # 텍스트를 A4 로 렌더한 PDF 를 거쳐 읽을지. True 면 페이지 단위 Document 가 나오고
+    # (페이지 메타가 필요한 attachment 용), False 면 읽은 텍스트를 Document 하나로 돌린다.
+    # 렌더 경로는 파생 PDF 를 입력 파일 옆에 남기고, A4 폭에 맞춘 줄바꿈이 원문에 끼어든다.
+    RENDER_PDF = True
+
     def __init__(self, file_path: str):
         self.file_path = file_path
         self.output_dir = os.path.join('/tmp', str(uuid.uuid4()))
@@ -80,17 +85,14 @@ class TextLoaderBase:
             if content is None:
                 content = raw.decode('utf-8', errors='replace')
 
+            if not self.RENDER_PDF:
+                # 렌더를 거치지 않으면 파생 PDF 도, A4 폭에 맞춘 줄바꿈도 생기지 않는다.
+                # 페이지 개념이 없으므로 page 는 0 고정 — 아래 폴백과 같은 스키마다.
+                return [Document(page_content=content,
+                                 metadata={'source': self.file_path, 'page': 0})]
+
             # 4) PDF 변환 유지
-            # <pre> 기본값(white-space: pre)은 자동 줄바꿈을 하지 않아, A4 폭을 넘는 긴 줄이
-            # weasyprint 렌더 단계에서 잘려(discard) PDF·청킹에서 누락됨(이슈 #333).
-            #  - white-space: pre-wrap  → 원문 줄바꿈/공백 유지 + 폭 초과 시 자동 줄바꿈
-            #  - overflow-wrap: anywhere → 공백 없는 초장문(URL 등)도 강제 개행
-            #  - html.escape           → <, & 등이 태그로 해석돼 뒤 텍스트가 유실되는 것 방지
-            html_doc = (
-                "<html><meta charset='utf-8'><body>"
-                "<pre style='white-space: pre-wrap; overflow-wrap: anywhere;'>"
-                f"{html.escape(content)}</pre></body></html>"
-            )
+            html_doc = text_to_html(content)
             html_path = os.path.join(self.output_dir, 'temp.html')
             with open(html_path, 'w', encoding='utf-8') as f:
                 f.write(html_doc)

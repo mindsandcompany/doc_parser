@@ -25,7 +25,7 @@ RESOURCE_DIR = Path(__file__).resolve().parents[2] / "resource"
 
 
 def _load_shipped(name: str) -> dict:
-    """출고 설정을 내부(v1) 형태로 읽는다(출고는 v2 표기다).
+    """출고 설정을 내부 형태로 읽는다(출고는 v2 표기다).
 
     번역 없이 raw 로 읽으면 v2 파일에서 `text_fields`/`field_labels` 가 빈 값이 되어
     검사가 **조용히 무력해진다** — 통과하지만 아무것도 보지 않는 상태가 된다.
@@ -236,7 +236,7 @@ def test_shipped_configs_name_every_body_field(name):
 def test_faq_xlsx_and_faq_json_agree_on_labels():
     """같은 doc_type 이 원천 포맷에 따라 다른 본문 모양을 내지 않는다(이 작업의 출발점)."""
     # 출고 설정은 v2 표기다. 이 검사는 "무엇을 만드는가"를 보는 것이라 표기와 무관해야
-    # 하므로, 매퍼가 하는 것과 같은 번역을 거쳐 내부(v1) 형태로 맞춘 뒤 비교한다.
+    # 하므로, 매퍼가 하는 것과 같은 번역을 거쳐 내부 형태로 맞춘 뒤 비교한다.
     tabular = _load_shipped("custom_field_faq.yaml")
     json_cfg = _load_shipped("custom_field_faq_json.yaml")
     assert tabular["field_labels"] == json_cfg["field_labels"]

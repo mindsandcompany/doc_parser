@@ -80,8 +80,8 @@ fields:
    않으므로 거기 두면 v1 의 `metadata_fields` 가 조용히 무효가 되고, 그걸 막으려면 소비
    지점에 사본이 또 필요해 두 벌이 된다. 02 의 `include: false` 이관과 같은 판단이다.
 
-   이 배치의 부수 효과로 v1↔v2 왕복이 대칭으로 유지된다 — `metadata_fields` 가 블록 사이를
-   옮겨 다니지 않으므로 `to_v2` 에 특례가 필요 없다.
+   이 배치의 부수 효과로 `metadata_fields` 가 블록 사이를 옮겨 다니지 않는다 —
+   한 필드의 규칙이 한 자리에 남는다.
 3. 값 병합(605~629행) 뒤에 `apply_value_map -> apply_transforms -> apply_derive` 를 붙인다.
    `const` 는 지금 자리(병합의 마지막)에 **그대로 둔다** — 초안은 "const 가 파이프라인 뒤"
    라고 썼는데 틀렸다. rows/records/sections 실측 순서는
@@ -162,7 +162,6 @@ cd genon/preprocessor
 ```
 
 ```bash
-genon/preprocessor/examples/config_precheck/verify_v2_equivalence.sh
 genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
 genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only product_slf product_ssf cs_hpp card
 ```

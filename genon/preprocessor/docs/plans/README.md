@@ -13,8 +13,11 @@
 
 v2(`facade/enrichment/config_v2.py`)는 v1 내부 dict 로 정규화하는 **번역 계층**이고,
 매퍼 4종(tabular / json_records / json_semantic / custom_fields_enricher)은 그대로다.
-그래서 "표기만 다르다"가 구조로 보장되고, `verify_v2_equivalence.sh` 의 v1↔v2 왕복이
-번역 결함을 잡는다.
+그래서 "표기만 다르다"가 구조로 보장된다. 번역 결함은 `config_v2.COVERED_V1_KEYS` 드리프트
+가드(`test_config_v2_unit.py`)와 `precheck_custom_fields.sh` 가 잡는다.
+
+옛 v1 표기와 그 이관 도구(`to_v2` / `migrate_to_v2.sh` / `verify_v2_equivalence.sh`)는
+2026-09-10 에 걷어냈다 — 표기는 `schema: v2` 한 가지뿐이다.
 
 검토에서 드러난 문제는 하나로 요약된다 — **같은 개념이 kind 마다 다르게 생겼다.**
 
@@ -146,12 +149,13 @@ B) 07 (분석·0단계) ─→ 08 ─┐
   적었는데 틀렸다 — `config_v2.load` 는 `is_v2()` 로만 갈려서 **v1 표기 설정은 `normalize()` 를
   아예 거치지 않는다.** 거기 두면 v1 의 옛 표기가 조용히 무효가 되고, 그걸 막으려면 소비
   지점에 사본이 또 필요해 두 벌이 된다.
-  - v1 표기에도 있는 옛 표기(`sections.include`, `front_matter.metadata_fields`)는
-    **소비 지점**(매퍼·spec 생성자)에서 흡수한다. 02·04 가 그렇게 했다.
-  - v2 표기에만 있던 것이면 `normalize()` 가 맞다.
+  - 하위 표기(`sections.include`, `front_matter.metadata_fields`)는 `normalize()` 가
+    안쪽을 보지 않고 통과시키는 자리에 있으므로 **소비 지점**(매퍼·spec 생성자)에서
+    흡수한다. 02·04 가 그렇게 했다.
+  - 최상위 표기면 `normalize()` 가 맞다.
   - 어휘 자체를 없애는 경우(05 의 `from`/`as`)는 흡수하지 않고 **제거**한다 — 흡수하면
-    매퍼가 두 벌을 계속 들고 있어야 해 정리의 목적이 사라진다. 대신 `to_v2` 는 계속
-    옮길 수 있어야 마이그레이션 경로가 막히지 않는다.
+    매퍼가 두 벌을 계속 들고 있어야 해 정리의 목적이 사라진다. 없어진 최상위 키는
+    `precheck_custom_fields.py` 의 `REMOVED_KEYS` 에 갈아탈 표기와 함께 적는다.
   - 템플릿(`resource/templates/custom_field_TEMPLATE_*.yaml`)에서는 어느 경우든 옛 표기를 지운다.
 - **`config_schema.EXTRACTOR_KEYS` 를 함께 고친다.** 매퍼가 새로 읽는 키를 여기 넣지 않으면
   그 키를 쓴 설정이 기동에 실패한다. 반대로 안 읽는 키를 넣으면 조용히 무시된다.
@@ -202,7 +206,6 @@ cd genon/preprocessor
 스텁과 더미 URL 을 쓰고, 실호출 검증은 smoke + skipif 로 둔다.
 
 ```bash
-genon/preprocessor/examples/config_precheck/verify_v2_equivalence.sh   # v1↔v2 왕복 (01~04)
 genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh  # 지원 키·재색인 영향
 genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only <doc_type…>
 ```

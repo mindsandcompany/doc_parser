@@ -71,8 +71,7 @@ source:
    구현이 한 벌로 끝난다. `normalize()` 에 두면 v1 용 사본이 매퍼에도 필요해 두 벌이 된다.
 
    따라서 **`config_v2.py` 는 고칠 것이 없다.** `_normalize_source` 는 `source.sections` 를
-   안쪽을 보지 않고 그대로 복사하므로 문자열 값이 이미 통과하고, `to_v2` 도 대칭이라
-   v1↔v2 왕복이 유지된다(확인함).
+   안쪽을 보지 않고 그대로 복사하므로 문자열 값이 이미 통과한다(확인함).
 2. `sections` 를 **선택**으로 바꾼다. 지금은 비어 있으면 기동이 실패한다
    (`json_semantic.py:610` "json_semantic custom_fields 에는 sections 가 필요합니다").
    제외만 필요한 설정이 정상적으로 존재할 수 있다.
@@ -121,7 +120,7 @@ cd genon/preprocessor
 ```
 
 ```bash
-genon/preprocessor/examples/config_precheck/verify_v2_equivalence.sh
+genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
 genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only product_hpp
 ```
 

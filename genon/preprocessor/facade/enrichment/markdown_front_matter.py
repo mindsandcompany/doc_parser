@@ -51,7 +51,7 @@ _log = logging.getLogger(__name__)
 _POLICIES = {"ignore", "warn", "error"}
 _DEFAULT_MAX_BYTES = 64 * 1024
 
-# front matter 별칭이 담기는 내부(v1) 키. v2 표기는 `fields.<목표>.alias` 다
+# front matter 별칭이 담기는 내부 키. v2 표기는 `fields.<목표>.alias` 다
 # (config_v2._ALIAS_BLOCK["document"]).
 _FRONT_MATTER_MAP_KEY = "front_matter_map"
 
@@ -453,7 +453,7 @@ def _merge_config(base: dict, override: dict) -> dict:
 
 
 def resolve_child_cfg(config: dict) -> dict:
-    """등록 블록이 가리키는 doc_type yaml 을 **내부(v1) 형태로** 읽는다.
+    """등록 블록이 가리키는 doc_type yaml 을 **내부 형태로** 읽는다.
 
     v2 는 전처리 블록을 `source.pre.<block>` 에, front matter 별칭을 `fields.<목표>.alias`
     에 담는다. 번역을 거치지 않고 원본을 읽으면 v2 설정에서 markdown/html 전처리가 통째로

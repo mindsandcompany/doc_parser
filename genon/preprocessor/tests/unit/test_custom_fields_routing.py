@@ -513,7 +513,7 @@ _DB_DEFAULTED_COLUMNS = {"SEARCHABLE_YN", "STATUS"}
 
 
 def _load_shipped(path) -> dict:
-    """출고 설정을 **내부(v1) 형태**로 읽는다.
+    """출고 설정을 **내부 형태**로 읽는다.
 
     resource/ 는 v2 로 옮겨졌지만 아래 검사들은 "이 설정이 무엇을 만드는가"를 보는 것이라
     표기(v1/v2)와 무관해야 한다. 매퍼가 하는 것과 같은 번역을 거쳐 한 모양으로 맞춘다 —

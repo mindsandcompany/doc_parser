@@ -114,7 +114,7 @@ DETAIL_DESC: {alias: [cmp_desc, htmlText], transform: html_text}
 - `facade/enrichment/tabular_custom_fields.py` (`apply_transforms` 593, `compile/apply_text_from`
   335~365, `collect_target_field_names` 390, 호출부 1106~1111)
 - `facade/enrichment/json_records.py` (호출부 645~652, `__init__` 517~522)
-- `facade/enrichment/config_v2.py` (`FIELD_SPEC_KEYS`, `_AS_TO_BLOCK`, `to_v2`, `COVERED_V1_KEYS`)
+- `facade/enrichment/config_v2.py` (`FIELD_SPEC_KEYS`, `_AS_TO_BLOCK`, `COVERED_V1_KEYS`)
 - `facade/enrichment/config_schema.py` (`_RECORD_COMMON` 에서 두 블록 제거)
 - `resource/custom_field_{stock_insight,monimo_event,monimo_news,cs_sss}.yaml` + `resource_dev/` 사본
 - `resource/templates/custom_field_TEMPLATE_{json,tabular}.yaml`
@@ -141,9 +141,8 @@ DETAIL_DESC: {alias: [cmp_desc, htmlText], transform: html_text}
 `row_merge` 와의 상호작용이 이 작업에서 가장 틀리기 쉬운 곳이므로,
 `stock_insight` 는 dict 단정이 아니라 **실제 xlsx 를 돌려** 확인한다.
 
-**`verify_v2_equivalence.sh` 의 키 단위 왕복 대조로는 검증할 수 없다.** 내부 표현에서
-`text_from`/`html_text_fields` 블록이 사라지므로 "v2 는 표기만 다르다" 불변식이 깨진다.
-이 작업은 **출력 단위**로 대조한다.
+**키 단위 대조로는 검증할 수 없다.** 내부 표현에서 `text_from`/`html_text_fields` 블록이
+사라지므로 "표기만 다르다" 불변식이 깨진다. 이 작업은 **출력 단위**로 대조한다.
 
 ```bash
 # 변경 전 — 기준선 (같은 버전 2회로 노이즈 기준선도 함께 잡는다)

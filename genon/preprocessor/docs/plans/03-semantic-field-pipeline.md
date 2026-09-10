@@ -135,7 +135,6 @@ cd genon/preprocessor
 어긋나는 것이 이 작업에서 가장 나기 쉬운 결함이다.
 
 ```bash
-genon/preprocessor/examples/config_precheck/verify_v2_equivalence.sh
 genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
 genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only product_hpp
 ```

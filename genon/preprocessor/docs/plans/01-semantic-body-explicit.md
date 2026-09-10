@@ -113,7 +113,7 @@ cd genon/preprocessor
 ```
 
 ```bash
-genon/preprocessor/examples/config_precheck/verify_v2_equivalence.sh
+genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
 genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only product_hpp
 ```
 

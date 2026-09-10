@@ -1437,8 +1437,10 @@ placeholder 이므로, LLM 을 쓰는 항목은 그 값을 채우기 전까지 �
 > **정상적인 doc_type 추가에는 파이썬 코드 수정이 필요 없습니다.** config yaml 과 프롬프트 md 만
 > 추가하면 됩니다. 코드가 필요한 예외 상황은 이 절 마지막에 정리했습니다.
 
-> **표기는 v2 가 출고본입니다.** 출고 `custom_field_*.yaml` 17개가 전부 `schema: v2` 이므로
-> 새 설정은 v2 로 씁니다. v1 표기도 계속 동작하지만 **한 파일 안에서 섞으면 기동에 실패합니다.**
+> **설정 파일은 첫 줄에 `schema: v2` 를 적습니다.** 이 줄이 없으면 기동에 실패합니다.
+> 아래 표에 나오는 `column_map`·`key_map`·`text_fields` 같은 이름은 **내부 이름**이라
+> 설정에 그대로 적을 수 없습니다 — 설정에 적는 표기는 `parser_processor.md` 의 매트릭스를
+> 보세요(`fields.<목표>` 한 자리에 규칙을 모으는 형태입니다).
 > **extractor 는 4종**(`llm` · `tabular_mapping` · `json_mapping` · `json_semantic`)이고,
 > kind 별로 되는 키가 다릅니다 — 전체 지원 매트릭스와 `transform` 9종, 별칭 탐색 범위,
 > 설정으로 안 되는 8가지는 [파싱용 전처리기 매뉴얼](parser_processor.md) 의
@@ -1452,7 +1454,7 @@ placeholder 이므로, LLM 을 쓰는 항목은 그 값을 채우기 전까지 �
 | 대상 | 문서 전체 (pdf/html/docx …) | csv / xlsx / xlsm | json (레코드 배열) |
 | LLM 호출 | **함** (항목당 1회) | **안 함** | `llm_fields` 선언 시 **레코드마다 1회** |
 | 실행 시점 | 파싱 후 enrichment 단계 | 파싱 **이전**, 확장자 분기에서 조기 반환 | 파싱 **이전**, 확장자 분기에서 조기 반환 |
-| 설정 파일 키(전체) | `url`·`api_key`·`model`·`max_tokens`·`temperature`·`timeout`·`system_prompt`·`user_prompt`·`system_prompt_file`·`user_prompt_file`·`prompt`·`output_fields`·`constants`·`parser`·`pages`·`variables`·`template`·`body_fields`·`chunk_prefix_fields`·`first_chunk_fields` | `column_map`·`value_map`·`constants`·`defaults`·`nulls`·`required`·`transforms`·`llm_fields`·`text_fields`·`split`·`chunk_prefix_fields` | 왼쪽 tabular 키에서 `column_map` → `key_map`, 그리고 `records`·`html_text_fields`·`missing_policy` 추가 |
+| 설정 파일 키(전체) | `url`·`api_key`·`model`·`max_tokens`·`temperature`·`timeout`·`system_prompt`·`user_prompt`·`system_prompt_file`·`user_prompt_file`·`prompt`·`output_fields`·`constants`·`parser`·`pages`·`variables`·`template`·`body_fields`·`chunk_prefix_fields`·`first_chunk_fields` | `column_map`·`value_map`·`constants`·`defaults`·`nulls`·`required`·`transforms`·`llm_fields`·`text_fields`·`split`·`chunk_prefix_fields` | 왼쪽 tabular 키에서 `column_map` → `key_map`, 그리고 `records`·`missing_policy` 추가 |
 | 결과 | 문서 metadata → 모든 청크에 부착 | 행별 `custom_fields_row` element → 행마다 청크 1개 | 레코드별 `custom_fields_row` element → 레코드마다 청크 1개(길면 분할) |
 | 복사할 템플릿 | `resource/templates/custom_field_TEMPLATE_llm.yaml` | `..._TEMPLATE_tabular.yaml` | `..._TEMPLATE_json.yaml` |
 | 출고 실례 | `custom_field_card.yaml` | `custom_field_faq.yaml`·`custom_field_term.yaml` | `custom_field_monimo_event.yaml` |
@@ -1642,7 +1644,6 @@ enrichment:
 | `key_map` | `목표필드: [허용 소스 key 별칭 …]`. 경로 B 의 `column_map` 과 같은 규칙이고, 값은 레코드 안 임의 깊이에서 찾되 **얕은 쪽이 우선**합니다(`wcmsHtml.htmlText` → `htmlText` 한 단어로 매칭). **같은 레벨 안에서는 별칭 선언 순서**가 우선순위이므로, 원천 표기가 여러 가지면 선호하는 키를 앞에 두고 나머지를 뒤에 덧붙이면 됩니다 |
 | `required` · `defaults` · `nulls` · `constants` | 경로 B 와 동일 |
 | `transforms` | `목표필드: 변환기이름`. 등록된 변환기만 쓸 수 있고(없는 이름은 기동 시 실패), `date_int_flex` 는 `"26.07.01"`·`"2026-07-01"` 을 모두 `20260701` 정수로 바꿉니다 |
-| `html_text_fields` | `파생필드: 소스필드`. HTML 값을 평문으로 바꿔 새 필드로 만듭니다(LLM 입력용). 정리 규칙은 `.html` 파싱과 같아 `aria-hidden`/접힌 약관 텍스트가 보존됩니다 |
 | `llm_fields` | JSON 에 없는 필드를 LLM 으로 생성. 아래 참고 |
 | `text_fields` | 청크 `text` 본문을 구성할 필드와 순서 (경로 B 와 동일) |
 | `split` | `true` 면 레코드 본문이 `chunk_size` 를 넘을 때 여러 청크로 나눕니다(metadata 는 조각마다 동일). 생략하면 레코드 1건 = 청크 1개 |
@@ -1784,11 +1785,12 @@ for el in m.to_parse_format(rows, 'monimo_event')['elements'][:3]:
 > # 실행 위치: genon/preprocessor
 > python -c "
 > import yaml
-> c = yaml.safe_load(open('resource/custom_field_<유형>.yaml', encoding='utf-8'))
+> from genon.preprocessor.facade.enrichment import config_v2
+> raw = yaml.safe_load(open('resource/custom_field_<유형>.yaml', encoding='utf-8'))
+> c, _ = config_v2.load(raw, label='check')   # 설정 표기 → 내부 형태. 이 줄을 빼면 전부 빈 값이 된다
 > llm = {x for s in (c.get('llm_fields') or []) for x in (s.get('output_fields') or [])}
 > producible = (set(c.get('column_map') or {}) | set(c.get('key_map') or {})
->               | set(c.get('constants') or {}) | set(c.get('defaults') or {})
->               | set(c.get('nulls') or []) | set(c.get('html_text_fields') or {}) | llm)
+>               | set(c.get('constants') or {}) | set(c.get('defaults') or {}) | llm)
 > print('llm_fields 로 채워질 필드:', sorted(llm) or '(없음/주석 처리)')
 > print('만들 수 없는 필드:',
 >       [x for x in (c.get('text_fields') or []) if x not in producible] or '없음')

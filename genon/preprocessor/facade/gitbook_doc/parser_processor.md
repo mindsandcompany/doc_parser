@@ -1166,12 +1166,14 @@ Docling 파이프라인(PDF/HTML/HWP/HWPX/DOCX) 출력 기준:
 새 원천을 받았을 때 순서는 하나입니다. **① 그대로 넣어 본다 → ② 설정(`custom_field_*.yaml`)으로
 시도한다 → ③ 그래도 안 되면 코드를 고친다.** 순서를 뒤집으면 설정으로 되는 것도 코드로 풀게 됩니다.
 
-> 아래 표기는 전부 **v2**(`schema: v2`)입니다. 출고 `custom_field_*.yaml` 17개가 전부 v2 이므로
-> 새 설정은 v2 로 씁니다. v1 표기도 계속 동작하지만 **한 파일 안에서 섞으면 기동에 실패합니다.**
-> 괄호 안이 v1 대응 키입니다.
+> 설정 파일은 첫 줄에 **`schema: v2`** 를 적습니다. 이 줄이 없으면 기동에 실패합니다 —
+> 폐기된 옛 표기를 다른 해석 모드로 조용히 받지 않기 위해서입니다.
 >
-> 헷갈리는 동음이의 하나: v2 의 `template`(필드 결합)은 v1 의 `derive` 입니다.
-> v1 에도 `template` 이 따로 있는데 그것은 llm 전용 프롬프트 변수 치환 모드로 뜻이 다릅니다.
+> 표의 괄호 안은 **내부 이름**입니다. 설정에 적는 이름이 아니라 오류 메시지에 나오는
+> 이름이므로, 기동 실패 로그를 읽을 때 이 표에서 되짚으면 됩니다.
+>
+> 헷갈리는 동음이의 하나: `template`(필드 결합)의 내부 이름은 `derive` 입니다.
+> 내부에도 `template` 이 따로 있는데 그것은 llm 전용 프롬프트 변수 치환 모드로 뜻이 다릅니다.
 
 ### extractor 4종
 
@@ -1188,7 +1190,7 @@ Docling 파이프라인(PDF/HTML/HWP/HWPX/DOCX) 출력 기준:
 
 **원천에서 값 가져오기 (`fields:`)**
 
-| 기능 | v2 (v1) | rows | records | sections | document |
+| 기능 | 설정 키 (내부 이름) | rows | records | sections | document |
 |---|---|:-:|:-:|:-:|:-:|
 | 별칭 | `alias` | ✔ | ✔ | ✔ | ✔ |
 | 반복 key 전부 수집 | `collect` (`collect_key_map`) | ✗ | ✔ | ✗ | ✗ |
@@ -1223,7 +1225,7 @@ fields:
 
 **청크 본문에 싣기 (`body:`)**
 
-| 기능 | v2 (v1) | rows | records | sections | document |
+| 기능 | 설정 키 (내부 이름) | rows | records | sections | document |
 |---|---|:-:|:-:|:-:|:-:|
 | 본문 구성 필드 | `body.fields` (`text_fields`) | ✔ 선택 | ✔ **필수** | ⚠ 뜻이 다름¹ | ✗ |
 | 항목명 | `body.labels` (`field_labels`) | ✔ | ✔ | ✔ | ✔ |
@@ -1237,7 +1239,7 @@ fields:
 
 **원천 구조 · 필터 · LLM**
 
-| 기능 | v2 (v1) | rows | records | sections | document |
+| 기능 | 설정 키 (내부 이름) | rows | records | sections | document |
 |---|---|:-:|:-:|:-:|:-:|
 | 레코드 배열 위치 | `source.records_at` (`records`) | ✗ | ✔ | ✗ | ✗ |
 | 못 찾을 때 정책 | `source.on_missing` (`missing_policy`) | ✗ | ✔ | ✔ | ✗ |

@@ -1114,7 +1114,7 @@ class TabularCustomFieldsMapper:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if not isinstance(loaded, dict):
             raise ValueError(f"tabular custom_fields config는 object여야 합니다: {path}")
-        # `schema: v2` 면 내부(v1) 형태로 번역해 넘긴다 — 아래 코드는 v1/v2 를 구분하지 않는다.
+        # 설정 표기를 내부 형태로 번역해 넘긴다 — 아래 코드는 표기를 신경 쓰지 않는다.
         normalized, _ = cv2.load(loaded, label=f"tabular custom_fields({config_file})")
         return normalized
 

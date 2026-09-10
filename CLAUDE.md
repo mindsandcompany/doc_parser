@@ -183,11 +183,10 @@ genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only faq menu
 
 ```bash
 genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh   # 인자로 현장 설정 경로 지정 가능
-genon/preprocessor/examples/config_precheck/verify_v2_equivalence.sh    # v1↔v2 왕복·매퍼 산출 대조
 ```
 
-v2 스키마(`schema: v2`)는 **이미 출고 표기다** — `resource/`·`resource_dev/` 의 `custom_field_*.yaml` 17개씩과 `templates/` 4종이 전부 v2 이고, 전환 커밋은 `2a28195d`(2026-09-04) 다. 새 설정은 v2 로 쓴다.
-v1 표기도 계속 동작한다(로더가 `config_v2.is_v2()` 하나로만 갈리고 v1 은 normalize 를 거치지 않는다). 다만 **한 파일 안에서 v1/v2 키를 섞으면 기동에 실패한다.** 현장 설정을 v2 로 옮길 때는 `verify_v2_equivalence.sh` 로 왕복 산출을 먼저 대조한다.
+custom_fields yaml 은 **`schema: v2` 표기 한 가지뿐이다.** 이 줄이 없으면 `config_v2.load` 가 기동을 막는다(빈 설정은 예외 — `config_file` 을 안 쓰는 등록 블록이다). 폐기된 옛 표기는 2026-09-10 에 걷어냈다.
+매퍼가 읽는 **내부 형태는 여전히 옛 키 이름**(`column_map`·`text_fields` …)이다. 설정에 적는 이름이 아니라 오류 메시지에 나오는 이름이므로, 기동 실패 로그는 `gitbook_doc/parser_processor.md` 의 매트릭스에서 되짚는다.
 설정 오기입은 기본적으로 **기동 실패**다. 현장 설정을 미리 검사하지 못한 첫 릴리스에 한해 `GENOS_CUSTOM_FIELDS_VALIDATION=warn` 으로 낮추면 경고만 남기고 기동한다(그 설정은 무시된다).
 
 같은 디렉터리의 `parse_chunk_test.sh` 는 손으로 돌려보는 놀이터다. 대부분 주석 상태이고 개인 경로에 의존하므로, 자동 검증에 넣을 것은 `parse_chunk_verify.py` 쪽에 단정문으로 옮긴다.

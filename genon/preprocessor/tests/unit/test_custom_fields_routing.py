@@ -1462,8 +1462,9 @@ def test_constants_beat_defaults_even_when_empty(tmp_path):
 
     tab = tmp_path / "custom_field_t.yaml"
     tab.write_text(
-        'column_map:\n  Q: [질문]\n  X: [엑스]\n'
-        'constants:\n  X: ""\ndefaults:\n  X: "채움"\ntext_fields: [Q]\n',
+        'schema: v2\nsource: {kind: rows}\n'
+        'fields:\n  Q: {alias: [질문]}\n  X: {alias: [엑스], const: "", default: "채움"}\n'
+        'body: {fields: [Q]}\n',
         encoding="utf-8",
     )
     row = TabularCustomFieldsMapper(
@@ -1474,8 +1475,9 @@ def test_constants_beat_defaults_even_when_empty(tmp_path):
 
     jsn = tmp_path / "custom_field_j.yaml"
     jsn.write_text(
-        'key_map:\n  T: [title]\n  X: [x]\n'
-        'constants:\n  X: ""\ndefaults:\n  X: "채움"\ntext_fields: [T]\n',
+        'schema: v2\nsource: {kind: records}\n'
+        'fields:\n  T: {alias: [title]}\n  X: {alias: [x], const: "", default: "채움"}\n'
+        'body: {fields: [T]}\n',
         encoding="utf-8",
     )
     record = JsonRecordsMapper(
@@ -1540,11 +1542,12 @@ def test_duplicate_alias_keeps_source_and_derives_in_one_pass(tmp_path):
     )
 
     (tmp_path / "custom_field_t.yaml").write_text(textwrap.dedent("""
-        column_map:
-          RAW:    [내용]
-          PLAIN:  [내용]
-        transforms: {PLAIN: html_text}
-        text_fields: [PLAIN]
+        schema: v2
+        source: {kind: rows}
+        fields:
+          RAW:    {alias: [내용]}
+          PLAIN:  {alias: [내용], transform: html_text}
+        body: {fields: [PLAIN]}
     """), encoding="utf-8")
     mapper = TabularCustomFieldsMapper(
         config_file="custom_field_t.yaml", resource_path=str(tmp_path),
@@ -1561,15 +1564,22 @@ def test_duplicate_alias_keeps_source_and_derives_in_one_pass(tmp_path):
 
 @pytest.mark.unit
 def test_old_derived_blocks_are_rejected_at_startup(tmp_path):
-    """옛 `text_from`/`html_text_fields` 는 어느 매퍼도 읽지 않는다 — 조용히 무시하지 않는다."""
+    """옛 `text_from`/`html_text_fields` 는 어느 매퍼도 읽지 않는다 — 조용히 무시하지 않는다.
+
+    v2 에는 대응 표기가 없으므로 최상위 키 검증이 잡는다(같은 alias 를 두 필드에 붙이고
+    `transform` 을 거는 것이 그 자리를 대신한다 — 바로 위 테스트).
+    """
     from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
         TabularCustomFieldsMapper,
     )
 
     (tmp_path / "custom_field_t.yaml").write_text(textwrap.dedent("""
-        column_map: {RAW: [내용]}
+        schema: v2
+        source: {kind: rows}
+        fields:
+          RAW: {alias: [내용]}
+        body: {fields: [RAW]}
         text_from: {PLAIN: RAW}
-        text_fields: [PLAIN]
     """), encoding="utf-8")
     with pytest.raises(ValueError, match="text_from"):
         TabularCustomFieldsMapper(

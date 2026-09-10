@@ -273,14 +273,6 @@ enrichment:
       doc_type: card
       extractor: llm
       config_file: custom_field_card.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
-      # .json 입력 처리: 본문 텍스트(markdown/html)가 담긴 key 이름을 나열한다.
-      # 키는 JSON 임의 깊이에서 재귀 매칭되므로 pages[*].html 같은 배열 구조도 그대로 처리된다.
-      # 항목이 여러 개면 항목별 <h2> 섹션을 가진 단일 문서로 병합해 docling 을 1회 호출한다.
-      # 이 블록이 없으면 .json 은 기존 텍스트 경로로 처리된다(동작 변경 없음).
-      json:
-        text_fields: [html, summary_md]
-        format: auto             # auto(기본, 값 내용으로 판별) | html | markdown
-        missing_policy: skip     # skip(기본, 경고만) | error
 
   # ── 모니모 15종 문서유형 custom_fields (2026-08-16 추가) ────────────────────
   # 출력 필드명은 모니모 적재 스키마(TB_*)의 DB 컬럼명(대문자)을 그대로 쓴다.
@@ -340,12 +332,6 @@ enrichment:
       doc_type: product_hpp
       extractor: llm
       config_file: custom_field_product_hpp.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
-      # .json 입력 처리: 본문 텍스트(markdown/html)가 담긴 key 이름을 나열한다.
-      # 원천이 json 으로 확정되면 카드WCMS 실제 스키마의 본문 키로 교체할 것.
-      json:
-        text_fields: [html, summary_md]
-        format: auto             # auto(기본, 값 내용으로 판별) | html | markdown
-        missing_policy: skip     # skip(기본, 경고만) | error
   # 삼성카드 WCMS JSON — 상품별 성격별 섹션 매핑(로컬/E2E 검증용).
   - custom_fields:
       enable: true

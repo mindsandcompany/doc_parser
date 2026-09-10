@@ -39,16 +39,37 @@ def guard_config(label: str, exc_factory: Callable[[str], Exception], fn, *args,
 
 
 def build_json_text_specs(custom_fields_cfgs: Iterable[dict] | None) -> list:
-    """custom_fields 설정 중 `json:` 블록을 가진 것만 JsonTextSpec 으로 만든다.
+    """`json:` 블록을 가진 custom_fields 설정만 JsonTextSpec 으로 만든다.
 
     .json 입력에서 본문 텍스트를 꺼낼 key 목록이다. 잘못된 설정은 ValueError 로 나가고
     호출부의 guard_config 가 어느 설정인지 붙여 준다.
+
+    해석은 markdown·html 과 **같은 공용 해석기**에 맡긴다 — 이 블록은 그 둘과 같은 일을
+    한다(원천을 docling 이 읽을 문서 한 벌로 만든다). 전용 판정을 두면 설정 파일의
+    `source.pre.json` 이 안 보이고, 문서형 extractor 게이트도 이 블록만 빠진다.
+    공용 해석기가 주는 것: `config_file` 의 `source.pre.json` 을 읽는 것과, 문서 단위
+    extractor 가 아니면 제외하는 것. markdown·html 이 함께 갖는 "등록 블록으로 덮어쓰기"와
+    `false` 명시적 비활성은 json 에는 **없다** — 등록 블록의 `json:` 은 옛 자리라 아래에서
+    막기 때문이다(`json: false` 도 그 자리이므로 함께 막힌다).
     """
     from genon.preprocessor.converters.json_text import JsonTextSpec
+    from genon.preprocessor.facade.enrichment.markdown_front_matter import (
+        resolve_format_cfg,
+    )
 
     specs = []
     for config in custom_fields_cfgs or []:
-        json_cfg = as_dict(config.get("json"))
+        if config.get("json") is not None:
+            # 등록 블록은 기동 시 키 검증을 받지 않는다(설정 파일만 받는다). 그대로 두면
+            # 오류가 아니라 조용히 무시되고 본문이 캐치올로 빠져 표·heading 구조가
+            # 소실된다 — 제일 나쁜 실패 모드라 여기서 명시적으로 막는다.
+            raise ValueError(
+                f"custom_fields[doc_type={config.get('doc_type')}] 의 등록 블록 `json:` 은 "
+                f"설정 파일로 옮겼습니다 — `{config.get('config_file')}` 의 "
+                f"`source.pre.json` 에 적으세요(안쪽 키 이름도 바뀌었습니다: "
+                f"text_fields → body_from, missing_policy → on_missing)."
+            )
+        json_cfg = as_dict(resolve_format_cfg(config, "json"))
         if not json_cfg:
             continue
         specs.append(JsonTextSpec(json_cfg, normalize_doc_types(config.get("doc_type"))))

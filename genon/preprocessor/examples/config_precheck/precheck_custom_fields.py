@@ -46,6 +46,14 @@ REMOVED_KEYS = {
     "text_from": "같은 alias 를 목표필드에 한 번 더 붙이고 `transform: text` 를 건다",
     "html_text_fields": "같은 alias 를 목표필드에 한 번 더 붙이고 `transform: html_text` 를 건다",
 }
+# 등록 블록에서 없앤 키 → 대신 쓸 것. 등록 블록은 기동 시 키 검증을 받지 않으므로
+# (설정 파일만 받는다) 여기서 잡지 못하면 조용히 무시된다.
+REMOVED_BLOCK_KEYS = {
+    "json": "config_file 의 `source.pre.json` 으로 옮겼습니다"
+            "(안쪽 키도 text_fields → body_from, missing_policy → on_missing)."
+            " 파서 프로세서에서는 기동이 실패하고, 그 밖의 프로세서에서는 소비자가 없어"
+            " 조용히 무시됩니다 — 어느 쪽이든 옮겨야 합니다",
+}
 REMOVED_EXTRACTORS = {
     "document_llm": "llm",
     "tabular": "tabular_mapping",
@@ -122,6 +130,12 @@ def check_block(source: str, block: dict, root: Path, seen_files: set[str]) -> l
             f"→ '{REMOVED_EXTRACTORS[extractor]}' 로 바꾸세요."
         )
         extractor = REMOVED_EXTRACTORS[extractor]
+
+    for key, hint in REMOVED_BLOCK_KEYS.items():
+        if block.get(key) is not None:
+            problems.append(
+                f"[기동실패] {where}: 등록 블록의 `{key}` 는 없어졌습니다 → {hint}."
+            )
 
     # 등록 블록 자체도 같은 규칙으로 본다(여기 오타도 기동을 막는다).
     item_cfg = {k: v for k, v in block.items() if k != "enable"}

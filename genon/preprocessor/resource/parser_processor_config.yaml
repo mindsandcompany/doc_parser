@@ -266,14 +266,6 @@ enrichment:
       doc_type: card
       extractor: llm
       config_file: custom_field_card.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
-      # .json 입력 처리: 본문 텍스트(markdown/html)가 담긴 key 이름을 나열한다.
-      # 키는 JSON 임의 깊이에서 재귀 매칭되므로 pages[*].html 같은 배열 구조도 그대로 처리된다.
-      # 항목이 여러 개면 항목별 <h2> 섹션을 가진 단일 문서로 병합해 docling 을 1회 호출한다.
-      # 이 블록이 없으면 .json 은 기존 텍스트 경로로 처리된다(동작 변경 없음).
-      json:
-        text_fields: [html, summary_md]
-        format: auto             # auto(기본, 값 내용으로 판별) | html | markdown
-        missing_policy: skip     # skip(기본, 경고만) | error
   # .json 레코드 모드: eventList[*] 처럼 레코드 배열이 오는 입력을 레코드마다 청크 1개로
   # 만들고, 목표필드를 그 청크의 metadata 로 싣는다(xlsx 의 tabular_mapping 과 같은 성격).
   # 위 card 의 json: 블록(문서 모드)보다 우선하며, 매칭 설정이 없으면 기존 .json 동작 그대로.
@@ -336,12 +328,6 @@ enrichment:
       doc_type: product_hpp
       extractor: llm
       config_file: custom_field_product_hpp.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
-      # .json 입력 처리: 본문 텍스트(markdown/html)가 담긴 key 이름을 나열한다.
-      # 원천이 json 으로 확정되면 카드WCMS 실제 스키마의 본문 키로 교체할 것.
-      json:
-        text_fields: [html, summary_md]
-        format: auto             # auto(기본, 값 내용으로 판별) | html | markdown
-        missing_policy: skip     # skip(기본, 경고만) | error
   # 삼성카드 WCMS JSON — 상품 1건(JSON 파일 1개)을 성격별 섹션(혜택 상세/상품 문서 …)으로
   # 나눠 섹션마다 검색 청크 1건을 만든다. JSON 입력에서는 이 경로가 위 문서형 LLM 경로보다
   # 먼저 선택된다.
@@ -384,12 +370,6 @@ enrichment:
       doc_type: research_report
       extractor: llm
       config_file: custom_field_research_report.yaml   # resource_path 자동 = 이 yaml 파일 디렉토리
-      # .json 입력 처리: 본문 텍스트(markdown/html)가 담긴 key 이름을 나열한다.
-      # 원천이 json 으로 확정되면 카드WCMS 실제 스키마의 본문 키로 교체할 것.
-      json:
-        text_fields: [html, summary_md]
-        format: auto             # auto(기본, 값 내용으로 판별) | html | markdown
-        missing_policy: skip     # skip(기본, 경고만) | error
 
 output:
   format: "docling" # "json" (default), "html", "markdown", "docling"

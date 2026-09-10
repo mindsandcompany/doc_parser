@@ -573,12 +573,29 @@ metadata:
 - **외부 config:** `config_file: "이름.yaml"`로 분리할 수 있습니다. 상대 경로는 config 파일과 동일한 디렉터리(resource_path) 기준으로 해석됩니다. 외부 파일에도 `system_prompt_file`/`user_prompt_file`(또는 `system_prompt`/`user_prompt`, `prompt.system`/`prompt.user`)/`url`/`model`/`output_fields`/`parser`/`pages` 등을 둘 수 있으며, 항목에 직접 지정한 값이 외부 config보다 우선합니다. `*_file` 경로는 외부 config 파일이 위치한 디렉터리 기준으로 해석됩니다.
 - `parser.type`은 `json`(기본값) 또는 `python`(외부 파일 위임)을 지원합니다.
 
-**입력 포맷별 전처리 블록** — LLM 호출 설정과 별개로, 항목(또는 `config_file`) 안에 입력 포맷 전처리를 함께 선언할 수 있습니다. 이 두 블록은 enricher 생성자로 넘어가지 않고 파서가 소비합니다.
+**입력 포맷별 전처리 블록** — LLM 호출 설정과 별개로, `config_file` 의 `source.pre` 아래에 입력 포맷 전처리를 선언합니다. 이 블록들은 enricher 생성자로 넘어가지 않고 파서가 소비합니다.
 
 | 블록 | 대상 | 설명 |
 |------|------|------|
-| `json:` | `.json` 입력 | 본문 텍스트(markdown/html)가 담긴 key 이름 목록. [기타 포맷](#기타-포맷-doc-ppt-pptx-txt-json-md-jpg-jpeg-png) 참고 |
-| `markdown.front_matter:` | `.md` 입력 | YAML front matter 를 청크 metadata 로 승격 / 청크 텍스트에서 제외. [Markdown](#markdown-md) 참고 |
+| `source.pre.json` | `.json` 입력 | 본문 텍스트(markdown/html)가 담긴 원천 key 이름 목록(`body_from`). [기타 포맷](#기타-포맷-doc-ppt-pptx-txt-json-md-jpg-jpeg-png) 참고 |
+| `source.pre.markdown` | `.md` 입력 | front matter 승격·제외, ```text 펜스 복원, 마커 heading 승격. [Markdown](#markdown-md) 참고 |
+| `source.pre.html` | `.html` 입력 | 마커 heading 승격 |
+| `source.pre.delimited` | 구분자 텍스트 | 원천을 레코드 목록으로 바꾼다(`kind: records` 전용) |
+
+`markdown`·`html` 은 등록 블록에 같은 이름을 적어 문서유형별로 덮어쓸 수 있고, `false` 를 주면 명시적 비활성입니다. `marker_headings` 는 md 와 html 이 판정 규칙을 공유하므로 `source.pre` 바로 아래 한 번만 적으면 둘 다 걸립니다.
+
+> `json:` 을 **등록 블록에 적던 옛 표기는 받지 않습니다.** `config_file` 의 `source.pre.json` 으로 옮기고, 안쪽 키도 `text_fields` → `body_from`, `missing_policy` → `on_missing` 으로 바뀌었습니다. 등록 블록은 기동 시 키 검증을 받지 않아 그대로 두면 오류가 아니라 조용히 무시되므로(본문이 캐치올로 빠져 표·heading 구조가 소실됩니다) 파서 기동과 배포 전 점검 양쪽에서 막습니다.
+
+```yaml
+# config_file 안
+source:
+  kind: document
+  pre:
+    json:
+      body_from: [html, summary_md]   # [필수] 경로가 아니라 key 이름. 임의 깊이에서 찾는다
+      format: auto                    # auto(기본, 값 내용으로 판별) | html | markdown
+      on_missing: skip                # skip(기본, 경고만) | error
+```
 
 #### 프롬프트 파일 분리 & 변수 치환
 
@@ -879,7 +896,7 @@ formats:
 
 #### YAML front matter 처리 (`custom_fields.markdown.front_matter`)
 
-docling 의 Markdown 백엔드는 `---` 로 감싼 front matter 를 **일반 본문 텍스트**로 읽습니다. 그대로 두면 front matter 만으로 이루어진 청크가 하나 생겨(실측 283자) 검색 노이즈가 됩니다. `custom_fields` 항목의 `markdown.front_matter` 블록으로 **청크 metadata 로 승격할 키**와 **청크 텍스트에서 제외할 키**를 서로 독립적으로 선택합니다(`json:` 블록과 같은 위치·같은 방식).
+docling 의 Markdown 백엔드는 `---` 로 감싼 front matter 를 **일반 본문 텍스트**로 읽습니다. 그대로 두면 front matter 만으로 이루어진 청크가 하나 생겨(실측 283자) 검색 노이즈가 됩니다. `config_file` 의 `source.pre.markdown.front_matter` 블록으로 **청크 metadata 로 승격할 키**와 **청크 텍스트에서 제외할 키**를 서로 독립적으로 선택합니다(`source.pre.json` 과 같은 위치·같은 방식).
 
 기본값은 `config_file` 이 가리키는 doc_type yaml 에 두고, 상위 `custom_fields` 항목에 같은 블록을 쓰면 재귀 병합으로 덮어씁니다. 상위에서 `markdown: false` 또는 `front_matter: false` 로 명시적으로 끌 수 있습니다.
 

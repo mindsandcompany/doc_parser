@@ -68,13 +68,24 @@ SOURCE_KEYS = frozenset({
 })
 BODY_KEYS = frozenset({"fields", "labels", "split", "repeat", "once", "mirror_to"})
 # source.pre 아래 쓸 수 있는 원천 포맷 전처리 블록(파서가 소비한다).
-PRE_KEYS = ("markdown", "html", "delimited")
+PRE_KEYS = ("markdown", "html", "delimited", "json")
 # `pre` 바로 아래 쓸 수 있는 공통 스위치. **md 와 html 이 판정 규칙을 공유하는 것만** 여기
 # 둔다 — 같은 값을 두 블록에 두 번 적게 하지 않기 위해서다(개념 수를 늘리지 않는다).
 # 아래 블록에 같은 키를 명시하면 그쪽이 이긴다.
 PRE_SHARED_KEYS = ("marker_headings",)
-# 공통 스위치를 펼칠 대상. delimited 는 원천을 레코드로 바꾸는 별개 기구라 받지 않는다.
+# 공통 스위치를 펼칠 대상. delimited·json 은 원천의 모양을 바꾸는 기구라 받지 않는다.
 _PRE_SHARED_TARGETS = ("markdown", "html")
+
+# `source.pre.json` 안쪽 키 → 내부 이름. 이 블록만 안쪽 이름을 v2 어휘로 옮긴다.
+#   text_fields    는 이미 `body.fields` 의 내부 이름이라, 그대로 두면 같은 파일에서 같은
+#                  단어가 "청크 본문을 구성할 목표필드" 와 "본문이 담긴 원천 key" 두 뜻이 된다.
+#   missing_policy 의 사용자 이름은 다른 자리에서 이미 `on_missing` 이다(`source.on_missing`).
+# `format` 은 뜻이 하나뿐이라 그대로 쓴다.
+_PRE_JSON_TO_V1 = {
+    "body_from": "text_fields",
+    "on_missing": "missing_policy",
+}
+_PRE_JSON_PASSTHROUGH = ("format",)
 REQUIRE_KEYS = frozenset({"fields"})
 
 # ── 표기 ↔ 내부 형태 매핑은 **여기 한 벌만** 둔다 ──────────────────────────
@@ -244,6 +255,10 @@ def _normalize_source(source: dict, kind: str, out: dict, label: str) -> None:
         shared = {k: pre[k] for k in PRE_SHARED_KEYS if pre.get(k) is not None}
         for key in PRE_KEYS:
             block = pre.get(key)
+            if key == "json":
+                if block is not None:
+                    out[key] = _normalize_pre_json(block, label)
+                continue
             if key not in _PRE_SHARED_TARGETS or not shared:
                 if block is not None:
                     out[key] = block
@@ -253,6 +268,37 @@ def _normalize_source(source: dict, kind: str, out: dict, label: str) -> None:
                 continue
             # 세밀한 지정이 뭉뚱그린 지정을 덮는다 — 그 반대는 예측하기 어렵다.
             out[key] = {**shared, **(block or {})}
+
+
+def _normalize_pre_json(block: Any, label: str) -> Any:
+    """`source.pre.json` → 내부 형태(`JsonTextSpec` 이 읽는 이름).
+
+    `json: false` 처럼 dict 가 아닌 값은 명시적 비활성이므로 그대로 통과시킨다 —
+    판정은 소비 지점(`resolve_format_cfg`)이 markdown/html 과 같은 규칙으로 한다.
+    """
+    if not isinstance(block, dict):
+        return block
+    _check_unknown(
+        block,
+        frozenset(_PRE_JSON_TO_V1) | frozenset(_PRE_JSON_PASSTHROUGH),
+        label,
+        "source.pre.json",
+    )
+    if not block.get("body_from"):
+        # 소비 지점(`JsonTextSpec`)도 같은 검사를 하지만 그쪽 메시지는 내부 이름
+        # (`json.text_fields`)으로 나온다. 새 표기로 적은 설정은 새 이름으로 알린다.
+        raise ConfigV2Error(
+            f"{label}: source.pre.json.body_from 가 비어 있습니다"
+            f"(본문 텍스트가 담긴 원천 key 이름 목록)."
+        )
+    out: dict[str, Any] = {}
+    for v2_key, v1_key in _PRE_JSON_TO_V1.items():
+        if block.get(v2_key) is not None:
+            out[v1_key] = block[v2_key]
+    for key in _PRE_JSON_PASSTHROUGH:
+        if block.get(key) is not None:
+            out[key] = block[key]
+    return out
 
 
 def _normalize_fields(fields: Any, kind: str, out: dict, label: str) -> None:

@@ -308,6 +308,132 @@ def test_pre_typo_is_still_refused():
             """)
 
 
+# ── source.pre.json ────────────────────────────────────────────────────────
+
+def test_pre_json_translates_to_internal_names():
+    """`source.pre.json` 은 JsonTextSpec 이 읽는 내부 이름으로 번역된다.
+
+    안쪽 이름을 v2 어휘로 바꾼 이유 — `text_fields` 는 이미 `body.fields` 의 내부 이름이라
+    그대로 두면 같은 파일에서 같은 단어가 두 뜻이 되고, `missing_policy` 의 사용자 이름은
+    다른 자리에서 이미 `on_missing` 이다.
+    """
+    internal, extractor = cv2.normalize(yaml.safe_load(textwrap.dedent("""\
+        schema: v2
+        source:
+          kind: document
+          pre:
+            json:
+              body_from: [html, summary_md]
+              format: auto
+              on_missing: skip
+        llm: [{out: [A]}]
+        """)), label="t")
+    assert internal["json"] == {
+        "text_fields": ["html", "summary_md"],
+        "missing_policy": "skip",
+        "format": "auto",
+    }
+    cs.validate_known_keys(internal, label="t", extractor=extractor)
+
+
+def test_pre_json_requires_body_from():
+    """소비 지점도 같은 검사를 하지만 그쪽은 내부 이름으로 알린다."""
+    with pytest.raises(cv2.ConfigV2Error, match="source.pre.json.body_from"):
+        cv2.normalize(yaml.safe_load(
+            "schema: v2\nsource: {kind: document, pre: {json: {format: auto}}}\n"
+            "llm: [{out: [A]}]\n"), label="t")
+
+
+@pytest.mark.parametrize("old_key", ["text_fields", "missing_policy"])
+def test_pre_json_refuses_internal_names(old_key):
+    """설정 파일에는 내부 이름을 받지 않는다 — 한 자리에 이름이 둘이면 안 된다."""
+    with pytest.raises(cv2.ConfigV2Error, match=old_key):
+        cv2.normalize(yaml.safe_load(
+            f"schema: v2\nsource: {{kind: document, pre: {{json: {{body_from: [h], "
+            f"{old_key}: skip}}}}}}\nllm: [{{out: [A]}}]\n"), label="t")
+
+
+def test_pre_json_reaches_the_spec(tmp_path):
+    """설정 파일에 적은 json 이 파싱 라우팅이 쓰는 스펙까지 닿는다."""
+    from genon.preprocessor.facade.common.parser_config import build_json_text_specs
+
+    _write(tmp_path, "custom_field_x.yaml", """\
+        schema: v2
+        source:
+          kind: document
+          pre:
+            json:
+              body_from: [html, summary_md]
+        llm: [{out: [A]}]
+        """)
+    block = {"doc_type": "card", "config_file": "custom_field_x.yaml",
+             "resource_path": str(tmp_path)}
+    specs = build_json_text_specs([block])
+    assert [s.text_fields for s in specs] == [["html", "summary_md"]]
+    assert specs[0].doc_types == ("card",)
+
+
+def test_registered_block_json_is_refused(tmp_path):
+    """등록 블록의 옛 자리는 막는다.
+
+    등록 블록은 기동 시 키 검증을 받지 않아(설정 파일만 받는다) 그대로 두면 오류가 아니라
+    조용히 무시되고, 본문이 캐치올로 빠져 표·heading 구조가 소실된다.
+    """
+    from genon.preprocessor.facade.common.parser_config import build_json_text_specs
+
+    _write(tmp_path, "custom_field_x.yaml", """\
+        schema: v2
+        source: {kind: document}
+        llm: [{out: [A]}]
+        """)
+    block = {"doc_type": "card", "config_file": "custom_field_x.yaml",
+             "resource_path": str(tmp_path), "json": {"text_fields": ["html"]}}
+    with pytest.raises(ValueError, match="source.pre.json"):
+        build_json_text_specs([block])
+
+
+@pytest.mark.parametrize("resource_dir, name, doc_types", [
+    ("resource", "custom_field_card.yaml", ("card",)),
+    ("resource", "custom_field_product_hpp.yaml", ("product_hpp",)),
+    ("resource", "custom_field_research_report.yaml", ("research_report",)),
+    ("resource_dev", "custom_field_card.yaml", ("card",)),
+    ("resource_dev", "custom_field_product_hpp.yaml", ("product_hpp",)),
+])
+def test_shipped_configs_keep_json_body_keys(resource_dir, name, doc_types):
+    """등록 블록에서 옮겨 온 본문 키가 출고 설정에 그대로 남아 있어야 한다.
+
+    이 블록이 사라지면 .json 입력이 캐치올로 빠져 표·heading 구조가 소실되는데,
+    파싱은 성공하므로 티가 나지 않는다.
+    """
+    from shipped_config import load_shipped_named
+
+    internal = load_shipped_named(name, resource_dir)
+    assert internal.get("json") == {
+        "text_fields": ["html", "summary_md"],
+        "missing_policy": "skip",
+        "format": "auto",
+    }, f"{resource_dir}/{name}"
+
+
+def test_pre_json_is_document_only(tmp_path):
+    """공용 해석기로 옮긴 덕에 문서형 게이트가 붙는다(전에는 rows 에 붙여도 통과했다)."""
+    from genon.preprocessor.facade.common.parser_config import build_json_text_specs
+
+    _write(tmp_path, "custom_field_r.yaml", """\
+        schema: v2
+        source:
+          kind: rows
+          pre:
+            json:
+              body_from: [html]
+        fields: {A: {alias: [a]}}
+        body: {fields: [A]}
+        """)
+    block = {"doc_type": "r", "config_file": "custom_field_r.yaml",
+             "resource_path": str(tmp_path)}
+    assert build_json_text_specs([block]) == []
+
+
 # ── 배포 전 점검 ────────────────────────────────────────────────────────────
 
 def _load_script(name: str):
@@ -364,6 +490,18 @@ def test_precheck_derives_omitted_extractor(tmp_path):
     )
     block = {"doc_type": "t", "config_file": "custom_field_x.yaml"}
     assert precheck.check_block("cfg.yaml", block, tmp_path, set()) == []
+
+
+def test_precheck_refuses_registered_block_json(tmp_path):
+    """옛 자리를 배포 전에 잡는다 — 기동은 파서 경로에서만 막으므로 점검이 더 넓다."""
+    precheck = _load_script("precheck_custom_fields.py")
+    (tmp_path / "custom_field_x.yaml").write_text(
+        "schema: v2\nsource: {kind: document}\nllm: [{out: [A]}]\n", encoding="utf-8")
+    block = {"doc_type": "card", "extractor": "llm",
+             "config_file": "custom_field_x.yaml",
+             "json": {"text_fields": ["html"]}}
+    problems = precheck.check_block("cfg.yaml", block, tmp_path, set())
+    assert any("source.pre.json" in p and p.startswith("[기동실패]") for p in problems), problems
 
 
 def test_precheck_refuses_v1_notation(tmp_path):

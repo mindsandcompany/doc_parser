@@ -845,7 +845,7 @@ docling 을 만드는 핸들러라면 마무리는 `self._docling_response(doc, 
 **`.json` 경로 — 두 가지 모드**가 있고 `enrichment.custom_fields` 설정으로 갈립니다.
 둘 다 매칭되지 않으면 기존 텍스트 경로(캐치올)로 폴백해 종전 동작을 보존합니다.
 
-| | 레코드 모드 (`extractor: json_mapping`) | 문서 모드 (`json:` 블록) |
+| | 레코드 모드 (`extractor: json_mapping`) | 문서 모드 (`source.pre.json`) |
 |---|---|---|
 | 우선순위 | **높음** (먼저 검사) | 레코드 모드 미매칭 시 |
 | 메서드 | `_parse_json_records` | `_parse_json` |
@@ -1720,9 +1720,10 @@ enrichment:
 > LLM 생성 필드뿐인데 모델 서빙이 죽어 있으면 전부 빠져 `chunk length is 0` 이 됩니다 — 조용히 빈
 > 벡터가 들어가는 것보다 낫습니다.
 
-> **문서 모드(`json:` 블록)와 함께 쓰지 마세요.** 같은 `doc_type` 에 둘 다 매칭되면 레코드 모드가
-> 이깁니다. 하나의 JSON 을 통짜 문서로 파싱하려면 경로 C 가 아니라 `json: text_fields` 를 쓰세요
-> (5.4절 `.json` 경로 표 참고).
+> **문서 모드(`source.pre.json`)와 함께 쓰지 마세요.** 같은 `doc_type` 에 둘 다 매칭되면 레코드
+> 모드가 이깁니다. 하나의 JSON 을 통짜 문서로 파싱하려면 경로 C 가 아니라 config_file 의
+> `source.pre.json.body_from` 을 쓰세요 (5.4절 `.json` 경로 표 참고).
+> 등록 블록에 `json: text_fields` 로 적던 옛 표기는 받지 않습니다.
 
 ##### 검증
 

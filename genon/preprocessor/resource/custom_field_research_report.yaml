@@ -15,6 +15,16 @@
 schema: v2
 source:
   kind: document
+  # 원천이 .json 이고 **본문이 그 안의 값**으로 올 때 쓰는 전처리다. 본문(markdown/html
+  # 문자열)이 담긴 원천 key 이름을 적는다 — 경로가 아니라 이름만이고, 임의 깊이에서
+  # 문서 순서대로 모으므로 `pages[*].html` 같은 배열도 그대로 처리된다. 항목이 여러 개면
+  # 항목별 <h2> 섹션을 가진 단일 문서로 병합해 docling 을 1회 부른다.
+  # 이 블록이 없으면 .json 은 원문 그대로 docling 을 탄다(표·heading 구조가 남지 않는다).
+  pre:
+    json:
+      body_from: [html, summary_md]
+      format: auto             # auto(기본, 값 내용으로 판별) | html | markdown
+      on_missing: skip         # skip(기본, 경고만) | error
 fields:
   GROUP_C:
     const: SSS

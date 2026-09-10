@@ -175,5 +175,8 @@ require:
   fields: [GROUP_C, JONG_CODE, JONG_NM, ANALYSIS_DATE]
 body:
   fields: [JONG_NM, DETAIL_TEXT]
+  labels:
+    JONG_NM: 종목명
+    DETAIL_TEXT: 세부내용
   split: true
   repeat: [JONG_NM]

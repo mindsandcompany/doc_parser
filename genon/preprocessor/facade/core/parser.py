@@ -723,33 +723,39 @@ class ParserCore:
         if ocr_mode != "disable" and self._intel.ocr_endpoint:
             document = self._intel.ocr_all_table_cells(document, file_path)
 
-        # #329(task#1): /run(_document_to_vectors)과 동일하게 picture/table 이미지 참조를
-        # 설정한다. chunking_processor.compose_vectors 의 set_media_files/get_media_files 는
-        # item.image.uri 를 읽어 media_files 를 구성하는데, 그 uri 는 파싱 단계에서 설정돼야
-        # 한다(청커는 설정하지 않음). 이게 빠져 있으면 /parse→/chunk 의 media_files 가 비어
-        # /run 과 달라진다. PNG 는 공유 NFS(artifacts_dir=파일 경로 기준)에 저장돼 /chunk 가
-        # 같은 경로로 minio 업로드한다.
-        output_path, output_file = os.path.split(artifacts_from or file_path)
-        filename, _ = os.path.splitext(output_file)
-        # 확장자가 둘 이상인 입력(X.html.parsed)은 마지막 확장자만 떼면 형제 파일(X.html)과
-        # 이름이 겹친다. _with_pictures_refs 는 그림 유무와 무관하게 이 경로를 mkdir 하므로
-        # 형제가 파일로 있으면 FileExistsError 로 파싱이 죽고, 반대로 먼저 만들면 나중에
-        # 그 형제 파일을 같은 폴더에 내려받을 수 없다. 겹칠 수 없는 이름을 쓴다.
-        if os.path.splitext(filename)[1]:
-            filename = output_file + ".artifacts"
-        artifacts_dir = Path(output_path) / filename  # 빈 output_path 가 절대경로(/filename)로 바뀌는 것 방지
-        reference_path = None if artifacts_dir.is_absolute() else artifacts_dir.parent
-
-        document = document._with_pictures_refs(
-            image_dir=artifacts_dir, page_no=None, reference_path=reference_path
+        need_artifacts = (
+            getattr(self._intel.enrichment_options, "do_picture_description", False)
+            or getattr(self._intel, "table_image_enabled", False)
         )
-        # 표 이미지 저장: config on 이고 임베디드 intel 이 해당 기능을 지원할 때만.
-        # (parser 임베디드 IntelligentDocumentProcessor 는 경량 사본이라 이 기능이 없을 수 있음 —
-        #  없으면 조용히 skip. 파스는 원래 표 이미지 미생성이므로 현행 동작 보존.)
-        if getattr(self._intel, "table_image_enabled", False) and hasattr(self._intel, "_save_table_images"):
-            self._intel._save_table_images(
-                document, image_dir=artifacts_dir, reference_path=reference_path
+
+        if need_artifacts:
+            # #329(task#1): /run(_document_to_vectors)과 동일하게 picture/table 이미지 참조를
+            # 설정한다. chunking_processor.compose_vectors 의 set_media_files/get_media_files 는
+            # item.image.uri 를 읽어 media_files 를 구성하는데, 그 uri 는 파싱 단계에서 설정돼야
+            # 한다(청커는 설정하지 않음). 이게 빠져 있으면 /parse→/chunk 의 media_files 가 비어
+            # /run 과 달라진다. PNG 는 공유 NFS(artifacts_dir=파일 경로 기준)에 저장돼 /chunk 가
+            # 같은 경로로 minio 업로드한다.
+            output_path, output_file = os.path.split(artifacts_from or file_path)
+            filename, _ = os.path.splitext(output_file)
+            # 확장자가 둘 이상인 입력(X.html.parsed)은 마지막 확장자만 떼면 형제 파일(X.html)과
+            # 이름이 겹친다. _with_pictures_refs 는 그림 유무와 무관하게 이 경로를 mkdir 하므로
+            # 형제가 파일로 있으면 FileExistsError 로 파싱이 죽고, 반대로 먼저 만들면 나중에
+            # 그 형제 파일을 같은 폴더에 내려받을 수 없다. 겹칠 수 없는 이름을 쓴다.
+            if os.path.splitext(filename)[1]:
+                filename = output_file + ".artifacts"
+            artifacts_dir = Path(output_path) / filename  # 빈 output_path 가 절대경로(/filename)로 바뀌는 것 방지
+            reference_path = None if artifacts_dir.is_absolute() else artifacts_dir.parent
+
+            document = document._with_pictures_refs(
+                image_dir=artifacts_dir, page_no=None, reference_path=reference_path
             )
+            # 표 이미지 저장: config on 이고 임베디드 intel 이 해당 기능을 지원할 때만.
+            # (parser 임베디드 IntelligentDocumentProcessor 는 경량 사본이라 이 기능이 없을 수 있음 —
+            #  없으면 조용히 skip. 파스는 원래 표 이미지 미생성이므로 현행 동작 보존.)
+            if getattr(self._intel, "table_image_enabled", False) and hasattr(self._intel, "_save_table_images"):
+                self._intel._save_table_images(
+                    document, image_dir=artifacts_dir, reference_path=reference_path
+                )
 
         document = self._intel.enrichment(document, **kwargs)
 

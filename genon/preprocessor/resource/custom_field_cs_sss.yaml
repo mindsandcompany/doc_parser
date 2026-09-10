@@ -101,6 +101,7 @@ require:
 body:
   fields: [CS_CATEGORY, TITLE, CONTENT]
   labels:
+    CS_CATEGORY: 문의유형
     TITLE: 제목
     CONTENT: 안내내용
   split: true

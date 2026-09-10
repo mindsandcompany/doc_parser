@@ -412,7 +412,7 @@ from genon.preprocessor.facade.core import toolbox as tb
 
 | 갈래 | 항목 |
 |---|---|
-| 값 변환 | `regex_sub` `regex_extract` `to_int` `truncate` `html_text` `text` `date_int` `date_int_flex` `text_norm` `json_to_markdown` |
+| 값 변환 | `regex_sub` `regex_extract` `to_int` `to_json` `truncate` `html_text` `text` `date_int` `date_int_flex` `text_norm` `json_to_markdown` |
 | 엑셀 | `load_sheets` `load_tables` |
 | JSON | `collect_text_fields` `detect_format` |
 | 표 | `render_table` `render_plain_text` `sanitize_table_html` |

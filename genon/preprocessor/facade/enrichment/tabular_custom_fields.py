@@ -496,11 +496,15 @@ def merge_row_records(
 # 수정"의 통로였다.
 
 
-def compile_transforms(spec: Any, *, label: str) -> dict[str, list]:
+def compile_transforms(spec: Any, *, label: str, cfg: Any = None) -> dict[str, list]:
     """`transforms` 를 `{목표필드: [적용할 (함수, 인자) 목록]}` 으로 컴파일한다.
 
     잘못된 변환기 이름·빠진 인자·컴파일 안 되는 정규식을 **기동 시**에 잡는다. 요청 때
     터지면 어느 설정이 문제인지 로그만 보고는 알 수 없다.
+
+    `cfg`(설정 전체)를 주면 `to_json` 이 다른 설정과 어긋나게 쓰인 자리까지 함께 잡는다
+    — 본문 관련 키에 쓰였는지, `pack` 으로 다시 묶이는지. 변환은 필드를 **제자리에서**
+    덮으므로 `pack` 처럼 새 이름으로 가려낼 수 없어, 설정을 같이 봐야만 판정된다.
     """
     if not spec:
         return {}
@@ -508,9 +512,11 @@ def compile_transforms(spec: Any, *, label: str) -> dict[str, list]:
         raise ValueError(f"{label}: transforms 는 '키: 값' 형태의 object 여야 합니다.")
 
     compiled: dict[str, list] = {}
+    json_targets: set[str] = set()
     for target, entry in spec.items():
         steps = entry if isinstance(entry, list) else [entry]
         chain = []
+        names: list[str] = []
         for step in steps:
             if isinstance(step, str):
                 name, kwargs = step, {}
@@ -522,15 +528,51 @@ def compile_transforms(spec: Any, *, label: str) -> dict[str, list]:
                     f"{label}: transforms.{target} 의 각 단계는 이름(문자열)이거나 "
                     f"`{{name: …, 인자: …}}` object 여야 합니다."
                 )
+            names.append(name)
             chain.append(_compile_transform_step(name, kwargs, target=str(target), label=label))
+        # to_json 뒤에 다른 단계가 오면 산출이 더 이상 JSON 이 아니다(truncate 는 잘라서
+        # 깨뜨리고, text 는 다시 평문으로 만든다). 조용히 깨지므로 여기서 막는다.
+        if "to_json" in names and names[-1] != "to_json":
+            raise ValueError(
+                f"{label}: transforms.{target} 의 to_json 은 체인 **맨 뒤**여야 합니다 "
+                f"(현재: {names}) — 뒤에 다른 변환이 오면 JSON 이 깨집니다."
+            )
+        if "to_json" in names:
+            json_targets.add(str(target))
         compiled[str(target)] = chain
+
+    if json_targets and isinstance(cfg, dict):
+        _validate_to_json_targets(cfg, json_targets, label=label)
     return compiled
+
+
+def _validate_to_json_targets(cfg: dict, json_targets: set[str], *, label: str) -> None:
+    """`to_json` 을 건 필드가 본문/pack 과 어긋나게 쓰였는지 기동 시에 잡는다."""
+    for body_key in _PACK_FORBIDDEN_BODY_KEYS:
+        used = sorted(json_targets & {str(f) for f in (cfg.get(body_key) or [])})
+        if used:
+            raise ValueError(
+                f"{label}: {body_key} 에 to_json 을 건 필드 {used} 를 쓸 수 없습니다 — "
+                f"JSON 덩어리는 청크 본문에 실을 모양이 아닙니다. 본문에 실을 값은 변환 전 "
+                f"필드를 쓰거나, 평문 사본을 별도 필드로 만드세요."
+            )
+
+    for target, sources in (cfg.get("pack") or {}).items():
+        if not isinstance(sources, (list, tuple)):
+            continue  # 형태 오류는 compile_pack 이 알려 준다.
+        used = sorted(json_targets & {str(name) for name in sources})
+        if used:
+            raise ValueError(
+                f"{label}: pack.{target} 가 묶는 {used} 에 to_json 이 걸려 있습니다 — "
+                f"JSON 안에 JSON 문자열이 중첩됩니다. 둘 중 하나만 쓰세요."
+            )
 
 
 def _compile_transform_step(name: str, kwargs: dict, *, target: str, label: str):
     """변환기 한 단계를 `(함수, 인자, 렌더러_필요)` 로 만든다. 이름·인자·정규식을 여기서 검증한다."""
     from .field_transforms import (
         ALL_TRANSFORM_NAMES, PARAM_TRANSFORM_REQUIRED, PARAM_TRANSFORMS, RENDERER_TRANSFORMS,
+        TO_JSON_ON_SCALAR,
     )
 
     if name in VALUE_TRANSFORMS:
@@ -555,6 +597,14 @@ def _compile_transform_step(name: str, kwargs: dict, *, target: str, label: str)
             raise ValueError(
                 f"{label}: transforms.{target} 의 정규식이 잘못됐습니다: {exc}"
             ) from exc
+    if name == "to_json" and "on_scalar" in kwargs:
+        # yaml 의 `on_scalar: null` 은 널 값으로 파싱돼 여기 None 으로 온다. 기본값으로
+        # 조용히 돌아가지 않게 이름으로만 받는다.
+        if kwargs["on_scalar"] not in TO_JSON_ON_SCALAR:
+            raise ValueError(
+                f"{label}: transforms.{target} 의 to_json on_scalar 는 "
+                f"{list(TO_JSON_ON_SCALAR)} 중 하나여야 합니다: {kwargs['on_scalar']!r}"
+            )
     return (PARAM_TRANSFORMS[name], dict(kwargs), name in RENDERER_TRANSFORMS)
 
 
@@ -1029,7 +1079,9 @@ class TabularCustomFieldsMapper:
         self.value_map = compile_value_map(self.config.get("value_map"))
 
         self.transforms = compile_transforms(
-            self.config.get("transforms"), label=f"tabular custom_fields({config_file})"
+            self.config.get("transforms"),
+            label=f"tabular custom_fields({config_file})",
+            cfg=self.config,
         )
         self.derive = compile_derive(self.config, label=f"tabular custom_fields({config_file})")
         self.pack = compile_pack(self.config, label=f"tabular custom_fields({config_file})")

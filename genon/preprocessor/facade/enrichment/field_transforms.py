@@ -531,6 +531,50 @@ def transform_text(value: Any, *, html_renderer: Optional[Callable[[str], str]] 
     return render_field_text(value, html_renderer=html_renderer)
 
 
+# `to_json` 의 스칼라 처리 방식. yaml 에서 `null` 은 널 값으로 파싱되므로 이름을 `drop` 으로
+# 둔다 — `on_scalar: null` 이라고 적으면 인자가 통째로 사라져 기본값으로 조용히 돌아간다.
+TO_JSON_ON_SCALAR = ("wrap", "drop")
+
+
+def transform_to_json(value: Any, *, on_scalar: str = "wrap", key: str = "value") -> Any:
+    """적재 DB 의 JSON 컬럼에 넣을 값을 **항상 유효한 JSON 문자열**로 맞춘다.
+
+    오라클의 JSON 타입 컬럼은 문자열·숫자 같은 스칼라도 문법상 받지만, 그 순간 컬럼을 JSON
+    으로 잡은 목적이 사라진다 — `JSON_VALUE(col, '$.키')` 가 NULL 이 되고 `JSON_TABLE` 은
+    행을 내지 않는다. 값을 만드는 쪽(LLM 추출)이 문서마다 객체를 줬다 문자열을 줬다 하는
+    것이 실제 상황이라, 쓰는 쪽에서 모양을 한 번 고정한다.
+
+    산출을 문자열로 고정하는 것은 `pack` 과 같은 이유다. dict 로 두면 경로마다 모양이
+    갈린다 — 문서형은 출력 직전 `serialize_metadata_value_for_output` 이 문자열로 낮추지만,
+    행·섹션 경로는 metadata 를 청크 property 로 그대로 실어 객체가 그대로 나간다.
+
+    `on_scalar` 는 스칼라를 만났을 때의 처리다.
+    - `wrap`(기본): `{key: 값}` 으로 감싼다. 값을 잃지 않는다.
+    - `drop`: 값을 버리고 null 로 둔다. 객체가 아니면 적재하지 않겠다는 뜻이다.
+
+    파싱되지 않는 JSON 조각(`broken_json`)은 두 방식 어느 쪽도 쓰지 않고 경고 후 null 로
+    둔다. 조각을 감싸면 쓰레기가 유효 JSON 으로 위장되고, 원천이 한 JSON 을 여러 행에 잘라
+    보내는 스키마의 신호를 지우게 된다.
+    """
+    kind = detect_payload_kind(value)
+    if kind == "empty":
+        # 빈 문자열도 None 으로 낮춘다 — "" 는 유효한 JSON 이 아니라 적재에서 거절된다.
+        return None
+    if kind == "broken_json":
+        _log.warning(
+            "to_json: JSON 으로 파싱되지 않아 null 로 둡니다 (앞 40자: %s)", str(value)[:40]
+        )
+        return None
+    if kind == "json":
+        parsed = value if isinstance(value, (dict, list)) else json.loads(str(value).strip())
+        return json.dumps(parsed, ensure_ascii=False, default=str)
+    # text / html / html_inline — JSON 관점에서는 모두 스칼라다.
+    if on_scalar == "drop":
+        return None
+    # default=str: 직렬화할 수 없는 값(datetime 등)이 섞여도 요청이 터지지 않게 한다(pack 과 동일).
+    return json.dumps({key: value}, ensure_ascii=False, default=str)
+
+
 # 인자를 받는 변환기. 위 VALUE_TRANSFORMS 와 이름이 겹치지 않아야 한다(기동 시 검사).
 PARAM_TRANSFORMS: dict[str, Callable[..., Any]] = {
     "regex_sub": transform_regex_sub,
@@ -539,6 +583,7 @@ PARAM_TRANSFORMS: dict[str, Callable[..., Any]] = {
     "truncate": transform_truncate,
     "html_text": transform_html_text,
     "text": transform_text,
+    "to_json": transform_to_json,
 }
 
 # 각 변환기의 필수 인자. 빠뜨리면 요청 때가 아니라 기동 때 알려 준다.
@@ -549,6 +594,7 @@ PARAM_TRANSFORM_REQUIRED: dict[str, tuple[str, ...]] = {
     "truncate": ("length",),
     "html_text": (),
     "text": (),
+    "to_json": (),
 }
 
 # 설정이 아니라 **런타임**이 주는 인자(`html_renderer`)를 받는 변환기. 표 모양을 살리려면

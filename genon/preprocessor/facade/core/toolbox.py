@@ -25,6 +25,7 @@ from genon.preprocessor.facade.enrichment.field_transforms import (
     transform_text as text,                 # JSON/HTML/평문 자동 판별 평문화
     transform_text_norm as text_norm,       # 공백·문장부호 정규화
     transform_to_int as to_int,
+    transform_to_json as to_json,           # 적재 DB 의 JSON 컬럼용 — 항상 유효한 JSON 문자열
     transform_truncate as truncate,
 )
 
@@ -144,7 +145,7 @@ def refresh_stats(vectors, reindex: bool = True):
 
 __all__ = [
     "json_to_markdown", "strip_inline_html", "date_int", "date_int_flex", "html_text",
-    "regex_extract", "regex_sub", "text", "text_norm", "to_int", "truncate",
+    "regex_extract", "regex_sub", "text", "text_norm", "to_int", "to_json", "truncate",
     "register_transform", "make_elements", "DROP",
     "load_sheets", "load_tables",
     "collect_text_fields", "detect_format",

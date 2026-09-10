@@ -96,6 +96,10 @@ source:
 #   regex_extract  pattern, group=1              정규식 추출  매칭 없으면 null
 #   to_int         (on_error=null)               숫자만 남겨 정수로
 #   truncate       length, suffix=""             길이 자르기(적재 컬럼 길이 맞추기)
+#   to_json        on_scalar=wrap, key="value"   값을 유효한 JSON 문자열로 (적재 DB 의
+#                                                 JSON 컬럼용). 스칼라는 {key: 값} 으로
+#                                                 감싸고, on_scalar: drop 이면 null.
+#                                                 체인 맨 뒤에만 올 수 있다
 # 목록에 없는 이름·빠진 인자·컴파일 안 되는 정규식은 기동 시 실패하며 쓸 수 있는 이름을 알려준다.
 fields:
   <TARGET_FIELD_1>:

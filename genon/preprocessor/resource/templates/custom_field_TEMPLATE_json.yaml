@@ -91,7 +91,13 @@ source:
 #
 # [변환기] date_int · date_int_flex · text_norm · html_text · text (인자 없음)
 #          regex_sub(pattern, repl) · regex_extract(pattern, group=1) ·
-#          to_int(on_error=null) · truncate(length, suffix="")
+#          to_int(on_error=null) · truncate(length, suffix="") ·
+#          to_json(on_scalar=wrap|drop, key="value") — 적재 DB 의 JSON 컬럼에 넣을 값을
+#          유효한 JSON 문자열로 맞춘다(스칼라는 {key: 값} 으로 감싼다). 체인 맨 뒤 전용.
+#
+# [raw]    원천의 **객체**를 값으로 받는다 (`{목표: {alias: [키], raw: true}}`).
+#          기본은 "객체 = 값이 아니라 구조" 라서 null 이 된다(eventList 오인식 방지).
+#          객체를 통째로 적재 컬럼에 담을 때만 켜고, to_json 을 함께 건다.
 # 모르는 이름·빠진 인자·잘못된 정규식은 기동 시 실패한다.
 #
 # [평문화] `text` 는 값의 종류를 자동 판별한다 — JSON → 마크다운 헤딩, 구조 HTML(표·목록)

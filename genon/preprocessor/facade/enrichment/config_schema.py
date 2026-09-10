@@ -75,15 +75,18 @@ EXTRACTOR_KEYS: dict[str, frozenset[str]] = {
     # `sequence`(v2 `fields.<이름>.seq`)는 레코드 루프가 있는 두 kind 전용이다. 섹션형·문서형은
     # "항목 N번째"가 정의되지 않아(문서형은 항상 1) 여기 넣지 않는다.
     "tabular_mapping": _RECORD_COMMON | {"column_map", "row_merge", "sequence"},
+    # `raw_fields` 는 JSON 원천 2종에만 있다. 엑셀 칸(rows)과 LLM 응답(document)에는
+    # "객체를 구조로 볼지 값으로 볼지" 라는 판정 자체가 없다.
     "json_mapping": _RECORD_COMMON | {
         "records", "key_map", "collect_key_map", "missing_policy", "row_merge", "sequence",
+        "raw_fields",
     },
     # json_semantic 은 섹션 본문을 섹션 워커가 만들지만, 공통 필드(적재 DB 컬럼이 되는 값)의
     # 파이프라인은 레코드형과 같다 — `value_map`/`transforms`/`derive` 를 같은 순서로 읽는다.
     # 본문 조립 키 중에서는 `text_fields`(v2 `body.fields`)만 읽는다 — 공통 필드를 청크
     # 접두에 실을지 정하는 스위치다(섹션 본문 구성과는 무관하다).
     "json_semantic": frozenset({
-        "shared_fields", "sections", "ignore_keys",
+        "shared_fields", "sections", "ignore_keys", "raw_fields",
         "required_shared_fields", "missing_policy",
         "defaults", "constants", "llm_fields",
         "value_map", "transforms", "derive", "pack",

@@ -89,6 +89,7 @@ from .custom_fields_enricher import (
 from .json_records import (
     DEFAULT_TABLE_FORMAT,
     VALID_MISSING_POLICIES,
+    compile_raw_fields,
     find_field,
     html_to_text,
     normalize_table_format,
@@ -152,14 +153,19 @@ def _is_scalar(value: Any) -> bool:
     return isinstance(value, _SCALAR_TYPES)
 
 
-def _find_root_field(payload: dict[str, Any], aliases: list[str]) -> Any:
+def _find_root_field(payload: dict[str, Any], aliases: list[str], *, raw: bool = False) -> Any:
     """shared field 별칭을 문서 루트의 스칼라 값에서만 찾는다.
 
     ``find_field``의 별칭 우선순위·정규화·문자열 정리 규칙은 재사용하되, 중첩 object/list는
     검색 입력에서 제거한다. 따라서 루트 상품코드가 빠져도 ``mpo[].code``나 ``ksp[].code``가
     상품 identity로 승격되지 않는다. 스칼라 배열은 PRODUCT_ATTRS 같은 metadata 값이므로
     루트 값으로 허용한다.
+
+    ``raw=True`` 인 필드는 루트의 object 도 값으로 받는다. 탐색 깊이는 그대로 루트 한
+    겹이다 — 깊이까지 함께 풀면 ``mpo[].code`` 승격을 막던 계약이 그 필드에서 깨진다.
     """
+    if raw:
+        return find_field(payload, aliases, raw=True, max_depth=1)
     root_scalars = {
         key: value
         for key, value in payload.items()
@@ -621,6 +627,11 @@ class SemanticJsonMapper:
             for target, sources in shared_fields_cfg.items()
         }
 
+        # 원천의 객체를 통째로 받을 공통 필드(적재 DB 의 JSON 컬럼용).
+        self.raw_fields = compile_raw_fields(
+            cfg, self.shared_fields, label=f"json_semantic custom_fields({config_file})"
+        )
+
         # 공통 필드를 청크 접두에 실을 때 붙일 항목명. 설정에 적은 것만 쓴다 — 매퍼가
         # 특정 사이트의 필드명(PRODUCT_NM 등)을 기본 라벨로 들고 있으면, 그 이름을 쓰는
         # 다른 사이트에서 아무 것도 안 적었는데 본문에 줄이 생긴다.
@@ -668,7 +679,7 @@ class SemanticJsonMapper:
         # 것은 적재 DB 컬럼이 되는 공통 필드 값이고, 그 점에서 다른 kind 와 다를 이유가 없다.
         label = f"json_semantic custom_fields({config_file})"
         self.value_map = compile_value_map(cfg.get("value_map"))
-        self.transforms = compile_transforms(cfg.get("transforms"), label=label)
+        self.transforms = compile_transforms(cfg.get("transforms"), label=label, cfg=cfg)
         self.derive = compile_derive(cfg, label=label)
         self.pack = compile_pack(cfg, label=label)
 
@@ -760,7 +771,7 @@ class SemanticJsonMapper:
         # None 으로 채워 metadata(적재 컬럼)에 항상 나타나게 한다.
         identity: dict[str, Any] = {target: None for target in self.shared_fields}
         for target, aliases in self.shared_fields.items():
-            value = _find_root_field(payload, aliases)
+            value = _find_root_field(payload, aliases, raw=target in self.raw_fields)
             if value not in (None, ""):
                 identity[target] = _flatten_scalar_text(value, table_format, bool(compact_tables))
 

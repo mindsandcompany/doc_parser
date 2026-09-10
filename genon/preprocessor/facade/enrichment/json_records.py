@@ -86,14 +86,20 @@ VALID_MISSING_POLICIES = ("error", "skip")
 _SCALAR_TYPES = (str, int, float, bool)
 
 
-def _is_field_value(value: Any) -> bool:
+def _is_field_value(value: Any, raw: bool = False) -> bool:
     """이 값을 "필드 값"으로 채택할지 — 스칼라, 또는 스칼라만 담긴 배열.
 
     `related_keywords: []` 처럼 원천이 배열로 주는 JSON 컬럼(TB_CS_ITEM.RELATED_KEYWORDS,
     TB_FAQ.QUESTION_VARIANTS 등)을 받기 위해 스칼라 배열까지 허용한다.
     dict 와 dict 를 담은 배열은 여전히 값이 아니라 **구조**로 보고 계속 파고든다 —
     그래야 `eventList` 같은 레코드 배열이 실수로 필드 값으로 잡히지 않는다.
+
+    `raw=True` 는 그 판정을 그 필드 하나에만 끈다. 원천의 객체를 통째로 적재 DB 의 JSON
+    컬럼에 담아야 하는 경우가 있는데, 위 규칙 때문에 값이 비어 나왔다. 필드 이름으로
+    **명시할 때만** 열리므로 `eventList` 오인식은 그대로 막힌다.
     """
+    if raw:
+        return value is not None
     if isinstance(value, _SCALAR_TYPES):
         return True
     if isinstance(value, list):
@@ -102,7 +108,13 @@ def _is_field_value(value: Any) -> bool:
 
 
 def _clean_value(value: Any) -> Any:
-    """문자열 값의 BOM/양끝 공백 제거(tabular `_clean_cell` 과 같은 규칙). 배열은 원소별로 적용."""
+    """문자열 값의 BOM/양끝 공백 제거(tabular `_clean_cell` 과 같은 규칙). 배열은 원소별로 적용.
+
+    `raw` 필드로 들어오는 dict 도 같은 규칙을 받는다 — 값 하나만 모양이 다르면 뒤따르는
+    비교·중복 판정이 그 필드에서만 어긋난다.
+    """
+    if isinstance(value, dict):
+        return {key: _clean_value(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_clean_value(item) for item in value]
     if isinstance(value, str):
@@ -110,7 +122,40 @@ def _clean_value(value: Any) -> Any:
     return value
 
 
-def find_field(record: Any, aliases: list[str]) -> Any:
+def compile_raw_fields(cfg: dict, known_targets: Any, *, label: str) -> set[str]:
+    """`raw_fields`(v2 `fields.<이름>.raw`)를 검증해 목표필드 이름 집합으로 만든다.
+
+    원천의 객체를 통째로 받는 필드다. 값을 **읽는** 단계의 스위치라 값 파이프라인
+    (`transform`/`pack`)과는 다른 자리이며, 별칭으로 원천을 찾는 필드에만 뜻이 있다.
+    """
+    spec = cfg.get("raw_fields")
+    if not spec:
+        return set()
+    if not isinstance(spec, dict):
+        raise ValueError(f"{label}: raw_fields 는 '필드명: true' 형태의 object 여야 합니다.")
+
+    known = {str(name) for name in known_targets}
+    raw: set[str] = set()
+    for target, enabled in spec.items():
+        target = str(target)
+        if not isinstance(enabled, bool):
+            raise ValueError(
+                f"{label}: raw.{target} 는 true 또는 false 여야 합니다: {enabled!r}"
+            )
+        if not enabled:
+            continue
+        if target not in known:
+            raise ValueError(
+                f"{label}: raw.{target} 는 원천에서 값을 찾는 필드가 아닙니다 "
+                f"(alias 를 선언한 필드에만 쓸 수 있습니다)."
+            )
+        raw.add(target)
+    return raw
+
+
+def find_field(
+    record: Any, aliases: list[str], *, raw: bool = False, max_depth: int | None = None
+) -> Any:
     """레코드 안에서 별칭 중 하나에 해당하는 스칼라 값을 찾는다(얕은 깊이 우선).
 
     별칭 순서보다 **깊이가 우선**한다 — 같은 레벨 안에서만 설정 순서를 따른다. 그래야
@@ -119,22 +164,29 @@ def find_field(record: Any, aliases: list[str]) -> Any:
     정규화 일치도 **별칭 선언 순서**로 돈다 — 레코드의 key 순서로 돌면 대소문자·구분자만
     다른 별칭들(`event_id` 와 `eventId`)의 우선순위가 원천이 키를 나열한 순서에 좌우돼
     "같은 깊이에서는 선언 순서가 우선"이라는 계약이 깨진다.
+
+    `raw=True` 면 dict·혼합 배열도 값으로 채택한다(`_is_field_value` 참조).
+    `max_depth` 는 훑을 깊이다 — `1` 은 맨 위 한 겹만 본다(sections 의 루트 전용 탐색).
     """
     exact_aliases = [alias for alias in aliases if alias]
     normalized_aliases = [normalize_column_name(alias) for alias in exact_aliases]
 
     level: list = [record]
+    depth = 0
     while level:
+        depth += 1
         dicts = [node for node in level if isinstance(node, dict)]
         for alias in exact_aliases:
             for node in dicts:
-                if alias in node and _is_field_value(node[alias]):
+                if alias in node and _is_field_value(node[alias], raw):
                     return _clean_value(node[alias])
         for normalized in normalized_aliases:
             for node in dicts:
                 for key, value in node.items():
-                    if _is_field_value(value) and normalize_column_name(key) == normalized:
+                    if _is_field_value(value, raw) and normalize_column_name(key) == normalized:
                         return _clean_value(value)
+        if max_depth is not None and depth >= max_depth:
+            return None
 
         next_level: list = []
         for node in level:
@@ -495,6 +547,11 @@ class JsonRecordsMapper:
             for target, sources in key_map.items()
         }
 
+        # 원천의 객체를 통째로 받을 필드(적재 DB 의 JSON 컬럼용).
+        self.raw_fields = compile_raw_fields(
+            cfg, self.key_map, label=f"json custom_fields({config_file})"
+        )
+
         collect_key_map = cfg.get("collect_key_map") or {}
         if not isinstance(collect_key_map, dict):
             raise ValueError("json_mapping custom_fields의 collect_key_map은 object여야 합니다.")
@@ -524,7 +581,7 @@ class JsonRecordsMapper:
         self.value_map = compile_value_map(cfg.get("value_map"))
 
         label = f"json custom_fields({config_file})"
-        self.transforms = compile_transforms(cfg.get("transforms"), label=label)
+        self.transforms = compile_transforms(cfg.get("transforms"), label=label, cfg=cfg)
         self.derive = compile_derive(cfg, label=label)
         self.pack = compile_pack(cfg, label=label)
         self.filter = compile_filter(cfg, label=label)
@@ -627,7 +684,7 @@ class JsonRecordsMapper:
         """
         fields: dict[str, Any] = {}
         for target, aliases in self.key_map.items():
-            fields[target] = find_field(record, aliases)
+            fields[target] = find_field(record, aliases, raw=target in self.raw_fields)
         for target, aliases in self.collect_key_map.items():
             fields[target] = find_fields(record, aliases)
         return fields

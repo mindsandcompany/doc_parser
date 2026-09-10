@@ -168,6 +168,30 @@ def test_pack_bundles_fields_into_json(tmp_path: Path):
     }
 
 
+def test_to_json_applies_on_the_document_path(tmp_path: Path):
+    """`to_json` — 문서형(llm·python)도 rows/records/sections 와 같은 자리에서 돈다.
+
+    `pack` 은 묶을 원천이 여럿일 때의 기능이라 출처가 하나뿐인 필드에는 쓸 수 없다.
+    적재 DB 의 JSON 컬럼이 스칼라를 받으면 `JSON_VALUE(col, '$.키')` 가 NULL 이 되므로,
+    스칼라가 오면 키를 씌워 객체로 만든다.
+    """
+    stored = _run(_enricher(
+        tmp_path,
+        constants={"ATTRS": '{"annual_fee":  18000}', "FEE_TEXT": "국내전용 18,000원"},
+        transforms={"ATTRS": ["to_json"],
+                    "FEE_TEXT": [{"name": "to_json", "key": "fee_text"}]},
+    ))
+    assert json.loads(stored["ATTRS"]) == {"annual_fee": 18000}
+    assert json.loads(stored["FEE_TEXT"]) == {"fee_text": "국내전용 18,000원"}
+
+
+def test_to_json_on_a_body_field_fails_at_startup(tmp_path: Path):
+    """변환은 필드를 제자리에서 덮으므로, 본문에도 쓰이는 필드에 걸면 본문에 JSON 이 실린다."""
+    with pytest.raises(ValueError, match="쓸 수 없습니다"):
+        _enricher(tmp_path, transforms={"CODE": ["to_json"]},
+                  chunk_prefix_fields=["CODE"])
+
+
 def test_pack_referencing_an_unknown_field_fails_at_startup(tmp_path: Path):
     with pytest.raises(ValueError, match="NO_SUCH_FIELD"):
         _enricher(tmp_path, pack={"DETAIL_JSON": ["NO_SUCH_FIELD"]})

@@ -62,7 +62,7 @@ TOP_LEVEL_KEYS = frozenset({
 # `TARGET_A:` 처럼 값을 빠뜨린 오타가 null 로 파싱돼 조용히 통과하는 것을 막기 위해서다.
 FIELD_SPEC_KEYS = frozenset({
     "alias", "const", "default", "values", "transform", "collect", "template", "seq",
-    "pack",
+    "pack", "raw",
 })
 SOURCE_KEYS = frozenset({
     "kind", "records_at", "table_at", "on_missing", "merge_rows",
@@ -117,6 +117,7 @@ _SPEC_TO_BLOCK = {
     "template": "derive",
     "seq": "sequence",
     "pack": "pack",
+    "raw": "raw_fields",
 }
 _BLOCK_TO_SPEC = {v: k for k, v in _SPEC_TO_BLOCK.items()}
 

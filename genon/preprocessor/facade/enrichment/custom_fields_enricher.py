@@ -382,7 +382,9 @@ class CustomFieldsEnricher(BaseEnricher):
 
         pipeline_label = f"custom_fields({config_file})"
         self._value_map = compile_value_map(cfg.get("value_map"))
-        self._transforms = compile_transforms(cfg.get("transforms"), label=pipeline_label)
+        self._transforms = compile_transforms(
+            cfg.get("transforms"), label=pipeline_label, cfg=cfg
+        )
         self._derive = compile_derive(cfg, label=pipeline_label)
         self._pack = compile_pack(cfg, label=pipeline_label)
         # 청크 본문(text)과 같은 값을 실을 필드 이름(검색 대상 본문 컬럼). 값 자체는 청커가

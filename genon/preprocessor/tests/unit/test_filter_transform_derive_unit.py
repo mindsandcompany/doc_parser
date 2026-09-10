@@ -9,6 +9,7 @@ import textwrap
 import pytest
 
 from genon.preprocessor.facade.enrichment.json_records import JsonRecordsMapper
+from genon.preprocessor.facade.enrichment.json_semantic import SemanticJsonMapper
 from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
     TabularCustomFieldsMapper,
 )
@@ -25,6 +26,12 @@ def _rows(tmp_path, body, payload, kind="tabular"):
             doc_type="t", extractor="tabular_mapping",
         )
         data = {"data": [{"sheet_name": "S", "data_rows": payload}]}
+    elif kind == "sections":
+        mapper = SemanticJsonMapper(
+            config_file=path.name, resource_path=str(tmp_path),
+            doc_type="t", extractor="json_semantic",
+        )
+        data = payload
     else:
         mapper = JsonRecordsMapper(
             config_file=path.name, resource_path=str(tmp_path),
@@ -169,6 +176,201 @@ def test_pack_result_is_always_a_string(tmp_path):
     assert isinstance(rows[0]["J"], str)
 
 
+def test_to_json_keeps_a_single_field_loadable_in_a_json_column(tmp_path):
+    """`to_json` — 필드 **하나**의 모양을 JSON 으로 보장한다.
+
+    `pack` 은 묶을 원천 필드가 여럿일 때의 기능이라, 출처가 하나뿐인 필드(LLM 추출 결과가
+    곧 그 컬럼인 경우)에는 쓸 수 없다. 오라클 JSON 컬럼은 스칼라도 문법상 받지만 그 순간
+    `JSON_VALUE(col, '$.키')` 가 NULL 이 되므로, 스칼라가 오면 감싸서 객체로 만든다.
+    """
+    rows = _rows(tmp_path, """
+        column_map:
+          TITLE: [제목]
+          FEE:   [연회비]
+          EMPTY: [없음]
+        transforms:
+          FEE:   [to_json]
+          EMPTY: [to_json]
+        text_fields: [TITLE]
+    """, [{"제목": "연회비 안내", "연회비": "국내전용 18,000원"}])
+
+    assert json.loads(rows[0]["FEE"]) == {"value": "국내전용 18,000원"}
+    assert rows[0]["EMPTY"] is None      # 빈 값은 DB NULL 로 둔다("" 는 유효한 JSON 이 아니다)
+
+
+def test_to_json_wrap_key_and_drop(tmp_path):
+    """스칼라 처리는 두 가지다 — 키를 씌워 살리거나(wrap), 적재하지 않거나(drop)."""
+    rows = _rows(tmp_path, """
+        column_map: {TITLE: [제목], A: [출시일], B: [연회비]}
+        transforms:
+          A: [{name: to_json, key: release_date}]
+          B: [{name: to_json, on_scalar: drop}]
+        text_fields: [TITLE]
+    """, [{"제목": "안내", "출시일": "20260710", "연회비": "국내전용 18,000원"}])
+
+    assert json.loads(rows[0]["A"]) == {"release_date": "20260710"}
+    assert rows[0]["B"] is None
+
+
+def test_to_json_normalizes_json_text_and_refuses_broken_fragments(tmp_path):
+    """JSON 텍스트는 파싱해 재직렬화하고, 조각은 감싸지 않고 null 로 둔다.
+
+    조각을 `{"value": "{\"a\":"}` 로 감싸면 쓰레기가 유효 JSON 으로 위장되고, 원천이 한
+    JSON 을 여러 행에 잘라 보내는 스키마의 신호(broken_json)를 지우게 된다.
+    """
+    rows = _rows(tmp_path, """
+        column_map: {TITLE: [제목], OK: [정상], BROKEN: [조각]}
+        transforms:
+          OK:     [to_json]
+          BROKEN: [to_json]
+        text_fields: [TITLE]
+    """, [{"제목": "안내", "정상": '{"a":   1}', "조각": '{"a":'}])
+
+    assert rows[0]["OK"] == '{"a": 1}'   # 공백·이스케이프 표기가 통일된다
+    assert rows[0]["BROKEN"] is None
+
+
+def test_to_json_is_available_in_every_custom_fields_form(tmp_path):
+    """rows·records·sections — 값 파이프라인을 공유하므로 같은 표기가 그대로 통한다.
+
+    document(llm·python)형은 같은 파이프라인을 다른 파일에서 도므로
+    test_python_extractor_unit.py 가 맡는다.
+    """
+    rows = _rows(tmp_path, """
+        column_map: {TITLE: [제목], ATTRS: [속성]}
+        transforms: {ATTRS: [to_json]}
+        text_fields: [TITLE]
+    """, [{"제목": "안내", "속성": "혜택"}])
+    assert json.loads(rows[0]["ATTRS"]) == {"value": "혜택"}
+
+    # 원천이 JSON 을 텍스트로 실어 보내는 경우(적재 컬럼을 그대로 내려주는 API).
+    records = _rows(tmp_path, """
+        key_map: {TITLE: [title], ATTRS: [attrs]}
+        transforms: {ATTRS: [to_json]}
+        text_fields: [TITLE]
+    """, [{"title": "제목", "attrs": '{"annual_fee":  18000}'}], kind="json")
+    assert json.loads(records[0]["ATTRS"]) == {"annual_fee": 18000}
+
+    # sections 는 `PRODUCT_ATTRS` 가 배열 그대로 나가던 실제 경로다(모니모 product_hpp).
+    sections = _rows(tmp_path, """
+        shared_fields:
+          PRODUCT_C: [productCode]
+          PRODUCT_ATTRS: [benefit]
+        required_shared_fields: [PRODUCT_C]
+        transforms: {PRODUCT_ATTRS: [to_json]}
+    """, {"productCode": "AAP1344", "benefit": ["현금카드 기능", "빅포인트 적립"]},
+        kind="sections")
+    assert sections, "섹션이 만들어져야 한다"
+    for section in sections:
+        assert section["PRODUCT_ATTRS"] == '["현금카드 기능", "빅포인트 적립"]'
+
+
+def test_to_json_works_in_v2_notation(tmp_path):
+    """출고 표기는 v2 다 — `fields.<이름>.transform` 으로도 같은 결과·같은 가드여야 한다."""
+    body = """
+        schema: v2
+        source: {kind: rows}
+        fields:
+          TITLE: {alias: [제목]}
+          PRODUCT_ATTRS:
+            alias: [속성]
+            transform: [{name: to_json, key: fee_text}]
+        body:
+          fields: [TITLE]
+    """
+    rows = _rows(tmp_path, body, [{"제목": "안내", "속성": "국내전용 18,000원"}])
+    assert json.loads(rows[0]["PRODUCT_ATTRS"]) == {"fee_text": "국내전용 18,000원"}
+
+    with pytest.raises(ValueError, match="쓸 수 없습니다"):
+        _rows(tmp_path, body.replace("fields: [TITLE]", "fields: [TITLE, PRODUCT_ATTRS]"),
+              [{"제목": "안내", "속성": "x"}])
+
+
+def test_raw_brings_a_source_object_in_as_a_field_value(tmp_path):
+    """`raw` — 원천 JSON 의 객체를 필드 값으로 받는다.
+
+    기본 규칙은 "객체는 값이 아니라 구조" 다. 그래야 `eventList` 같은 레코드 배열이 필드
+    값으로 잘못 잡히지 않는다. 그 규칙 때문에 객체를 통째로 적재 DB 의 JSON 컬럼에 담을
+    수단이 없었다 — `raw` 는 그 판정을 **필드 이름으로 명시한 자리에서만** 끈다.
+    """
+    payload = [{"title": "T", "attrs": {"annual_fee": 18000, "benefits": ["5% 할인"]}}]
+
+    # raw 없이는 비어 있다(기본 규칙이 그대로 산다).
+    plain = _rows(tmp_path, """
+        key_map: {TITLE: [title], ATTRS: [attrs]}
+        text_fields: [TITLE]
+    """, payload, kind="json")
+    assert plain[0]["ATTRS"] is None
+
+    # raw + to_json 이 적재 컬럼에 넣을 수 있는 모양을 만든다.
+    raw = _rows(tmp_path, """
+        key_map: {TITLE: [title], ATTRS: [attrs]}
+        raw_fields: {ATTRS: true}
+        transforms: {ATTRS: [to_json]}
+        text_fields: [TITLE]
+    """, payload, kind="json")
+    assert json.loads(raw[0]["ATTRS"]) == {"annual_fee": 18000, "benefits": ["5% 할인"]}
+
+
+def test_raw_in_sections_stays_root_only(tmp_path):
+    """sections 의 루트 전용 계약은 raw 에서도 그대로다.
+
+    깊이까지 함께 풀면 `mpo[].code` 같은 관련 상품 값이 상품 identity 로 승격되던 문제가
+    그 필드에서 되살아난다.
+    """
+    body = """
+        shared_fields: {PRODUCT_C: [productCode], PRODUCT_ATTRS: [attrs]}
+        required_shared_fields: [PRODUCT_C]
+        raw_fields: {PRODUCT_ATTRS: true}
+        transforms: {PRODUCT_ATTRS: [to_json]}
+    """
+    at_root = _rows(tmp_path, body, {
+        "productCode": "AAP1344", "attrs": {"annual_fee": 18000}, "desc": "본문"},
+        kind="sections")
+    assert json.loads(at_root[0]["PRODUCT_ATTRS"]) == {"annual_fee": 18000}
+
+    nested = _rows(tmp_path, body, {
+        "productCode": "AAP1344", "mpo": [{"attrs": {"annual_fee": 9}}], "desc": "본문"},
+        kind="sections")
+    assert nested[0]["PRODUCT_ATTRS"] is None
+
+
+def test_raw_in_v2_notation(tmp_path):
+    """출고 표기는 v2 다 — `fields.<이름>.raw`."""
+    rows = _rows(tmp_path, """
+        schema: v2
+        source: {kind: records}
+        fields:
+          TITLE: {alias: [title]}
+          ATTRS:
+            alias: [attrs]
+            raw: true
+            transform: [{name: to_json}]
+        body: {fields: [TITLE]}
+    """, [{"title": "T", "attrs": {"a": 1}}], kind="json")
+    assert json.loads(rows[0]["ATTRS"]) == {"a": 1}
+
+
+def test_raw_on_a_field_without_alias_fails_at_startup(tmp_path):
+    """값을 원천에서 찾지 않는 필드에 raw 를 걸면 아무 일도 일어나지 않는다 — 오설정이다."""
+    with pytest.raises(ValueError, match="원천에서 값을 찾는 필드가 아닙니다"):
+        _rows(tmp_path, """
+            key_map: {TITLE: [title]}
+            constants: {NOPE: x}
+            raw_fields: {NOPE: true}
+            text_fields: [TITLE]
+        """, [{"title": "T"}], kind="json")
+
+
+def test_raw_must_be_a_boolean(tmp_path):
+    with pytest.raises(ValueError, match="true 또는 false"):
+        _rows(tmp_path, """
+            key_map: {TITLE: [title], ATTRS: [attrs]}
+            raw_fields: {ATTRS: "네"}
+            text_fields: [TITLE]
+        """, [{"title": "T"}], kind="json")
+
+
 def test_pack_json_path_gets_the_same_feature(tmp_path):
     rows = _rows(tmp_path, """
         key_map: {TITLE: [title], FEE_AMT: [fee]}
@@ -214,6 +416,13 @@ def test_json_path_gets_the_same_features(tmp_path):
         ("pack:\n  J: [T]\n  K: [J]\n", "만드는 설정이 없"),
         # 본문 관련 키는 pack 필드를 받지 않는다(문서형은 조용히 버리고 행 경로는 싣는다).
         ("pack:\n  J: [T]\nchunk_prefix_fields: [J]\nsplit: true\n", "쓸 수 없습니다"),
+        # to_json 뒤에 다른 단계가 오면 산출이 더 이상 JSON 이 아니다(잘리거나 평문이 된다).
+        ("transforms:\n  T: [to_json, {name: truncate, length: 5}]\n", "맨 뒤"),
+        # 변환은 필드를 제자리에서 덮으므로, 본문에도 쓰이는 필드에 걸면 본문에 JSON 이 실린다.
+        ("transforms:\n  T: [to_json]\n", "쓸 수 없습니다"),
+        # pack 이 다시 묶으면 JSON 안에 JSON 문자열이 중첩된다.
+        ("constants:\n  U: x\ntransforms:\n  U: [to_json]\npack:\n  J: [U]\n", "중첩"),
+        ('transforms:\n  T: [{name: to_json, on_scalar: 널}]\n', "wrap"),
     ],
 )
 def test_misconfiguration_is_caught_at_startup(tmp_path, body, expect):

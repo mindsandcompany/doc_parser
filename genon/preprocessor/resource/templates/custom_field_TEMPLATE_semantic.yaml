@@ -87,6 +87,9 @@ source:
 #   default   : 원천 값이 없거나 빈 문자열일 때만 채운다
 #   values    : 코드값·표기 흔들림을 표준값으로 접는다 (`ON_SALE: ["1", Y, 판매중]`)
 #   transform : 값 변환 체인 (`[{name: regex_sub, pattern: "[^0-9]"}, {name: to_int}]`)
+#               적재 DB 의 JSON 컬럼에 넣을 필드는 `[{name: to_json}]` 을 맨 뒤에 건다
+#   raw       : 원천의 객체를 값으로 받는다(기본은 구조로 보고 파고들어 null 이 된다).
+#               루트 전용 탐색은 그대로다 — 깊은 동명 키는 여전히 승격되지 않는다
 #   template  : 다른 필드를 합쳐 만든다 (`"{{BRAND_NM}} {{PRODUCT_NM}}"`)
 #   pack      : 여러 필드를 JSON 한 칸에 담는다 (`[BRAND_NM, ANNUAL_FEE]` →
 #               `{"BRAND_NM": ..., "ANNUAL_FEE": ...}` 문자열). 값이 없는 키도 null 로

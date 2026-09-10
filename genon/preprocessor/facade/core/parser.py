@@ -52,6 +52,7 @@ from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
     build_tabular_custom_fields_mappers,
     claimed_row_pages,
     merge_parse_formats,
+    repack_records,
 )
 from genon.preprocessor.facade.enrichment.json_records import (
     build_json_records_mappers,
@@ -1084,9 +1085,13 @@ class ParserCore:
         `mapper.llm_fields_scope == "document"`(json_semantic)면 문서 1건당 1회만 호출하고
         결과를 전 섹션에 복사한다 — 섹션(청크) 수만큼 부르면 카드 1장에 10회 넘게 호출되기
         때문이다(json_semantic 모듈 docstring 참고).
+
+        값이 채워진 뒤에는 `pack` 을 다시 건다. 묶기는 파이프라인 맨 뒤라는 계약인데 매퍼는
+        여기보다 먼저 끝나므로, 재적용하지 않으면 LLM 산출이 JSON 안에서 영구히 null 이다.
         """
         if getattr(mapper, "llm_fields_scope", "record") == "document":
-            return await self._apply_llm_fields_document_scope(mapper, fields_list)
+            fields_list = await self._apply_llm_fields_document_scope(mapper, fields_list)
+            return repack_records(mapper, fields_list)
 
         for spec in getattr(mapper, "llm_field_specs", ()):
             if not fields_list:
@@ -1134,7 +1139,7 @@ class ParserCore:
                     f"(on_error={spec.on_error})"
                 )
             fields_list = kept
-        return fields_list
+        return repack_records(mapper, fields_list)
 
     async def _apply_llm_fields_document_scope(self, mapper, fields_list: list) -> list:
         """llm_fields_scope == "document" 인 매퍼용 — spec 당 LLM 을 문서 1회만 호출해

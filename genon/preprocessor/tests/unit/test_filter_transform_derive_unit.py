@@ -185,6 +185,40 @@ def test_pack_bundles_fields_into_one_json_column(tmp_path):
     assert rows[0]["BENEFIT"] == '연 18,000원 "무이자"'  # 묶은 원천은 그대로 남는다
 
 
+def test_pack_includes_sequence_output(tmp_path):
+    """순번은 값 파이프라인 뒤에 매겨진다 — 묶기가 그보다 앞서면 JSON 안이 늘 null 이다."""
+    rows = _rows(tmp_path, """
+        schema: v2
+        source: {kind: rows}
+        fields:
+          A: {alias: [에이]}
+          ROW_NO: {seq: {prefix: "R-", width: 3}}
+          J: {pack: [A, ROW_NO]}
+        body:
+          fields: [A]
+    """, [{"에이": "a"}, {"에이": "b"}])
+
+    assert [json.loads(r["J"])["ROW_NO"] for r in rows] == ["R-001", "R-002"]
+
+
+def test_sections_require_still_accepts_a_pack_field(tmp_path):
+    """sections 는 묶기가 필수 검사 **앞**이다 — rows/records 와 달리 require 로 고를 수 있다.
+
+    compile_pack 의 선별 금지가 kind 를 가리지 않으면 여기서 동작하는 설정이 기동 실패가 된다.
+    """
+    sections = _rows(tmp_path, """
+        schema: v2
+        source: {kind: sections}
+        fields:
+          TITLE: {alias: [title]}
+          J: {pack: [TITLE]}
+        require:
+          fields: [J]
+    """, {"title": "T", "body": {"a": "본문내용입니다"}}, kind="sections")
+
+    assert json.loads(sections[0]["J"]) == {"TITLE": "T"}
+
+
 def test_pack_result_is_always_a_string(tmp_path):
     """dict 로 두면 경로마다 모양이 갈린다 — 행 경로는 metadata 를 그대로 청크에 싣는다."""
     rows = _rows(tmp_path, """
@@ -512,6 +546,13 @@ def test_json_path_gets_the_same_features(tmp_path):
         ("schema: v2\nsource: {kind: rows}\n"
          "fields: {T: {alias: [제목]}, J: {pack: [T]}}\n"
          "body: {fields: [T], split: true, repeat: [J]}\n", "쓸 수 없습니다"),
+        # 선별(require/filter)은 묶기보다 먼저 돈다 — pack 산출로 고르면 늘 빈 값이다.
+        ("schema: v2\nsource: {kind: rows}\n"
+         "fields: {T: {alias: [제목]}, J: {pack: [T]}}\n"
+         "require: {fields: [J]}\nbody: {fields: [T]}\n", "쓸 수 없습니다"),
+        ("schema: v2\nsource: {kind: rows}\n"
+         "fields: {T: {alias: [제목]}, J: {pack: [T]}}\n"
+         "filter: [{field: J, in: [x]}]\nbody: {fields: [T]}\n", "쓸 수 없습니다"),
         # to_json 뒤에 다른 단계가 오면 산출이 더 이상 JSON 이 아니다(잘리거나 평문이 된다).
         ("schema: v2\nsource: {kind: rows}\n"
          "fields: {T: {alias: [제목], transform: [to_json, {name: truncate, length: 5}]}}\n"

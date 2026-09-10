@@ -693,6 +693,19 @@ _PACK_FORBIDDEN_BODY_KEYS = (
 )
 
 
+def _pack_selection_conflicts(cfg: dict, packed: set[str]) -> list[str]:
+    """`pack` 산출을 레코드 선별에 쓴 자리. 묶기는 선별보다 **뒤에** 돌아 늘 빈 값이다.
+
+    rows/records 전용 판정이다 — sections 의 `required_shared_fields` 는 대상이 아니다.
+    거기서는 묶기가 공통 필드 확정 직후(필수 검사 **앞**)라 pack 산출로도 정상 판정된다.
+    """
+    used = packed & {str(f) for f in (cfg.get("required") or [])}
+    for rule in (cfg.get("filter") or []):
+        if isinstance(rule, dict) and str(rule.get("field")) in packed:
+            used.add(str(rule.get("field")))
+    return sorted(used)
+
+
 def compile_pack(cfg: dict, *, label: str) -> dict[str, list[str]]:
     """`pack` 을 검증해 컴파일한다. 참조하는 필드가 없으면 기동 시 실패한다."""
     spec = cfg.get("pack")
@@ -712,6 +725,14 @@ def compile_pack(cfg: dict, *, label: str) -> dict[str, list[str]]:
                 f"JSON 덩어리는 청크 본문에 실을 모양이 아니고, 실리는지도 경로마다 다릅니다. "
                 f"본문에 실을 값은 묶기 전 필드를 그대로 쓰세요."
             )
+    selecting = _pack_selection_conflicts(cfg, packed)
+    if selecting:
+        raise ValueError(
+            f"{label}: kind: rows/records 의 require.fields/filter 에 pack 필드 "
+            f"{selecting} 를 쓸 수 없습니다 — "
+            f"묶기는 파이프라인 맨 뒤(선별·llm 산출 뒤)에 돌아 그 시점에는 값이 없습니다. "
+            f"선별에는 묶기 전 필드를 그대로 쓰세요."
+        )
 
     # pack 으로 만든 필드는 다시 묶을 수 없다 — 허용하면 JSON 안에 JSON 문자열이
     # 중첩되고, 적용 순서가 yaml 의 키 순서에 조용히 의존하게 된다.
@@ -742,6 +763,26 @@ def apply_pack(fields: dict, compiled: dict[str, list[str]]) -> None:
         payload = {name: fields.get(name) for name in sources}
         # default=str: 직렬화할 수 없는 값(datetime 등)이 섞여도 요청이 터지지 않게 한다.
         fields[target] = json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def repack_records(mapper: Any, fields_list: list) -> list:
+    """레코드 목록에 `pack` 을 다시 건다(값이 더 채워진 뒤에 부른다).
+
+    묶기는 파이프라인 맨 뒤라는 계약인데, 레코드형 3종은 `build_fields` 가 끝난 뒤에
+    파서가 `llm_fields` 로 값을 더 채운다. 그 시점에 다시 걸지 않으면 요약 같은 LLM 산출이
+    JSON 안에서 영구히 null 로 남는다(문서형은 LLM 응답이 파이프라인 **입력**이라 이런
+    비대칭이 없었다).
+
+    같은 값으로 다시 부르는 것은 무해하다 — 묶기는 원천 필드의 순수 함수이고, pack 산출을
+    다시 묶는 것은 `compile_pack` 이 금지하므로 자기 산출을 되먹지 않는다.
+    """
+    compiled = getattr(mapper, "pack", None) or {}
+    if compiled:
+        for fields in fields_list or ():
+            if isinstance(fields, dict):
+                apply_pack(fields, compiled)
+    return fields_list
+
 
 # ── 항목 순번(sequence) ──────────────────────────────────────────────────────
 #
@@ -1308,8 +1349,6 @@ class TabularCustomFieldsMapper:
                 apply_transforms(fields, self.transforms, html_renderer)
                 # 결합은 변환 뒤에 — 정규화된 값으로 합쳐야 표기가 흔들리지 않는다.
                 apply_derive(fields, self.derive)
-                # 묶기는 맨 뒤에 — derive 로 만든 필드까지 담을 수 있어야 한다.
-                apply_pack(fields, self.pack)
 
                 # 대상이 아닌 레코드는 여기서 빠진다. required 보다 **먼저** 보는 것이 중요하다 —
                 # 뒤에 두면 정상 제외가 "필수값 누락" 경고로 찍혀 데이터 사고처럼 보인다.
@@ -1361,6 +1400,9 @@ class TabularCustomFieldsMapper:
         # 순번은 시트 루프 **밖**에서 매긴다 — 문서 1건 전체로 이어지고, filter/required 로
         # 걸러진 레코드는 이미 빠진 뒤라 번호에 구멍이 생기지 않는다.
         apply_sequence(fields_list, self.sequence)
+        # 묶기는 맨 뒤에 — derive 와 sequence 산출까지 담는다. llm_fields 산출은 파서가
+        # 채운 뒤 repack_records 로 한 번 더 걸린다.
+        repack_records(self, fields_list)
         return fields_list
 
     def to_parse_format_from_fields(self, fields_list: list[dict], runtime_doc_type: Any) -> dict:

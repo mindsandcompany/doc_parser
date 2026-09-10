@@ -1203,6 +1203,10 @@ Docling 파이프라인(PDF/HTML/HWP/HWPX/DOCX) 출력 기준:
 
 적용 순서는 kind 공통입니다: `default`(빈 값만) → `const`(덮어씀) → `values` → `transform` → `template` → `pack`
 
+`pack` 만은 **정말 맨 뒤**입니다 — `seq` 로 매긴 순번과 `llm` 이 채운 값까지 다 확정된 뒤에
+묶습니다. 그래서 `kind: rows`/`records` 에서는 `require.fields`/`filter` 로 `pack` 산출을
+고를 수 없습니다(기동 실패) — 레코드 선별이 묶기보다 먼저 돌기 때문입니다.
+
 `pack` 은 값 여럿을 적재 컬럼 **하나**에 JSON 으로 담습니다. 컬럼을 늘리지 않고 부가정보를
 실을 때 씁니다.
 
@@ -1214,10 +1218,13 @@ fields:
 
 - 값이 없는 키도 `null` 로 남습니다 — 적재쪽이 보는 키 집합이 문서마다 바뀌지 않습니다.
 - 묶은 원천 필드는 결과에 **그대로 남습니다**(빠지지 않습니다).
-- 파이프라인 맨 뒤라 `template` 산출까지 담을 수 있고, `pack` 으로 만든 필드를 다시 묶는 것은
-  기동에서 막습니다.
+- 파이프라인 맨 뒤라 `template`·`seq`·`llm` 산출까지 담을 수 있고, `pack` 으로 만든 필드를
+  다시 묶는 것은 기동에서 막습니다.
 - `body.fields`/`body.repeat`/`body.once`/`body.mirror_to` 에는 쓸 수 없습니다(기동 실패).
   JSON 덩어리는 청크 본문에 실을 모양이 아닙니다.
+- `kind: rows`/`records` 의 `require.fields`/`filter` 에도 쓸 수 없습니다(기동 실패) —
+  레코드 선별은 묶기보다 먼저 돌아 그 시점에는 값이 없습니다. 선별에는 묶기 전 필드를
+  그대로 씁니다(`kind: sections` 의 `require` 는 묶기 앞이라 해당하지 않습니다).
 - `template` 로도 흉내 낼 수 있어 보이지만 그것은 문자열 치환이라 값에 따옴표·줄바꿈이
   섞이면 깨진 JSON 이 조용히 만들어집니다. 직렬화는 `pack` 이 맡습니다.
 - 필드 **하나**의 모양만 JSON 으로 보장하려면 `pack` 이 아니라 `transform` 의 `to_json` 을

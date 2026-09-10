@@ -134,8 +134,11 @@ fields:
 # ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
 # 행 하나가 청크가 되기까지 이 순서로 처리된다:
 #   alias 원시 매핑 → (merge_rows 가 있으면 연속 행 병합) →
-#   default → const → values → transform → template → pack → from/as → filter → require 검사
+#   default → const → values → transform → template → from/as → filter → require 검사
 #   → seq 번호 부여(걸러진 레코드가 번호를 소비하지 않게 맨 뒤에 붙는다)
+#   → llm 필드 채움 → pack 묶기(값이 다 확정된 뒤라 seq·llm 산출까지 담긴다)
+# pack 은 선별보다 뒤라 `filter`/`require` 로 pack 산출을 고를 수는 없다(기동 실패) —
+# 선별에는 묶기 전 필드를 그대로 쓴다.
 # values 가 transform 보다 먼저 걸린다 — 표기 흔들림을 표준값으로 접은 뒤에 타입 변환을 건다.
 # default 가 빈 값을 채운 **뒤에** const 가 덮어쓴다. 그래서 둘 다 선언했다면 언제나 const 가
 # 이긴다 — `const: ""` 처럼 빈 값으로 못 박은 경우도 마찬가지다(세 kind 가 같은 순서를 쓴다).

@@ -61,7 +61,6 @@ from .custom_fields_enricher import (
 from .field_transforms import VALUE_TRANSFORMS
 from .tabular_custom_fields import (
     apply_derive,
-    apply_pack,
     apply_sequence,
     apply_transforms,
     apply_value_map,
@@ -77,6 +76,7 @@ from .tabular_custom_fields import (
     merge_row_records,
     normalize_column_name,
     passes_filter,
+    repack_records,
     validate_custom_field_config,
 )
 
@@ -721,8 +721,6 @@ class JsonRecordsMapper:
         )
         # 결합은 변환 뒤에 — 정규화된 값으로 합쳐야 표기가 흔들리지 않는다.
         apply_derive(fields, self.derive)
-        # 묶기는 맨 뒤에 — derive 로 만든 필드까지 담을 수 있어야 한다.
-        apply_pack(fields, self.pack)
 
         return fields
 
@@ -798,6 +796,9 @@ class JsonRecordsMapper:
         # 순번은 filter/required 를 통과한 목록에만 매긴다 — 걸러진 레코드가 번호를 소비하면
         # 적재된 값에 구멍이 생긴다(tabular 와 같은 규칙).
         apply_sequence(mapped, self.sequence)
+        # 묶기는 맨 뒤에 — derive 와 sequence 산출까지 담는다. llm_fields 산출은 파서가
+        # 채운 뒤 repack_records 로 한 번 더 걸린다.
+        repack_records(self, mapped)
         return mapped
 
     def build_text(self, fields: dict) -> str:

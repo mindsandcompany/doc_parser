@@ -96,7 +96,8 @@ source:
 #               남고 원천 필드는 그대로 남는다. 본문 관련 키에는 쓸 수 없다
 #
 # 적용 순서는 rows/records 와 같다.
-#   원천값 -> default(빈 값만) -> const(덮어씀) -> values -> transform -> template -> pack
+#   원천값 -> default(빈 값만) -> const(덮어씀) -> values -> transform -> template
+#   -> llm 필드 채움 -> pack 묶기(값이 다 확정된 뒤라 llm 산출까지 담긴다)
 # `require` 검사는 그 **뒤**라, const/template 으로 채운 필드도 정상 통과한다.
 #
 # `from`/`as` 는 이 kind 가 **읽지 않는다**(적으면 기동 시 실패한다).

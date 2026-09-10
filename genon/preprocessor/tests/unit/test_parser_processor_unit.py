@@ -5,6 +5,7 @@ Covers static/pure helpers and __call__ routing logic.
 All external services and file I/O are mocked; no real documents required.
 """
 import asyncio
+import json
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -1008,3 +1009,64 @@ def test_apply_llm_fields_document_scope_routes_from_apply_llm_fields(dp):
 
     assert stub_enricher.calls == 1
     assert len(result) == 3
+
+
+# ─── pack 재적용 — llm_fields 산출도 JSON 한 칸에 담긴다 ──────────────────────
+#
+# 묶기는 "파이프라인 맨 뒤" 라는 계약인데 매퍼의 build_fields 는 llm_fields 보다 먼저
+# 끝난다. 재적용하지 않으면 요약 같은 LLM 산출이 JSON 안에서 영구히 null 로 남고, 문서형
+# (extractor: llm)에서는 LLM 응답이 파이프라인 입력이라 되던 것이 레코드형에서만 조용히
+# 안 되는 비대칭이 된다.
+
+
+class _StubRecordScopeMapper:
+    """레코드 스코프 계약(llm_field_specs)만 흉내 낸 최소 스텁."""
+
+    def __init__(self, llm_field_specs, pack=None):
+        self.llm_field_specs = llm_field_specs
+        self.resource_path = None
+        if pack is not None:
+            self.pack = pack
+
+
+def test_pack_is_reapplied_after_document_scope_llm_fields(dp):
+    mapper = _StubDocumentScopeMapper(llm_field_specs=[_make_llm_field_spec()])
+    mapper.llm_fields_scope = "document"
+    mapper.pack = {"DETAIL_JSON": ["SECTION_NM", "SALE_STATUS"]}
+    dp._llm_field_enricher = MagicMock(return_value=_CountingStubEnricher())
+
+    result = asyncio.run(dp._apply_llm_fields(
+        mapper, [{"SECTION_NM": "섹션0", "DETAIL_JSON": '{"SECTION_NM": "섹션0", "SALE_STATUS": null}'}]
+    ))
+
+    assert json.loads(result[0]["DETAIL_JSON"]) == {
+        "SECTION_NM": "섹션0", "SALE_STATUS": "판매중",
+    }
+
+
+def test_pack_is_reapplied_after_record_scope_llm_fields(dp):
+    mapper = _StubRecordScopeMapper(
+        llm_field_specs=[_make_llm_field_spec()],
+        pack={"DETAIL_JSON": ["PRODUCT_INFO", "SALE_STATUS"]},
+    )
+    dp._llm_field_enricher = MagicMock(return_value=_CountingStubEnricher())
+
+    result = asyncio.run(dp._apply_llm_fields(
+        mapper, [{"PRODUCT_INFO": "상품A"}, {"PRODUCT_INFO": "상품B"}]
+    ))
+
+    assert [json.loads(r["DETAIL_JSON"]) for r in result] == [
+        {"PRODUCT_INFO": "상품A", "SALE_STATUS": "판매중"},
+        {"PRODUCT_INFO": "상품B", "SALE_STATUS": "판매중"},
+    ]
+
+
+def test_pack_absent_mapper_is_untouched(dp):
+    """pack 속성이 없는 매퍼(object.__new__ 로 만든 인스턴스 포함)에서도 견딘다."""
+    mapper = _StubRecordScopeMapper(llm_field_specs=[_make_llm_field_spec()])
+    dp._llm_field_enricher = MagicMock(return_value=_CountingStubEnricher())
+
+    result = asyncio.run(dp._apply_llm_fields(mapper, [{"PRODUCT_INFO": "상품A"}]))
+
+    assert result[0]["SALE_STATUS"] == "판매중"
+    assert "DETAIL_JSON" not in result[0]

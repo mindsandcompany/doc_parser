@@ -133,8 +133,11 @@ fields:
 
 # ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
 #   alias/collect 원시 매핑 → (merge_rows 병합) →
-#   default → const → values → transform → template → pack → from/as → filter → require 검사
+#   default → const → values → transform → template → from/as → filter → require 검사
 #   → seq 번호 부여(걸러진 레코드가 번호를 소비하지 않게 맨 뒤에 붙는다)
+#   → llm 필드 채움 → pack 묶기(값이 다 확정된 뒤라 seq·llm 산출까지 담긴다)
+# pack 은 선별보다 뒤라 `filter`/`require` 로 pack 산출을 고를 수는 없다(기동 실패) —
+# 선별에는 묶기 전 필드를 그대로 쓴다.
 # default 가 빈 값을 채운 뒤에 const 가 덮어쓰므로 둘 다 선언했다면 언제나 const 가 이긴다.
 
 # ── [선택] 필수 목표필드 ────────────────────────────────────────────────────

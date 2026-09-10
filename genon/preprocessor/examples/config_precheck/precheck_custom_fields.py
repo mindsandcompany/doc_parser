@@ -123,6 +123,14 @@ def check_block(source: str, block: dict, root: Path, seen_files: set[str]) -> l
 
     cfg = load_yaml(path)
     label = f"{config_file}"
+    # 없어진 키는 **번역 전** 원본에서 본다. 번역기가 먼저 "모르는 키"로 막아 버리면
+    # 무엇으로 갈아타야 하는지 알려 줄 기회가 사라진다 — 안내가 필요한 쪽은 옛 설정이다.
+    for key, hint in REMOVED_KEYS.items():
+        if key in (cfg or {}):
+            problems.append(f"[기동실패] {label}: `{key}` 는 없어졌습니다 → {hint}.")
+    if problems:
+        return problems
+
     if cfg and not cv2.is_v2(cfg):
         # 폐기된 v1 표기. 기동에서 막히므로 여기서도 같은 판정을 낸다.
         problems.append(
@@ -141,10 +149,6 @@ def check_block(source: str, block: dict, root: Path, seen_files: set[str]) -> l
     diagnosis = cs.diagnose_keys(cfg, extractor)
     if diagnosis:
         problems.append(f"[기동실패] {cs.format_diagnosis(label, diagnosis)}")
-
-    for key, hint in REMOVED_KEYS.items():
-        if key in cfg:
-            problems.append(f"[기동실패] {label}: `{key}` 는 없어졌습니다 → {hint}.")
 
     problems.extend(check_body_label_change(label, cfg))
     return problems

@@ -233,14 +233,14 @@ def test_python_keys_are_declared():
     assert "url" not in keys and "system_prompt" not in keys
 
 
-def test_v2_notation_round_trips():
-    v1 = {"file": "site_extract.py", "callable": "extract",
-          "output_fields": ["CODE"], "constants": {"SRC": "REGEX"}}
-    v2 = cv2.to_v2(v1, "python")
-    assert v2["source"] == {"kind": "document"}
-    assert v2["python"] == {"file": "site_extract.py", "callable": "extract", "out": ["CODE"]}
+def test_v2_notation_normalizes():
+    """`python` 블록과 필드 상수가 내부 형태로 풀리는 자리를 고정한다."""
+    v2 = {"schema": "v2", "source": {"kind": "document"},
+          "python": {"file": "site_extract.py", "callable": "extract", "out": ["CODE"]},
+          "fields": {"SRC": {"const": "REGEX"}}}
     back, _ = cv2.load(dict(v2), label="t")
-    assert back == v1
+    assert back == {"file": "site_extract.py", "callable": "extract",
+                    "output_fields": ["CODE"], "constants": {"SRC": "REGEX"}}
 
 
 def test_v2_rejects_llm_and_python_together():

@@ -3,19 +3,17 @@
 ## 설계 원칙: 파이프라인을 새로 쓰지 않는다
 
 v2 는 매퍼가 읽는 내부 dict 모양을 그대로 만들어 주는 번역기다. 매퍼(tabular/json_records/
-json_semantic/custom_fields_enricher)는 한 줄도 바뀌지 않는다.
+json_semantic/custom_fields_enricher)는 이 내부 형태만 읽는다.
 
-    v2 yaml ──normalize()──► 내부(v1) 형태 ──► 기존 매퍼
-    v1 yaml ────────────────► 내부(v1) 형태 ──► 기존 매퍼   (종전 그대로)
+    yaml ──normalize()──► 내부 형태 ──► 매퍼
 
-이렇게 두면 **동작 동일성이 테스트가 아니라 구조로 보장된다.** 두 스키마가 같은 코드를
-타므로 "v2 로 옮겼더니 청크가 달라졌다"가 원리상 생길 수 없고, 남는 위험은 번역이 틀리는
-것뿐이다. 그건 `to_v2()` → `normalize()` 왕복이 원본과 같은지 대조해 잡는다
-(examples/config_precheck/verify_v2_equivalence.py).
+표기와 내부 형태를 갈라 두면 **설정을 정리해도 파이프라인이 흔들리지 않는다.** 매퍼는
+번역 결과만 보므로, 남는 위험은 번역이 틀리는 것뿐이고 그건 아래 매핑 표 한 벌과
+`COVERED_V1_KEYS` 드리프트 가드가 지킨다.
 
-## 왜 v2 인가
+## 왜 이 표기인가
 
-v1 은 최상위 키가 25개를 넘고, **한 필드의 규칙이 6개 블록에 흩어진다.**
+폐기된 옛 표기는 최상위 키가 25개를 넘고, **한 필드의 규칙이 6개 블록에 흩어졌다.**
 
     column_map:   {SEARCHABLE_YN: [노출여부]}      # 어디서 오는가
     value_map:    {SEARCHABLE_YN: {...}}           # 값을 어떻게 접는가
@@ -73,20 +71,9 @@ BODY_KEYS = frozenset({"fields", "labels", "split", "repeat", "once", "mirror_to
 PRE_KEYS = ("markdown", "html", "delimited")
 REQUIRE_KEYS = frozenset({"fields"})
 
-# ── v2 ↔ 내부(v1) 매핑은 **여기 한 벌만** 둔다 ──────────────────────────────
-# normalize() 와 to_v2() 가 같은 표를 양방향으로 읽는다. 방향마다 표를 따로 두면 한쪽만
-# 고쳐져 "v2 로 옮겼더니 값이 사라지는" 번역 결함이 생기고, 그건 왕복 검증에도 안 잡힌다
-# (양쪽이 똑같이 흘리면 왕복은 통과한다).
-
-# 옛 v1 블록 → 그 일을 대신하는 `transform` 변환기 이름. 두 블록은 "원본은 남기고 평문
-# 사본을 하나 더 만든다" 는 파생 전용 표기였는데, 같은 alias 를 두 필드에 붙이면 같은 일을
-# 하면서 제자리 변환까지 된다. v2 에는 대응 표기가 없고 `to_v2` 만 이 표를 쓴다
-# (v1 설정을 옮길 때 `{목표: {alias: [원천…], transform: <이름>}}` 로 편다).
-_TEXT_FROM_TO_TRANSFORM = {"text_from": "text", "html_text_fields": "html_text"}
-
-# **v1 에만 있던** 키. 어느 매퍼도 더는 읽지 않지만 `to_v2` 는 계속 옮길 수 있어야 한다 —
-# 옮기지 못하면 그 설정은 손으로 고치기 전에는 v2 로 갈 수 없다.
-LEGACY_V1_ONLY_KEYS = frozenset(_TEXT_FROM_TO_TRANSFORM)
+# ── 표기 ↔ 내부 형태 매핑은 **여기 한 벌만** 둔다 ──────────────────────────
+# normalize() 와 COVERED_V1_KEYS 가 같은 표를 읽는다. 표를 두 자리에 두면 한쪽만 고쳐져
+# "설정에 썼는데 값이 사라지는" 번역 결함이 생기고, 드리프트 가드도 함께 눈이 먼다.
 
 # kind 별로 별칭 매핑이 들어가는 v1 키.
 #
@@ -119,7 +106,6 @@ _SPEC_TO_BLOCK = {
     "pack": "pack",
     "raw": "raw_fields",
 }
-_BLOCK_TO_SPEC = {v: k for k, v in _SPEC_TO_BLOCK.items()}
 
 # body 블록 키 → v1 키.
 _BODY_TO_V1 = {
@@ -141,9 +127,7 @@ _SOURCE_TO_V1 = {
 }
 
 # 필드 스펙이 만들 수 있는 모든 v1 블록(왕복 커버리지 계산에 쓴다).
-_FIELD_BLOCKS = (
-    set(_SPEC_TO_BLOCK.values()) | set(_ALIAS_BLOCK.values()) | set(_TEXT_FROM_TO_TRANSFORM)
-)
+_FIELD_BLOCKS = set(_SPEC_TO_BLOCK.values()) | set(_ALIAS_BLOCK.values())
 
 
 class ConfigV2Error(ValueError):
@@ -191,7 +175,7 @@ def _suggest(key: str, allowed) -> str:
 
 
 def normalize(cfg: dict, *, label: str = "custom_fields") -> tuple[dict, str]:
-    """v2 설정 → `(내부(v1) 형태 dict, extractor 이름)`.
+    """v2 설정 → `(내부 형태 dict, extractor 이름)`.
 
     이 함수의 출력은 기존 매퍼가 읽는 것과 **완전히 같은 모양**이어야 한다. 새 의미를
     만들지 않는다 — v2 는 표기만 다르다.
@@ -394,20 +378,8 @@ def _flatten_llm_item(item: dict, where: str) -> dict:
     return flat
 
 
-# ── v1 → v2 (마이그레이션 + 병행 검증) ──────────────────────────────────────
-# `normalize()` 의 역방향. 이 둘의 왕복이 원본과 같아야 v2 가 v1 을 온전히 표현한다는 뜻이다.
-
-_EXTRACTOR_TO_KIND = {v: k for k, v in KIND_TO_EXTRACTOR.items()}
-# python 은 llm 과 같은 자리(문서 단위)의 다른 선택지라 kind 가 같다. 위 표를 뒤집는
-# 것만으로는 안 나오므로 여기서 더한다 — kind→extractor 는 여전히 llm 하나로 유지한다
-# (등록 블록의 extractor 가 둘을 가른다).
-_EXTRACTOR_TO_KIND["python"] = "document"
-# v1 블록 → v2 필드 스펙 키. 위 단일 표에서 파생한다(직접 적지 않는다).
-_BLOCK_TO_SPEC_KEY = {
-    **{block: "alias" for block in _ALIAS_BLOCK.values()},
-    **_BLOCK_TO_SPEC,
-}
-# v1 의 llm 문서형 최상위 키 → v2 llm 항목 안에서의 자리.
+# llm 문서형 설정의 최상위 키 → llm 항목 안에서의 자리. 지금은 아래 커버리지 집합만
+# 이 표를 읽는다 — 새 llm 키를 코드에 더하면 여기에도 넣어야 드리프트 검사가 잡는다.
 _LLM_ENDPOINT_KEYS = ("url", "api_key", "model")
 _LLM_PARAM_KEYS = ("max_tokens", "temperature", "timeout", "thinking", "thinking_dialect")
 _LLM_PROMPT_KEYS = {
@@ -415,156 +387,6 @@ _LLM_PROMPT_KEYS = {
     "system_prompt_file": "system_file", "user_prompt_file": "user_file",
     "variables": "variables",
 }
-
-
-def _carry_derived_into_merge(source: dict, derived_from: dict[str, str]) -> None:
-    """옛 파생 필드를 `merge_rows.concat` 에도 따라 넣는다.
-
-    옛 표기에서 파생 필드는 값 파이프라인 **뒤**에 만들어졌으므로 병합이 끝난 값을 봤다.
-    새 표기에서는 원천을 직접 읽는 보통 필드라, 원천이 여러 행에 쪼개져 오는 스키마
-    (`merge_rows`)에서는 원본과 **함께** 이어붙이지 않으면 첫 조각만 남은 채로 변환된다.
-    옮기는 쪽이 원본·파생 관계를 알고 있으므로 여기서 채운다 — 사람이 놓치기 가장 쉬운 곳이다.
-    """
-    merge = source.get("merge_rows")
-    if not derived_from or not isinstance(merge, dict):
-        return
-    concat = list(merge.get("concat") or [])
-    added = [t for t, src in derived_from.items() if src in concat and t not in concat]
-    if added:
-        source["merge_rows"] = {**merge, "concat": concat + added}
-
-
-def to_v2(cfg: dict, extractor: str) -> dict:
-    """v1 설정 → v2 설정. 값은 그대로 옮기고 자리만 바꾼다."""
-    kind = _EXTRACTOR_TO_KIND.get(str(extractor or "llm").strip().lower())
-    if kind is None:
-        raise ConfigV2Error(f"v2 로 옮길 수 없는 extractor: {extractor}")
-
-    out: dict[str, Any] = {SCHEMA_KEY: SCHEMA_V2, "source": {"kind": kind}}
-    fields: dict[str, dict] = {}
-
-    for v1_key, spec_key in _BLOCK_TO_SPEC_KEY.items():
-        for target, value in (cfg.get(v1_key) or {}).items():
-            fields.setdefault(str(target), {})[spec_key] = value
-    # 옛 파생 블록은 "원천 alias 를 한 번 더 붙이고 transform 을 건다" 로 편다. `from` 은
-    # 목표필드를 가리켰으므로 그 목표필드의 alias 를 그대로 가져온다.
-    alias_block = _ALIAS_BLOCK.get(kind)
-    derived_from: dict[str, str] = {}
-    for v1_key, transform_name in _TEXT_FROM_TO_TRANSFORM.items():
-        for target, source_field in (cfg.get(v1_key) or {}).items():
-            spec = fields.setdefault(str(target), {})
-            spec["transform"] = transform_name
-            source_alias = (
-                (cfg.get(alias_block) or {}).get(str(source_field)) if alias_block else None
-            )
-            if source_alias is None:
-                raise ConfigV2Error(
-                    f"{v1_key}.{target} 의 원천 '{source_field}' 을 {alias_block} 에서 찾지 "
-                    f"못했습니다 — v2 는 파생 블록 대신 같은 alias 를 두 필드에 붙여 표현합니다."
-                )
-            spec["alias"] = list(source_alias)
-            derived_from[str(target)] = str(source_field)
-    if fields:
-        out["fields"] = fields
-
-    source = out["source"]
-    for v2_key, (v1_key, _kinds) in _SOURCE_TO_V1.items():
-        if cfg.get(v1_key) is not None:
-            source[v2_key] = cfg[v1_key]
-    _carry_derived_into_merge(source, derived_from)
-    pre = {k: cfg[k] for k in PRE_KEYS if cfg.get(k) is not None}
-    if pre:
-        source["pre"] = pre
-
-    if cfg.get("filter") is not None:
-        out["filter"] = cfg["filter"]
-
-    required = cfg.get("required_shared_fields") if kind == "sections" else cfg.get("required")
-    if required:
-        out["require"] = {"fields": required}
-
-    body = {}
-    for v2_key, v1_key in _BODY_TO_V1.items():
-        if cfg.get(v1_key) is not None:
-            body[v2_key] = cfg[v1_key]
-    if body:
-        out["body"] = body
-
-    # 값을 만드는 주체가 고객 함수면 llm 항목 대신 python 블록으로 나간다.
-    is_python = bool(cfg.get("file"))
-    if is_python:
-        python_block = {"file": cfg["file"]}
-        if cfg.get("callable"):
-            python_block["callable"] = cfg["callable"]
-        if cfg.get("output_fields"):
-            python_block["out"] = cfg["output_fields"]
-        out["python"] = python_block
-
-    llm = []
-    if kind == "document" and not is_python:
-        document_item = _document_llm_item(cfg)
-        if document_item:
-            llm.append(document_item)
-    for spec in (cfg.get("llm_fields") or []):
-        llm.append(_record_llm_item(spec))
-    if llm:
-        out["llm"] = llm
-
-    # 남은 키는 v2 가 아직 표현하지 못하는 것이다 — 조용히 버리면 왕복 검증이 통과해 버린다.
-    covered = COVERED_V1_KEYS
-    leftover = sorted(k for k in cfg if str(k) not in covered)
-    if leftover:
-        raise ConfigV2Error(f"v2 로 옮기지 못한 키가 있습니다: {leftover}")
-    return out
-
-
-def _document_llm_item(cfg: dict) -> dict:
-    """문서형 v1 최상위 키를 v2 llm 항목 하나로 묶는다."""
-    item: dict[str, Any] = {}
-    endpoint = {k: cfg[k] for k in _LLM_ENDPOINT_KEYS if k in cfg}
-    params = {k: cfg[k] for k in _LLM_PARAM_KEYS if k in cfg}
-    prompt = {v2: cfg[v1] for v1, v2 in _LLM_PROMPT_KEYS.items() if v1 in cfg}
-    if isinstance(cfg.get("template"), dict) and "mode" in cfg["template"]:
-        prompt["mode"] = cfg["template"]["mode"]
-    if cfg.get("output_fields") is not None:
-        item["out"] = cfg["output_fields"]
-    for key in ("parser", "pages", "table_text_description"):
-        if cfg.get(key) is not None:
-            item[key] = cfg[key]
-    if endpoint:
-        item["endpoint"] = endpoint
-    if params:
-        item["params"] = params
-    if prompt:
-        item["prompt"] = prompt
-    return item
-
-
-def _record_llm_item(spec: dict) -> dict:
-    """`llm_fields` 항목 하나 → v2 llm 항목(scope: record)."""
-    item: dict[str, Any] = {}
-    endpoint = {k: spec[k] for k in _LLM_ENDPOINT_KEYS if k in spec}
-    params = {k: spec[k] for k in _LLM_PARAM_KEYS if k in spec}
-    prompt = {v2: spec[v1] for v1, v2 in _LLM_PROMPT_KEYS.items() if v1 in spec}
-    if spec.get("output_fields") is not None:
-        item["out"] = spec["output_fields"]
-    if spec.get("input_fields") is not None:
-        item["in"] = spec["input_fields"]
-    for key, value in spec.items():
-        if key in _LLM_ENDPOINT_KEYS or key in _LLM_PARAM_KEYS or key in _LLM_PROMPT_KEYS:
-            continue
-        if key in ("output_fields", "input_fields", "template"):
-            continue
-        item[key] = value
-    if isinstance(spec.get("template"), dict) and "mode" in spec["template"]:
-        prompt["mode"] = spec["template"]["mode"]
-    if endpoint:
-        item["endpoint"] = endpoint
-    if params:
-        item["params"] = params
-    if prompt:
-        item["prompt"] = prompt
-    return item
 
 
 def load(loaded: dict, *, label: str) -> tuple[dict, str | None]:

@@ -197,7 +197,7 @@ def test_non_integer_width_fails_at_startup(tmp_path):
         """)
 
 
-def test_v2_seq_normalizes_and_round_trips():
+def test_v2_seq_normalizes():
     v2 = {
         "schema": "v2",
         "source": {"kind": "rows"},
@@ -209,9 +209,6 @@ def test_v2_seq_normalizes_and_round_trips():
     v1, extractor = config_v2.normalize(v2, label="t")
     assert extractor == "tabular_mapping"
     assert v1["sequence"] == {"ROW_NO": {"prefix": "FAQ-", "width": 4}}
-    assert config_v2.to_v2(v1, "tabular_mapping")["fields"]["ROW_NO"] == {
-        "seq": {"prefix": "FAQ-", "width": 4}
-    }
 
 
 def test_seq_on_a_document_kind_fails_at_startup():

@@ -56,6 +56,20 @@ source:
   # error(기본) = 즉시 실패 / skip = 경고 후 0건
   # on_missing: skip
 
+  # ── [선택] 원천이 JSON 이 아니라 **구분자 텍스트**일 때 ────────────────────
+  # `pre.delimited` 를 적으면 원천을 줄 단위로 읽어 레코드 목록으로 바꾼 뒤, 아래
+  # `fields` 매핑을 그대로 태운다(파일을 통째로 메모리에 올리지 않는다).
+  # `columns` 순서가 곧 원천 각 줄의 필드 순서이고, 그 이름이 `fields.<목표>.alias` 가
+  # 찾는 key 이름이 된다. `source.pre` 아래 블록 중 이것만 kind: records 전용이다
+  # (`markdown`·`html` 은 반대로 document 전용이며 여기 적으면 조용히 무시된다).
+  # pre:
+  #   delimited:
+  #     separator: "|@|"                     # [필수] 필드 구분자. 여러 글자도 된다
+  #     columns: [대분류, 중분류, 제목, 내용]  # [필수] 줄에 오는 순서대로 이름을 적는다
+  #     quote: '"'                           # 기본값. 구분자를 품은 값을 감싸는 글자 1개
+  #     encoding: utf-8                      # 생략 시 utf-8-sig → utf-8 → cp949 자동 판정
+  #     skip_header: false                   # 기본값. 첫 줄이 헤더면 true
+
   # ── [선택] 여러 레코드에 걸쳐 쪼개진 값을 한 건으로 접기 ──────────────────
   # rows 의 merge_rows 와 같은 구현·같은 규칙이다. group_by 가 같은 **연속** 레코드만
   # 한 묶음으로 접는다. 병합은 값 변환·파생 필드보다 **먼저** 돈다 — 조각마다 transform 이
@@ -83,7 +97,9 @@ source:
 #                배열을 body.fields 에 그대로 쓰면 항목이 `, ` 로 이어져 실린다.
 #   const      : 원천 값이 있어도 덮어쓴다(파일 단위로 고정인 값)
 #   default    : 원천 값이 None·"" 일 때만 채운다. `null` 로 두면 매핑 없이 스키마만 고정
-#   values     : 값의 표기 흔들림을 표준 코드로 접는다. 매핑표에 없는 값은 원값을 두고 경고만
+#   values     : 값의 표기 흔들림을 표준 코드로 접는다. 매핑표에 없는 값은 원값을 두고 경고만.
+#                별칭에 영문 `yes`/`no`/`on`/`off` 를 쓸 때는 **따옴표로 감싼다** — YAML 이
+#                참/거짓으로 바꿔 버려 원천의 "yes" 와 영영 안 맞는다(`Y`/`N` 은 그대로다)
 #   transform  : 값 변환. 이름 하나 또는 목록(순서대로 적용). 아래 [변환기] 참고
 #   template   : 여러 필드를 합쳐 새 필드를 만든다(`{{목표필드}}`). 변환 뒤에 돈다
 #   pack       : 여러 필드를 **JSON 한 칸**에 담는다(`[FIELD_A, FIELD_B]` →
@@ -173,7 +189,9 @@ fields:
 # labels  : 본문 필드를 `항목명: 값` 으로 낸다. **사람이 검색어로 쓰는 말**을 적는다.
 #           records 는 원천 key 가 시스템 이름(`depth4`·`htmlText`)이라 **폴백이 없다** —
 #           여기 적은 필드만 항목명과 함께 나가고, 없으면 값만 나간다.
-#           값에 줄바꿈이 있는 블록에는 붙지 않는다(그 블록은 이미 자기 제목을 갖는다).
+#           여기 적어 준 이름은 값이 여러 줄이어도 붙는다 — 다만 표가 깨지지 않게
+#           `항목명:` 만 한 줄로 앞세우고 값은 다음 줄부터 낸다. (여러 줄 값에 이름이
+#           안 붙는 것은 `alias` 폴백뿐이고, records 에는 그 폴백 자체가 없다.)
 # split   : true 면 본문이 chunk_size 를 넘을 때 여러 청크로 나눈다(metadata 는 조각마다 동일).
 #           미지정(기본 false) = 레코드 1건이 항상 청크 1개.
 # repeat  : 분할된 모든 청크 앞에 반복할 식별 필드. `split: true` 일 때만 유효하다.
@@ -187,6 +205,7 @@ body:
 
 # ── [선택] 원천에 없는 필드를 레코드마다 LLM 으로 생성 ──────────────────────
 # 레코드 1건당 LLM 1회 호출이다. 호출 단위는 `source.kind` 가 정한다 — `scope` 를 적지 않는다.
+# 블록 자체는 선택이지만 **쓰기로 했다면 `out` 과 `in` 은 둘 다 필수**다(비우면 기동 실패).
 #
 # out 의 이름은 프롬프트가 내놓는 JSON 키와 **정확히 같아야** 한다.
 #    어긋나면 에러 없이 값이 null 로 채워진다.
@@ -194,7 +213,8 @@ body:
 #    적재용(intelligent)/변환용(convert) 설정에 넣으면 **경고도 없이 아무 일도 일어나지 않는다.**
 # llm:
 #   - out: [<GENERATED_FIELD>]
-#     in:  [<TARGET_FIELD_1>]               # 프롬프트 {{raw_text}} 로 넣을 필드(선언 순서대로 결합)
+#     in:  [<TARGET_FIELD_1>]               # [필수] 프롬프트 {{raw_text}} 로 넣을 필드
+#                                           #        (선언 순서대로 결합)
 #     concurrency: 4                        # 레코드 동시 호출 상한(기본 4)
 #     on_error: null                        # null(해당 필드만 null) | skip_record
 #     parser: {type: json}
@@ -238,7 +258,10 @@ body:
 #
 #  실패시킨다(요청 전에 바로 안다)
 #   · **이 kind 가 읽지 않는 키를 적은 경우.** 어느 스키마에도 없는 키(오타)는 가장 가까운
-#     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다.
+#     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다. 지원 키 매트릭스는
+#     facade/gitbook_doc/parser_processor.md 에 있다.
+#     records 가 **읽지 않는** 대표 키는 아래와 같다(다른 템플릿에서 옮겨 적으면 안 된다).
+#       body.once · body.mirror_to · source.sections · source.ignore_keys
 #   · `fields` 의 값이 object 가 아닌 경우(값을 빠뜨린 오타 포함)
 #   · 목표필드명이 벡터 예약 필드(text·title·n_char·i_page·created_date·appendix …)와
 #     겹치거나 property 이름 규칙 `/[_A-Za-z][_0-9A-Za-z]*/` 을 벗어난 경우
@@ -256,6 +279,13 @@ body:
 #
 #  못 잡는다(아래 "확인 방법"으로 직접 봐야 한다)
 #   · alias 가 원천과 어긋나 값이 전부 비는 경우
+#   · `source.pre.markdown`/`.html` 을 이 kind 에 적은 경우 — document 전용이라
+#     기동은 통과하고 **조용히 무시된다**(이 kind 가 쓰는 것은 `pre.delimited` 다)
+#
+#  오류 메시지는 설정에 적는 이름이 아니라 **내부 이름**으로 나온다
+#   (`body.repeat`→`chunk_prefix_fields`, `body.fields`→`text_fields`,
+#    `values`→`value_map`, `require.fields`→`required`, `seq`→`sequence` …).
+#   못 보던 이름이 나오면 facade/gitbook_doc/parser_processor.md 의 매트릭스에서 되짚는다.
 #
 # ═══════════════════════════════════════════════════════════════════════════
 #  확인 방법

@@ -100,6 +100,8 @@ source:
 #   const     : 원천 값과 무관하게 항상 같은 값(파일 단위로 고정일 때만)
 #   default   : 원천 값이 없거나 빈 문자열일 때만 채운다
 #   values    : 코드값·표기 흔들림을 표준값으로 접는다 (`ON_SALE: ["1", Y, 판매중]`)
+#               별칭에 영문 `yes`/`no`/`on`/`off` 를 쓸 때는 **따옴표로 감싼다** — YAML 이
+#               참/거짓으로 바꿔 버려 원천의 "yes" 와 영영 안 맞는다(`Y`/`N` 은 그대로다)
 #   transform : 값 변환 체인 (`[{name: regex_sub, pattern: "[^0-9]"}, {name: to_int}]`)
 #               적재 DB 의 JSON 컬럼에 넣을 필드는 `[{name: to_json}]` 을 맨 뒤에 건다
 #   raw       : 원천의 객체를 값으로 받는다(기본은 구조로 보고 파고들어 null 이 된다).
@@ -183,6 +185,8 @@ fields:
 # 호출 횟수는 **문서(파일) 1건당 1회**다 — 섹션/청크 개수와 무관하고, 결과가 그 파일의 모든
 # 섹션에 같은 값으로 복사된다. 호출 단위는 `source.kind` 가 정하므로 `scope` 를 적지 않는다.
 #
+# 블록 자체는 선택이지만 **쓰기로 했다면 `out` 과 `in` 은 둘 다 필수**다(비우면 기동 실패).
+#
 # `in` 에는 세 가지를 쓸 수 있다.
 #   · `fields` 의 목표필드명 (`PRODUCT_NM` …)   — 짧은 사실값
 #   · `PRODUCT_INFO`                             — 문서 전체(모든 섹션 본문을 이어붙인 것)
@@ -204,7 +208,7 @@ fields:
 # `out` 의 이름은 프롬프트가 내놓는 JSON 키와 **정확히 같아야** 한다 — 어긋나면 에러 없이 null.
 # llm:
 #   - out: [<GENERATED_FIELD>]
-#     in:  [feeUrl]                           # 필요한 부분만 — 문서 전체는 PRODUCT_INFO
+#     in:  [feeUrl]                           # [필수] 필요한 부분만 — 문서 전체는 PRODUCT_INFO
 #     parser: {type: json}
 #     # <ENRICHMENT_SERVING_ID>: Genos에 등록한 모델서빙 ID 로 변경. api_key 도 배포 시 설정.
 #     endpoint:
@@ -245,8 +249,9 @@ fields:
 #
 #  실패시킨다(요청 전에 바로 안다)
 #   · **이 kind 가 읽지 않는 키를 적은 경우.** 어느 스키마에도 없는 키(오타)는 가장 가까운
-#     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다.
-#     sections 가 **읽지 않는** 대표 키는 아래와 같다.
+#     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다. 지원 키 매트릭스는
+#     facade/gitbook_doc/parser_processor.md 에 있다.
+#     sections 가 **읽지 않는** 대표 키는 아래와 같다(다른 템플릿에서 옮겨 적으면 안 된다).
 #       body.split · body.repeat · body.mirror_to
 #       필드 스펙의 collect · seq
 #       filter · source.records_at · source.merge_rows
@@ -268,6 +273,13 @@ fields:
 #     (그 필드는 identity 확정 시점에 항상 비어 있어 on_missing 대로 전건이 걸러진다)
 #   · alias 가 원천과 어긋나 값이 전부 비는 경우
 #   · `sections`·`ignore_keys` 의 key 이름 오타 — 원천에 없는 이름이라 아무 일도 일어나지 않는다
+#   · `source.pre` 를 이 kind 에 적은 경우 — 기동은 통과하고 **조용히 무시된다**
+#     (`markdown`·`html` 은 document 전용, `delimited` 는 records 전용이다)
+#
+#  오류 메시지는 설정에 적는 이름이 아니라 **내부 이름**으로 나온다
+#   (`body.fields`→`text_fields`, `body.once`→`first_chunk_fields`, `values`→`value_map`,
+#    `require.fields`→`required_shared_fields`, `seq`→`sequence`, `raw`→`raw_fields` …).
+#   못 보던 이름이 나오면 facade/gitbook_doc/parser_processor.md 의 매트릭스에서 되짚는다.
 #
 # ═══════════════════════════════════════════════════════════════════════════
 #  확인 방법

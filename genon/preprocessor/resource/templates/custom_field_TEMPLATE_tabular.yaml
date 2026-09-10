@@ -74,6 +74,8 @@ source:
 #   values     : **값**의 표기 흔들림을 표준 코드로 접는다. `표준값: [별칭…]` 형태다.
 #                표준값 자신도 자동 별칭이라 이미 코드로 오는 원천은 그대로 통과한다.
 #                매핑표에 없는 값은 원값을 두고 경고만 남긴다(조용히 null 로 바꾸지 않는다)
+#                별칭에 영문 `yes`/`no`/`on`/`off` 를 쓸 때는 **따옴표로 감싼다** — YAML 이
+#                참/거짓으로 바꿔 버려 원천의 "yes" 와 영영 안 맞는다(`Y`/`N` 은 그대로다)
 #   transform  : 값 변환. 이름 하나 또는 목록(순서대로 적용). 아래 [변환기] 참고
 #   template   : 여러 필드를 합쳐 새 필드를 만든다. `{{목표필드}}` 를 값으로 채우고,
 #                값이 없는 자리는 지우고 양끝 공백을 다듬는다. 변환 뒤에 돈다
@@ -183,7 +185,10 @@ fields:
 #             검색어에 안 나오므로 그대로 노출하면 임베딩에 잡음만 는다.
 #             미지정 시 `alias` 첫 값을 항목명으로 쓴다(엑셀 헤더는 사람이 읽는 말이므로).
 #             alias 가 없는 필드(const·template·llm 산출)는 **이름이 없으면 값만** 나간다.
-#             값에 줄바꿈이 있는 블록에는 붙지 않는다 — 그 블록은 이미 자기 제목을 갖고 있다.
+#             여기 **적어 준** 이름은 값이 여러 줄이어도 붙는다 — 다만 표가 깨지지 않게
+#             `항목명:` 만 한 줄로 앞세우고 값은 다음 줄부터 낸다.
+#             `alias` 첫 값으로 폴백한 이름만 여러 줄 값에 붙지 않는다(원천 헤더가 그
+#             블록을 설명한다는 근거가 사람이 적어 준 이름만큼 강하지 않아서다).
 # split     : true 면 행 본문이 chunk_size 를 넘을 때 여러 청크로 나눈다(metadata 는 동일).
 #             미지정(기본 false) = 행 1개가 항상 청크 1개.
 # repeat    : 분할된 모든 청크 앞에 반복할 식별 필드. `split: true` 일 때만 유효하다.
@@ -199,6 +204,7 @@ body:
 # ── [선택] 원천에 없는 필드를 행마다 LLM 으로 생성 ──────────────────────────
 # 행 1건당 LLM 1회 호출이다. 행이 많으면 비용·시간이 그만큼 늘어난다.
 # 호출 단위는 `source.kind` 가 정한다 — `scope` 를 적지 않는다.
+# 블록 자체는 선택이지만 **쓰기로 했다면 `out` 과 `in` 은 둘 다 필수**다(비우면 기동 실패).
 #
 # out 의 이름은 프롬프트가 내놓는 JSON 키와 **정확히 같아야** 한다.
 #    어긋나면 에러 없이 값이 null 로 채워진다.
@@ -206,7 +212,8 @@ body:
 #    LLM 호출 자리가 없어 기동 시 경고만 남기고 이 필드는 비어서 나온다.
 # llm:
 #   - out: [<GENERATED_FIELD>]              # 만들 필드
-#     in:  [<TARGET_FIELD_1>]               # 프롬프트 {{raw_text}} 로 넣을 필드(선언 순서대로 결합)
+#     in:  [<TARGET_FIELD_1>]               # [필수] 프롬프트 {{raw_text}} 로 넣을 필드
+#                                           #        (선언 순서대로 결합)
 #     concurrency: 4                        # 행 동시 호출 상한(기본 4)
 #     on_error: null                        # null(해당 필드만 null 로 두고 진행) | skip_record
 #     parser: {type: json}                  # 응답에서 JSON 객체를 찾아 dict 로
@@ -254,8 +261,12 @@ body:
 #
 #  실패시킨다(요청 전에 바로 안다)
 #   · **이 kind 가 읽지 않는 키를 적은 경우.** 어느 스키마에도 없는 키(오타)는 가장 가까운
-#     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다. 지원 키 목록은
-#     facade/enrichment/config_v2.py 와 config_schema.py 에 있다.
+#     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다. 지원 키 매트릭스는
+#     facade/gitbook_doc/parser_processor.md 에 있다.
+#     rows 가 **읽지 않는** 대표 키는 아래와 같다(다른 템플릿에서 옮겨 적으면 안 된다).
+#       body.once · body.mirror_to
+#       필드 스펙의 collect · raw
+#       source.records_at · source.sections · source.ignore_keys
 #   · `fields` 의 값이 object 가 아닌 경우(`<TARGET>:` 처럼 값을 빠뜨린 오타 포함)
 #   · 목표필드명이 벡터 예약 필드(text·title·n_char·i_page·created_date·appendix …)와
 #     겹치거나 property 이름 규칙 `/[_A-Za-z][_0-9A-Za-z]*/` 을 벗어난 경우(한글·공백·기호)
@@ -272,6 +283,13 @@ body:
 #
 #  못 잡는다(아래 "확인 방법"으로 직접 봐야 한다)
 #   · 별칭이 원천과 어긋나 값이 전부 비는 경우
+#   · `source.pre` 를 이 kind 에 적은 경우 — 기동은 통과하고 **조용히 무시된다**
+#     (`markdown`·`html` 은 document 전용, `delimited` 는 records 전용이다)
+#
+#  오류 메시지는 설정에 적는 이름이 아니라 **내부 이름**으로 나온다
+#   (`body.repeat`→`chunk_prefix_fields`, `body.fields`→`text_fields`,
+#    `values`→`value_map`, `require.fields`→`required`, `seq`→`sequence` …).
+#   못 보던 이름이 나오면 facade/gitbook_doc/parser_processor.md 의 매트릭스에서 되짚는다.
 #
 # ═══════════════════════════════════════════════════════════════════════════
 #  확인 방법

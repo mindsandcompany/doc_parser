@@ -93,9 +93,46 @@ def matches_doc_type(configured: Any, runtime: Any) -> bool:
     return normalize_doc_type(runtime) in configured_types
 
 
+def _derive_extractor(config_file: str, resource_path: str | None) -> str | None:
+    """config_file 의 `source.kind` 에서 extractor 를 유도한다(못 하면 None).
+
+    설정을 읽을 수 없거나 v2 표기가 아니면 None 이다 — 그 오류는 매퍼·enricher 생성
+    시점에 제대로 보고된다. 여기는 빌더가 "내가 처리할 설정인가"를 고르는 필터라, 한
+    문서유형의 설정 오류로 다른 문서유형까지 기동을 못 하면 안 된다.
+
+    캐시를 두지 않는다 — 호출부는 전부 기동 시 빌더이고(프로세서 `__init__` 계열),
+    같은 파일을 캐시 없이 다시 읽는 `resolve_child_cfg` 가 이미 같은 경로에 있다.
+    """
+    if not config_file:
+        return None
+    from . import config_v2 as cv2
+
+    try:
+        loaded = load_custom_fields_config(config_file, resource_path)
+        _internal, extractor = cv2.load(loaded, label=f"custom_fields({config_file})")
+    except Exception:  # noqa: BLE001 - 어떤 실패든 "유도 못 함"으로 흡수한다
+        return None
+    return extractor
+
+
 def custom_fields_extractor(config: dict) -> str:
-    """custom_fields 추출기 종류. 기존 설정은 llm으로 하위 호환한다."""
-    return str((config or {}).get("extractor") or "llm").strip().lower()
+    """custom_fields 추출기 종류.
+
+    등록 블록에 `extractor` 가 없으면 `config_file` 의 `source.kind` 에서 유도한다.
+    같은 정보를 두 파일에 적게 하면 어긋날 수 있고, 어긋나면 "이 extractor 가 읽지 않는
+    키" 라는 엉뚱한 메시지로 기동이 실패한다 — 설정에 그 키를 적은 적이 없는데도 그렇다.
+    적어 둔 값이 있으면 그대로 쓴다(기존 설정 37건이 전부 적고 있다).
+    유도도 못 하면 종전대로 llm 으로 하위 호환한다.
+    """
+    config = config or {}
+    written = str(config.get("extractor") or "").strip().lower()
+    if written:
+        return written
+    derived = _derive_extractor(
+        str(config.get("config_file") or ""),
+        str(config.get("resource_path") or "") or None,
+    )
+    return derived or "llm"
 
 
 def resolve_custom_fields_config_path(
@@ -244,7 +281,12 @@ def build_document_custom_fields_enrichers(configs: list[dict]) -> list["CustomF
         if extractor not in SUPPORTED_CUSTOM_FIELD_EXTRACTORS:
             raise ValueError(f"지원하지 않는 custom_fields extractor: {extractor}")
         if extractor in DOCUMENT_CUSTOM_FIELD_EXTRACTORS:
-            enrichers.append(CustomFieldsEnricher(**_enricher_kwargs(config)))
+            # 판정한 extractor 를 생성자까지 넘긴다. 필터에만 쓰면 등록 블록이 값을
+            # 생략했을 때 생성자 기본값(llm)으로 지원키를 대조해, python 설정이
+            # `file`/`callable` 때문에 기동에서 막힌다 — 유도가 절반만 듣는 자리다.
+            enrichers.append(
+                CustomFieldsEnricher(**{**_enricher_kwargs(config), "extractor": extractor})
+            )
     return enrichers
 
 

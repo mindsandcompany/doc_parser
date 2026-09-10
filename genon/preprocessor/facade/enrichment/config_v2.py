@@ -69,6 +69,12 @@ SOURCE_KEYS = frozenset({
 BODY_KEYS = frozenset({"fields", "labels", "split", "repeat", "once", "mirror_to"})
 # source.pre 아래 쓸 수 있는 원천 포맷 전처리 블록(파서가 소비한다).
 PRE_KEYS = ("markdown", "html", "delimited")
+# `pre` 바로 아래 쓸 수 있는 공통 스위치. **md 와 html 이 판정 규칙을 공유하는 것만** 여기
+# 둔다 — 같은 값을 두 블록에 두 번 적게 하지 않기 위해서다(개념 수를 늘리지 않는다).
+# 아래 블록에 같은 키를 명시하면 그쪽이 이긴다.
+PRE_SHARED_KEYS = ("marker_headings",)
+# 공통 스위치를 펼칠 대상. delimited 는 원천을 레코드로 바꾸는 별개 기구라 받지 않는다.
+_PRE_SHARED_TARGETS = ("markdown", "html")
 REQUIRE_KEYS = frozenset({"fields"})
 
 # ── 표기 ↔ 내부 형태 매핑은 **여기 한 벌만** 둔다 ──────────────────────────
@@ -190,6 +196,12 @@ def normalize(cfg: dict, *, label: str = "custom_fields") -> tuple[dict, str]:
             f"{label}: source.kind 는 {sorted(KIND_TO_EXTRACTOR)} 중 하나여야 합니다: {kind!r}"
         )
     extractor = KIND_TO_EXTRACTOR[kind]
+    # 문서형만 값을 만드는 주체가 둘이다(LLM / 고객 파이썬 함수). kind 로는 갈리지 않으므로
+    # `python:` 블록 유무로 정한다. 이 갈래가 없으면 파생값이 항상 llm 이라, python 설정이
+    # "이 extractor 가 읽지 않는 키: file, callable" 로 막힌다 — 설정에 적은 이름은
+    # `python.file` 인데 메시지에는 없는 이름이 나와 역추적이 안 됐다.
+    if kind == "document" and cfg.get("python") is not None:
+        extractor = "python"
     out: dict[str, Any] = {}
 
     _normalize_source(source, kind, out, label)
@@ -226,10 +238,21 @@ def _normalize_source(source: dict, kind: str, out: dict, label: str) -> None:
     if pre:
         # 원천 포맷 전처리는 enricher 가 아니라 parser 가 소비한다. 내부 형태에서는 최상위
         # `markdown:`/`html:` 이므로 그대로 되돌린다(WIRING_KEYS 라 검증기도 허용한다).
-        _check_unknown(pre, PRE_KEYS, label, "source.pre")
+        _check_unknown(
+            pre, frozenset(PRE_KEYS) | frozenset(PRE_SHARED_KEYS), label, "source.pre"
+        )
+        shared = {k: pre[k] for k in PRE_SHARED_KEYS if pre.get(k) is not None}
         for key in PRE_KEYS:
-            if pre.get(key) is not None:
-                out[key] = pre[key]
+            block = pre.get(key)
+            if key not in _PRE_SHARED_TARGETS or not shared:
+                if block is not None:
+                    out[key] = block
+                continue
+            if block is not None and not isinstance(block, dict):
+                out[key] = block  # `markdown: false` 같은 비-dict 표기는 그대로 둔다
+                continue
+            # 세밀한 지정이 뭉뚱그린 지정을 덮는다 — 그 반대는 예측하기 어렵다.
+            out[key] = {**shared, **(block or {})}
 
 
 def _normalize_fields(fields: Any, kind: str, out: dict, label: str) -> None:

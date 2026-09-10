@@ -8,7 +8,11 @@ import textwrap
 import pytest
 import yaml
 
+from genon.preprocessor.facade.enrichment import config_schema as cs
 from genon.preprocessor.facade.enrichment import config_v2 as cv2
+from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+    custom_fields_extractor,
+)
 from genon.preprocessor.facade.enrichment.tabular_custom_fields import (
     TabularCustomFieldsMapper,
 )
@@ -132,6 +136,178 @@ def test_mapping_tables_are_single_source():
     assert set(cv2._SOURCE_TO_V1) | {"kind", "table_at", "pre"} == cv2.SOURCE_KEYS
 
 
+# ── extractor 유도 ──────────────────────────────────────────────────────────
+
+def _write(tmp_path, name, text):
+    path = tmp_path / name
+    path.write_text(textwrap.dedent(text), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("kind, body, expected", [
+    ("rows", "fields: {A: {alias: [a]}}\nbody: {fields: [A]}", "tabular_mapping"),
+    ("records", "fields: {A: {alias: [a]}}\nbody: {fields: [A]}", "json_mapping"),
+    ("sections", "fields: {A: {alias: [a]}}", "json_semantic"),
+    ("document", "llm: [{out: [A]}]", "llm"),
+])
+def test_normalize_derives_extractor_from_kind(kind, body, expected):
+    """extractor 는 source.kind 에서 정해진다 — 등록 블록에 다시 적을 값이 아니다."""
+    cfg = yaml.safe_load(f"schema: v2\nsource: {{kind: {kind}}}\n{body}\n")
+    _internal, extractor = cv2.normalize(cfg, label="t")
+    assert extractor == expected
+
+
+def test_normalize_derives_python_for_document_with_python_block():
+    """문서형만 값을 만드는 주체가 둘이다. kind 로는 갈리지 않아 python 블록으로 정한다.
+
+    이 갈래가 없으면 파생값이 항상 llm 이라 python 설정이 지원키 검증에서 막혔다 —
+    설정에 적은 이름은 `python.file` 인데 메시지에는 `file` 만 나와 역추적이 안 됐다.
+    """
+    cfg = yaml.safe_load(
+        "schema: v2\nsource: {kind: document}\npython: {file: f.py, out: [A]}\n"
+    )
+    internal, extractor = cv2.normalize(cfg, label="t")
+    assert extractor == "python"
+    cs.validate_known_keys(internal, label="t", extractor=extractor)
+
+
+def test_registered_block_may_omit_extractor(tmp_path):
+    """등록 블록에서 extractor 를 빼면 config_file 의 kind 에서 유도한다."""
+    _write(tmp_path, "custom_field_x.yaml", """\
+        schema: v2
+        source: {kind: rows}
+        fields: {A: {alias: [a]}}
+        body: {fields: [A]}
+        """)
+    block = {"config_file": "custom_field_x.yaml", "resource_path": str(tmp_path)}
+    assert custom_fields_extractor(block) == "tabular_mapping"
+
+
+def test_registered_block_extractor_wins_when_written(tmp_path):
+    """적어 둔 값이 있으면 그대로 쓴다 — 유도가 기존 설정의 판정을 바꾸지 않는다."""
+    _write(tmp_path, "custom_field_x.yaml", """\
+        schema: v2
+        source: {kind: rows}
+        fields: {A: {alias: [a]}}
+        body: {fields: [A]}
+        """)
+    block = {"config_file": "custom_field_x.yaml", "resource_path": str(tmp_path),
+             "extractor": "llm"}
+    assert custom_fields_extractor(block) == "llm"
+
+
+def test_omitted_extractor_reaches_the_enricher(tmp_path):
+    """유도값은 필터가 아니라 **생성자까지** 닿아야 한다.
+
+    필터에만 쓰면 생성자 기본값(llm)으로 지원키를 대조해, python 설정이 file/callable
+    때문에 기동에서 막힌다 — 템플릿이 "extractor 를 적지 말라"고 안내하는 만큼 이 배선이
+    끊기면 안내가 곧 기동 실패가 된다.
+    """
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        build_document_custom_fields_enrichers,
+    )
+
+    _write(tmp_path, "custom_field_x.yaml", """\
+        schema: v2
+        source: {kind: document}
+        python: {file: custom_field_x.py, callable: extract, out: [TARGET_A]}
+        """)
+    _write(tmp_path, "custom_field_x.py",
+           "def extract(**kwargs):\n    return {'TARGET_A': 'v'}\n")
+    block = {"doc_type": "t", "config_file": "custom_field_x.yaml",
+             "resource_path": str(tmp_path)}
+    enrichers = build_document_custom_fields_enrichers([block])
+    assert [e._extractor for e in enrichers] == ["python"]
+    assert enrichers[0]._output_fields == ["TARGET_A"]
+
+
+def test_omitted_extractor_keeps_row_configs_out_of_document_builder(tmp_path):
+    """유도가 문서형 빌더의 필터 판정을 넓히지 않는다(rows 설정은 계속 제외)."""
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        build_document_custom_fields_enrichers,
+    )
+
+    _write(tmp_path, "custom_field_r.yaml", """\
+        schema: v2
+        source: {kind: rows}
+        fields: {A: {alias: [a]}}
+        body: {fields: [A]}
+        """)
+    block = {"doc_type": "r", "config_file": "custom_field_r.yaml",
+             "resource_path": str(tmp_path)}
+    assert build_document_custom_fields_enrichers([block]) == []
+
+
+def test_extractor_falls_back_to_llm_when_underivable(tmp_path):
+    """유도가 실패해도 여기서 기동을 막지 않는다 — 빌더 필터라 남의 오류로 죽으면 안 된다.
+
+    설정 오류는 매퍼·enricher 생성 시점에 제대로 보고된다.
+    """
+    assert custom_fields_extractor({}) == "llm"
+    assert custom_fields_extractor({"config_file": "없는파일.yaml",
+                                    "resource_path": str(tmp_path)}) == "llm"
+
+
+# ── source.pre 공통 스위치 ──────────────────────────────────────────────────
+
+def _pre(text):
+    internal, _ = cv2.normalize(yaml.safe_load(textwrap.dedent(text)), label="t")
+    return {k: internal.get(k) for k in ("markdown", "html") if k in internal}
+
+
+def test_pre_shared_marker_headings_fans_out():
+    """md 와 html 이 판정 규칙을 공유하므로 한 번만 적게 한다."""
+    assert _pre("""\
+        schema: v2
+        source: {kind: document, pre: {marker_headings: true}}
+        llm: [{out: [A]}]
+        """) == {"markdown": {"marker_headings": True},
+                 "html": {"marker_headings": True}}
+
+
+def test_pre_block_overrides_shared_switch():
+    """세밀한 지정이 뭉뚱그린 지정을 덮는다 — 그 반대는 예측하기 어렵다."""
+    assert _pre("""\
+        schema: v2
+        source:
+          kind: document
+          pre: {marker_headings: true, html: {marker_headings: false}}
+        llm: [{out: [A]}]
+        """) == {"markdown": {"marker_headings": True},
+                 "html": {"marker_headings": False}}
+
+
+def test_pre_shared_switch_keeps_other_block_keys():
+    """공통 스위치를 펼치면서 블록의 다른 키를 지우지 않는다."""
+    assert _pre("""\
+        schema: v2
+        source:
+          kind: document
+          pre: {marker_headings: true, markdown: {text_fence: true}}
+        llm: [{out: [A]}]
+        """) == {"markdown": {"marker_headings": True, "text_fence": True},
+                 "html": {"marker_headings": True}}
+
+
+def test_pre_shared_switch_preserves_disabled_block():
+    """`markdown: false` 는 명시적 비활성이므로 dict 로 바꿔치지 않는다."""
+    assert _pre("""\
+        schema: v2
+        source: {kind: document, pre: {marker_headings: true, markdown: false}}
+        llm: [{out: [A]}]
+        """) == {"markdown": False, "html": {"marker_headings": True}}
+
+
+def test_pre_typo_is_still_refused():
+    """공통 스위치를 추가해도 오타는 계속 막는다."""
+    with pytest.raises(cv2.ConfigV2Error, match="marker_headings"):
+        _pre("""\
+            schema: v2
+            source: {kind: document, pre: {marker_heading: true}}
+            llm: [{out: [A]}]
+            """)
+
+
 # ── 배포 전 점검 ────────────────────────────────────────────────────────────
 
 def _load_script(name: str):
@@ -158,6 +334,35 @@ def test_precheck_understands_v2_configs(tmp_path):
     )
     block = {"doc_type": "t", "extractor": "tabular_mapping",
              "config_file": "custom_field_x.yaml"}
+    assert precheck.check_block("cfg.yaml", block, tmp_path, set()) == []
+
+
+def test_precheck_accepts_python_extractor(tmp_path):
+    """값을 고객 파이썬 함수로 만드는 설정을 거짓 기동실패로 보고하면 안 된다.
+
+    점검이 등록 블록의 extractor 를 kind 파생값으로 덮어써서, 파생값이 항상 llm 인
+    문서형 설정이 file/callable 때문에 실패로 잡혔다.
+    """
+    precheck = _load_script("precheck_custom_fields.py")
+    (tmp_path / "custom_field_x.yaml").write_text(
+        "schema: v2\nsource: {kind: document}\n"
+        "python: {file: custom_field_x.py, callable: extract, out: [A]}\n",
+        encoding="utf-8",
+    )
+    block = {"doc_type": "t", "extractor": "python",
+             "config_file": "custom_field_x.yaml"}
+    assert precheck.check_block("cfg.yaml", block, tmp_path, set()) == []
+
+
+def test_precheck_derives_omitted_extractor(tmp_path):
+    """등록 블록이 extractor 를 빼면 점검도 기동과 같은 순서로 유도해야 한다."""
+    precheck = _load_script("precheck_custom_fields.py")
+    (tmp_path / "custom_field_x.yaml").write_text(
+        "schema: v2\nsource: {kind: rows}\nfields:\n  Q: {alias: [질문]}\n"
+        "body:\n  fields: [Q]\n",
+        encoding="utf-8",
+    )
+    block = {"doc_type": "t", "config_file": "custom_field_x.yaml"}
     assert precheck.check_block("cfg.yaml", block, tmp_path, set()) == []
 
 

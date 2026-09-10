@@ -22,7 +22,9 @@
 #        - custom_fields:
 #            enable: true
 #            doc_type: <유형>            # 요청 params 로 넘길 문서유형 키
-#            extractor: tabular_mapping  # source.kind: rows 와 짝이다
+#            # extractor 는 적지 않는다 — 설정 파일의 `source.kind: rows` 에서 정해진다.
+#            #   굳이 적겠다면 `tabular_mapping` 이어야 한다. 어긋나면 기동이 실패하고,
+#            #   메시지에는 설정에 적은 적 없는 내부 키 이름이 나와 원인을 짚기 어렵다.
 #            config_file: custom_field_<유형>.yaml   # 파일명만. 이 yaml 과 같은 폴더 기준
 #  ④ 실제 원천 파일로 결과를 확인한다(아래 "확인 방법" 참고).
 #

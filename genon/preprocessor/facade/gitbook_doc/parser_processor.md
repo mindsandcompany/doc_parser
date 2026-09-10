@@ -1183,6 +1183,13 @@ Docling 파이프라인(PDF/HTML/HWP/HWPX/DOCX) 출력 기준:
 | records | `json_mapping` (`json_records`) | json 의 **레코드 배열** | `llm:` 선언 시 레코드마다 |
 | sections | `json_semantic` | json **트리 전체**(섹션 자동 순회) | 문서 1회 |
 | document | `llm` (`document_llm`) | 문서 전체(pdf/html/docx/md …) | 본체가 LLM |
+| document | `python` | 문서 전체. 값을 LLM 대신 고객 파이썬 함수가 만든다 | 없음 |
+
+> 등록 블록(`parser_processor_config.yaml`)의 `extractor` 는 **적지 않아도 됩니다.**
+> 생략하면 설정 파일의 `source.kind` 에서 정해집니다(문서형은 `python:` 블록이 있으면
+> `python`, 없으면 `llm`). 같은 정보를 두 파일에 적으면 어긋날 수 있고, 어긋나면 "이
+> extractor 가 읽지 않는 키" 라는 메시지로 기동이 실패합니다 — 설정에 그 키를 적은
+> 적이 없는데도 그렇습니다. 적어 둔 값이 있으면 그 값이 그대로 쓰입니다.
 
 ### 지원 매트릭스
 
@@ -1419,7 +1426,7 @@ fields:
 | ⑤ | sections/document 에서 **표 구조를 살린 평문화**가 안 됨. `<table>…a…b…</table>` → `"ab"` 로 뭉갬 |
 | ⑥ | `merge_rows` 는 **연속 런만** 접음. 같은 키가 떨어져 오면 별개 레코드(의도된 안전장치) |
 | ⑦ | `values` 는 fail-open. "열거 밖은 전부 X 로" 를 표현할 수 없음 |
-| ⑧ | `source.pre.*` 는 `extractor: llm` 에서만 소비됨 |
+| ⑧ | `source.pre.*` 는 문서형 extractor(`llm`/`python`)에서만 소비됨 |
 
 ### 코드가 필요할 때 — 고칠 자리 3개
 

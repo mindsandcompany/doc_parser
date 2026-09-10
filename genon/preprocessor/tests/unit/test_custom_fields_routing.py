@@ -1074,6 +1074,10 @@ def test_unproducible_text_field_warns_but_loads(tmp_path, caplog):
 def test_shipped_configs_pass_startup_validation():
     """출고 매핑 설정은 새 검증을 모두 통과해야 한다(오탐 방지)."""
     import yaml as _yaml
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        custom_fields_extractor,
+    )
+
     base = Path(__file__).resolve().parents[2] / "resource"
     raw = _yaml.safe_load((base / "parser_processor_config.yaml").read_text(encoding="utf-8"))
     built = 0
@@ -1081,7 +1085,9 @@ def test_shipped_configs_pass_startup_validation():
         for name, opts in (item or {}).items():
             if name != "custom_fields" or not isinstance(opts, dict) or not opts.get("config_file"):
                 continue
-            extractor = opts.get("extractor") or "llm"
+            opts = dict(opts)
+            opts.setdefault("resource_path", str(base))
+            extractor = custom_fields_extractor(opts)
             if extractor.startswith("tabular"):
                 cls = TabularCustomFieldsMapper
             elif extractor == "json_semantic":
@@ -1212,6 +1218,9 @@ def test_shipped_configs_match_declared_keys(resource_dir):
     import yaml
 
     from genon.preprocessor.facade.enrichment import config_schema as cs
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        custom_fields_extractor,
+    )
 
     root = Path(__file__).resolve().parents[2] / resource_dir
     registered = {}
@@ -1223,7 +1232,12 @@ def test_shipped_configs_match_declared_keys(resource_dir):
         for item in (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("enrichment") or []:
             block = (item or {}).get("custom_fields")
             if block and block.get("config_file"):
-                registered.setdefault(block["config_file"], block.get("extractor") or "llm")
+                # 판정은 `custom_fields_extractor` 에 맡긴다 — 등록 블록에 적혀 있으면 그 값,
+                # 없으면 config_file 의 source.kind 에서 유도한다. 여기서 규칙을 다시
+                # 구현하면(예전의 `or "llm"`) 기동과 갈려 출고 설정을 오탐한다.
+                block = dict(block)
+                block.setdefault("resource_path", str(root))
+                registered.setdefault(block["config_file"], custom_fields_extractor(block))
 
     checked = 0
     for path in sorted(root.glob("custom_field_*.yaml")):

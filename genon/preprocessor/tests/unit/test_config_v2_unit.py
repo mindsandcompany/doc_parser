@@ -308,6 +308,51 @@ def test_pre_typo_is_still_refused():
             """)
 
 
+def test_shipped_blocks_derive_their_extractor():
+    """출고 등록 블록은 `extractor` 를 적지 않는다 — 유도가 반드시 성공해야 한다.
+
+    유도는 config_file 을 읽어야 하므로, 그 파일이 `schema: v2` 를 잃거나 읽히지 않으면
+    None 이 되고 하위호환 폴백으로 `llm` 이 된다. rows/records 설정이 그렇게 되면 기동이
+    실패하는데, 원인이 "설정 파일을 못 읽었다" 로 드러나지 않아 짚기 어렵다.
+    """
+    from genon.preprocessor.facade.enrichment.custom_fields_enricher import (
+        _derive_extractor,
+    )
+    from shipped_config import PREPROCESSOR_DIR
+
+    configs = (
+        "parser_processor_config.yaml", "parser_processor_config_simple.yaml",
+        "intelligent_processor_config.yaml", "convert_processor_config.yaml",
+        "chunking_processor_config.yaml", "chunking_processor_config_simple.yaml",
+        "attachment_processor_config.yaml",
+    )
+    checked = 0
+    for resource_dir in ("resource", "resource_dev"):
+        root = PREPROCESSOR_DIR / resource_dir
+        for name in configs:
+            path = root / name
+            if not path.exists():
+                continue
+            loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            for item in (loaded.get("enrichment") or []):
+                block = (item or {}).get("custom_fields")
+                if not isinstance(block, dict):
+                    continue
+                assert "extractor" not in block, (
+                    f"{resource_dir}/{name} [doc_type={block.get('doc_type')}]: "
+                    f"extractor 는 source.kind 에서 유도된다 — 등록 블록에 적지 않는다"
+                )
+                config_file = str(block.get("config_file") or "")
+                if not config_file:
+                    continue  # 인라인 설정(문서형 데모). 유도할 원천이 없다
+                assert _derive_extractor(config_file, str(root)) is not None, (
+                    f"{resource_dir}/{name} [doc_type={block.get('doc_type')}]: "
+                    f"{config_file} 에서 extractor 를 유도할 수 없다"
+                )
+                checked += 1
+    assert checked >= 50, f"검사한 블록이 너무 적다({checked}) — 경로가 틀렸을 수 있다"
+
+
 # ── source.pre.json ────────────────────────────────────────────────────────
 
 def test_pre_json_translates_to_internal_names():

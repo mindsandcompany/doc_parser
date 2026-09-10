@@ -56,6 +56,18 @@ formats:
   md:
     processing_mode: docling
 
+# 변환 PDF: HWP/PPT/DOC/DOCX/이미지처럼 PDF 변환이 반드시 필요한 포맷에서 나온다.
+# GenOS 문서 뷰어는 이렇게 만들어진 PDF 를 참조한다.
+# (텍스트 원천(.txt/.json 등)은 PDF 를 만들지 않는다 — docling 이 직접 읽는다.)
+# 요청 파라미터 keep_pdf / pdf_dir 로 요청마다 덮어쓸 수 있다.
+pdf_output:
+  # 변환 PDF 를 남길지. false(기본)면 파싱에만 쓰고 요청이 끝날 때 지운다.
+  # 문서 뷰잉을 쓰는 현장은 true 로 켠다.
+  keep: false
+  # 변환 PDF 를 만들 폴더. 비우면(기본) 원본 파일과 같은 폴더.
+  # 원천 디렉터리에 파생물을 남기고 싶지 않으면 별도 경로를 지정한다.
+  dir: ""
+
 ocr:
   ocr_mode: "auto" # "auto"(default), "force", "disable"
 

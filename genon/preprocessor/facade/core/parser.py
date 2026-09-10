@@ -118,6 +118,7 @@ from genon.preprocessor.facade.common import config_parse as cp
 from genon.preprocessor.facade.common import loaders as ld
 from genon.preprocessor.facade.common import docling_ops as dops
 from genon.preprocessor.facade.common import parser_config as pcfg
+from genon.preprocessor.facade.common import pdf_artifact as pa
 from genon.preprocessor.facade.serialize import parse_format as pf
 from genon.preprocessor.facade.common import runtime as rt
 from genon.preprocessor.facade.common import file_probe as fp
@@ -226,13 +227,19 @@ def _resolve_default_parser_config_path() -> str:
 _is_libreoffice_available = fp.is_libreoffice_available
 
 
-def convert_to_pdf(file_path: str) -> str | None:
+def convert_to_pdf(file_path: str, policy: "pa.PdfArtifactPolicy | None" = None) -> str | None:
     """LibreOffice 로 PDF 변환을 시도한다. 실패해도 예외를 던지지 않고 None 을 반환한다.
 
     이 facade 는 backend chain 을 LibreOffice 하나로 고정한다(rhwp/pdf_sdk 미사용).
     구현은 facade/common/pdf_convert.py 에 있다.
+
+    policy 를 주면 산출 PDF 의 위치와 보존 여부가 그 정책을 따른다(`pdf_output` 설정).
+    None 이면 원본 옆에 만들고 그대로 둔다 — 정책을 못 받는 호출부의 안전 기본값이다.
     """
-    return pc.convert_to_pdf(file_path, libreoffice_only=True)
+    convert = lambda path: pc.convert_to_pdf(path, libreoffice_only=True)  # noqa: E731
+    if policy is None:
+        return convert(file_path)
+    return policy.convert(file_path, convert)
 
 
 def _get_pdf_path(file_path: str) -> str:
@@ -341,7 +348,7 @@ class GenericDocumentLoader:
             return 'jpg'
         return os.path.splitext(file_path)[-1].lower()
 
-    def get_loader(self, file_path: str):
+    def get_loader(self, file_path: str, pdf_policy=None):
         ext = os.path.splitext(file_path)[-1].lower()
         real_type = self.get_real_file_type(file_path)
 
@@ -352,13 +359,15 @@ class GenericDocumentLoader:
         elif ext == '.pdf':
             return PyMuPDFLoader(file_path)
         elif ext == '.doc':
-            convert_to_pdf(file_path)
+            # 파싱은 원본을 읽는다. 이 변환은 GenOS 문서 뷰어가 참조하는 미리보기
+            # PDF 아티팩트를 만드는 부수효과다(convert_processor 와 같은 목적).
+            convert_to_pdf(file_path, pdf_policy)
             return UnstructuredWordDocumentLoader(file_path)
         elif ext in ['.ppt', '.pptx']:
-            convert_to_pdf(file_path)
+            convert_to_pdf(file_path, pdf_policy)
             return UnstructuredPowerPointLoader(file_path)
         elif ext in ['.jpg', '.jpeg', '.png']:
-            convert_to_pdf(file_path)
+            convert_to_pdf(file_path, pdf_policy)
             return UnstructuredImageLoader(file_path, languages=["kor", "eng"])
         elif ext in ['.txt', '.json', '.md']:
             # .md 는 기본적으로 docling 분기에서 처리된다. 여기로 오는 건
@@ -412,7 +421,7 @@ class GenericDocumentLoader:
 
     def load_documents(self, file_path: str, **kwargs: dict) -> list:
         try:
-            loader = self.get_loader(file_path)
+            loader = self.get_loader(file_path, kwargs.get("_pdf_policy"))
         except ImportError as exc:
             # unstructured 는 선택 의존이라 오프라인 배포본에는 없을 수 있다. 원인과 조치를
             # 알 수 있게 바꿔 던진다(텍스트 파일은 위에서 TextLoader 로 빠지므로 여기 안 온다).
@@ -548,6 +557,10 @@ class ParserCore:
         self._hwp = HwpDocumentLoader()
         self._docx = DocxDocumentLoader()
         self._generic = GenericDocumentLoader()
+
+        # 변환 PDF(뷰어용 아티팩트)의 위치·보존 정책. 기본은 원본 옆에 만들고 요청이
+        # 끝나면 지운다. 요청별 kwargs(keep_pdf/pdf_dir)가 이 값을 덮어쓴다.
+        self._pdf_output = pa.PdfArtifactOptions.from_config(cfg.get("pdf_output"))
 
         # 신/구 설정 스키마 동시 지원
         whisper_cfg = _as_dict(cfg.get("whisper"))
@@ -782,7 +795,7 @@ class ParserCore:
                     )
                 except Exception:
                     # 모든 백엔드 실패 시 LibreOffice → PDF → intelligent 경로
-                    converted = convert_to_pdf(file_path)
+                    converted = convert_to_pdf(file_path, kwargs.get("_pdf_policy"))
                     if converted:
                         return self._parse_docling(converted, **kwargs)
                     # 이슈 #286 — HWP SDK 도 실패하고 LibreOffice(이 경로의 유일한 변환기)마저
@@ -1299,9 +1312,13 @@ class ParserCore:
         페이지 설명은 페이지별 TextItem 으로 주입되어 parse 출력(elements)에 그대로 포함된다.
         PDF 변환이 불가하면 None 을 반환해 호출부가 레거시 langchain 경로로 폴백하도록 한다.
         """
-        pdf_path = convert_to_pdf(file_path)
+        policy = kwargs.get("_pdf_policy")
+        pdf_path = convert_to_pdf(file_path, policy)
         if not pdf_path or not os.path.exists(pdf_path):
-            candidate = _get_pdf_path(file_path)
+            # 변환이 실패해도 같은 자리에 이전 산출 PDF 가 있을 수 있다. 정책이 위치를
+            # 옮겼다면 그 폴더에서 찾아야 한다.
+            candidate = (policy.expected_pdf_path(file_path) if policy
+                         else _get_pdf_path(file_path))
             pdf_path = candidate if os.path.exists(candidate) else None
         if not pdf_path:
             _log.warning(f"[ppt] PDF 변환 실패 — 레거시 경로로 폴백: {os.path.basename(file_path)}")
@@ -1784,6 +1801,13 @@ class ParserCore:
         hook_tmp: tempfile.TemporaryDirectory | None = None
         # 별칭 사본으로 파싱할 때 artifacts(이미지) 경로 기준이 되는 원본 경로.
         artifacts_source: str | None = None
+        # 변환 PDF 정책(요청 스코프). 프로세서는 싱글턴이라 요청마다 새로 만든다.
+        # kwargs 가 yaml 을 덮어쓴다: keep_pdf(0/1) / pdf_dir(경로).
+        pdf_policy = getattr(self, "_pdf_output", pa.PdfArtifactOptions()).for_request(
+            keep=_parse_optional_bool(kwargs.get("keep_pdf"), "keep_pdf"),
+            dir=(str(kwargs["pdf_dir"]).strip() if kwargs.get("pdf_dir") else None),
+        )
+        kwargs["_pdf_policy"] = pdf_policy
         try:
             raw_ext = os.path.splitext(file_path)[-1].lower()
             # __init__ 을 우회해 만든 인스턴스(단위 테스트)도 견디도록 getattr 로 읽는다.
@@ -1846,5 +1870,8 @@ class ParserCore:
                 alias_tmp.cleanup()
             if hook_tmp is not None:
                 hook_tmp.cleanup()
+            # keep_pdf 가 아니면 이 요청이 만든 변환 PDF 를 지운다(뷰어가 쓰는 기존
+            # 파일은 대상이 아니다 — 정책이 이 요청의 산출물만 기억한다).
+            pdf_policy.cleanup()
             _log_cache_summary()
             _reset_cache_context(_cache_token)

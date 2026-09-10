@@ -141,8 +141,14 @@ def check_block(source: str, block: dict, root: Path, seen_files: set[str]) -> l
     if cfg:
         # 내부 형태로 번역된 뒤에야 extractor 지원키와 대조할 수 있다.
         # 번역 전 원본을 그대로 검사하면 v2 키가 전부 "모르는 키"로 잡힌다.
+        #
+        # 번역이 돌려주는 extractor(source.kind 파생값)로 **덮어쓰지 않는다.** 기동 시
+        # 지원키 대조는 등록 블록의 extractor 로 돈다(그 값이 매퍼·enricher 생성자 인자로
+        # 넘어간다). kind: document 의 파생값은 항상 `llm` 이라, 값을 LLM 이 아니라 고객
+        # 파이썬 함수로 만드는 `extractor: python` 설정이 여기서만 file/callable 때문에
+        # 거짓 기동실패로 보고됐다.
         try:
-            cfg, extractor = cv2.normalize(cfg, label=label)
+            cfg, _derived_extractor = cv2.normalize(cfg, label=label)
         except cv2.ConfigV2Error as exc:
             problems.append(f"[기동실패] {exc}")
             return problems

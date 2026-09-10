@@ -270,9 +270,8 @@ def validate_chunk_prefix_fields(cfg: dict, *, label: str) -> None:
     )
     if unknown:
         raise ValueError(
-            f"{label}: chunk_prefix_fields 의 {unknown} 를 만드는 설정이 없습니다. "
-            f"column_map/key_map/constants/defaults/derive/sequence/llm_fields 중 하나에 "
-            f"필드를 선언하세요."
+            f"{label}: chunk_prefix_fields(설정에 적는 이름은 `body.repeat`) 의 {unknown} 를 "
+            f"만드는 설정이 없습니다. 그 필드를 `fields:` 에 선언하거나 `llm[].out` 에 넣으세요."
         )
 
 

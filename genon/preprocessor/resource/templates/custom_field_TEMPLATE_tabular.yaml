@@ -8,6 +8,13 @@
 #              단 `body.split: true` 를 켜면 chunk_size 를 넘는 행만 여러 청크로 나뉜다.
 #  LLM 호출  : 없음. 원천에 없는 필드가 필요할 때만 맨 아래 `llm` 을 쓴다.
 #
+#  ── 4종 중 어느 템플릿인가 ───────────────────────────────────────────────
+#   rows     · 엑셀/CSV 한 행 = 검색 1건           custom_field_TEMPLATE_tabular.yaml  ← 이 파일
+#   records  · JSON 배열 한 요소 = 검색 1건        custom_field_TEMPLATE_json.yaml
+#   sections · 대상 하나를 깊게 설명한 중첩 JSON   custom_field_TEMPLATE_semantic.yaml
+#   document · 문서 1건에서 필드 몇 개를 LLM 으로  custom_field_TEMPLATE_llm.yaml
+#   더 자세한 비교는 facade/gitbook_doc/parser_processor.md 의 "extractor 4종" 표.
+#
 #  ── 쓰는 순서 ────────────────────────────────────────────────────────────
 #  ① 이 파일을 resource/custom_field_<유형>.yaml 로 복사한다.
 #  ② <...> 로 표시된 곳을 채운다. 필요 없는 [선택] 항목은 지운다.
@@ -84,7 +91,8 @@ source:
 #                **문서 1건 안에서만 유일하다** — 여러 파일에 걸친 전역 유일번호는 여기서
 #                만들 수 없다(접두를 파일명·수집일자로 잡거나 적재 쪽 시퀀스를 쓴다).
 #
-# [변환기] 인자 없는 것 3개 + 인자 받는 것 4개. 목록으로 쓰면 순서대로 적용된다(체이닝).
+# [변환기] 10종. 인자 없이 쓰는 것 5개 + 인자를 받는 것 5개.
+#          목록으로 쓰면 순서대로 적용된다(체이닝).
 #   date_int       "2026-07-01"                  → 20260701 (파싱 실패 시 0)
 #   date_int_flex  "26.07.01" / "260701" / 8자리 → 20260701 (두 자리 연도까지 흡수)
 #   text_norm      NFKC → 공백 축약 → casefold   (중복 판정 키를 만들 때)
@@ -134,7 +142,7 @@ fields:
 # ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
 # 행 하나가 청크가 되기까지 이 순서로 처리된다:
 #   alias 원시 매핑 → (merge_rows 가 있으면 연속 행 병합) →
-#   default → const → values → transform → template → from/as → filter → require 검사
+#   default → const → values → transform → template → filter → require 검사
 #   → seq 번호 부여(걸러진 레코드가 번호를 소비하지 않게 맨 뒤에 붙는다)
 #   → llm 필드 채움 → pack 묶기(값이 다 확정된 뒤라 seq·llm 산출까지 담긴다)
 # pack 은 선별보다 뒤라 `filter`/`require` 로 pack 산출을 고를 수는 없다(기동 실패) —
@@ -233,6 +241,14 @@ body:
 #         {{raw_text}}
 #         </item>
 
+# ── [선택] 표 설명(table_text_description)을 이 문서유형에서만 바꾼다 ────────
+# 프로세서 config 의 공통 `table_text_description` 값이 기본이고, 여기 적은 키만 덮어쓴다.
+# **최상위 키**이며 kind 와 무관하다 — 표는 문서형이든 행 본문 안이든 생기기 때문이다.
+# 키 구성은 custom_field_TEMPLATE_llm.yaml 의 같은 이름 블록에 전부 적혀 있다.
+# table_text_description:
+#   rag:
+#     key_fact_limit: 5
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  기동 시 자동 검사 — 무엇을 잡아주고 무엇을 못 잡나
 #
@@ -264,8 +280,8 @@ body:
 #       genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
 #
 #  2) 실제 엑셀로 매핑 결과 보기 — 가장 확실하다(LLM 호출 없음).
-#     실행 위치: genon/preprocessor
-#       python -c "
+#     실행 위치: genon/preprocessor  (그 폴더의 .venv 로 돌린다)
+#       .venv/bin/python -c "
 #     import sys; sys.path.insert(0,'.'); sys.path.insert(0,'../..')
 #     from facade.enrichment.tabular_custom_fields import TabularCustomFieldsMapper as M
 #     from genon.preprocessor.converters.xlsx_processor import build_tabular_data_dict

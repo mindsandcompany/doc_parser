@@ -7,10 +7,19 @@
 #              `custom_fields_row`). 모든 청크에 공통 정보(상품명·상품코드 등)가 함께
 #              들어가므로, 어떤 청크가 검색돼도 "무엇에 대한 이야기인지" 알 수 있다.
 #
+#  LLM 호출  : 없음. 원천에 없는 필드가 필요할 때만 맨 아래 `llm` 을 쓴다(문서 1건당 1회).
+#
 #  records(레코드 매핑)와 무엇이 다른가
 #   · kind: records  : {"eventList": [건, 건, 건]} 처럼 **나열된 목록**용. 1건 = 청크 1개.
 #   · kind: sections : **대상 하나를 깊게 설명하는 JSON**용. 파일 1건 = 청크 여러 개.
 #     판단 기준: "1파일 = N개 평평한 레코드" 면 records, "역할이 섞인 중첩 JSON" 이면 sections.
+#
+#  ── 4종 중 어느 템플릿인가 ───────────────────────────────────────────────
+#   rows     · 엑셀/CSV 한 행 = 검색 1건           custom_field_TEMPLATE_tabular.yaml
+#   records  · JSON 배열 한 요소 = 검색 1건        custom_field_TEMPLATE_json.yaml
+#   sections · 대상 하나를 깊게 설명한 중첩 JSON   custom_field_TEMPLATE_semantic.yaml  ← 이 파일
+#   document · 문서 1건에서 필드 몇 개를 LLM 으로  custom_field_TEMPLATE_llm.yaml
+#   더 자세한 비교는 facade/gitbook_doc/parser_processor.md 의 "extractor 4종" 표.
 #
 #  ── 이 파일에서 정하는 것은 세 가지뿐이다 ─────────────────────────────────
 #    ① fields             : 모든 청크에 함께 넣을 공통 정보 (상품명·상품코드 …)
@@ -35,10 +44,12 @@
 #  ④ 실제 원천 파일로 결과를 확인한다(아래 "확인 방법" 참고).
 #
 #  이 템플릿은 참고용이므로 parser_processor_config.yaml 에 등록하지 않는다.
+#     <...> 가 남은 상태로 등록하면 매핑이 원천과 맞지 않아 값이 비어서 나온다.
 # ═══════════════════════════════════════════════════════════════════════════
 
 schema: v2
 
+# ── [필수] 레코드 소스 ──────────────────────────────────────────────────────
 source:
   kind: sections
 
@@ -50,9 +61,12 @@ source:
   # 여기 적지 않은 key 도 자동으로 검색에 들어간다(제목은 값 안의 제목이 있으면 그걸,
   # 없으면 key 이름 그대로 쓴다). 이 블록은 **"이름을 보기 좋게 붙일 key"** 만 적는 곳이고,
   # 이름을 안 붙일 거면 블록 자체를 생략해도 된다.
-  sections:
-    <SECTION_KEY_1>: <섹션 표시 이름>
-    <SECTION_KEY_2>: <섹션 표시 이름>
+  #
+  # 원천에 없는 key 이름을 적어도 기동 검사가 잡아주지 못한다(아래 "못 잡는다" 참고) —
+  # <...> 를 지우지 않은 채로 두면 아무 효과 없이 조용히 통과하므로, 쓸 때만 주석을 푼다.
+  # sections:
+  #   <SECTION_KEY_1>: <섹션 표시 이름>
+  #   <SECTION_KEY_2>: <섹션 표시 이름>
 
   # ── [선택] ③ 검색에서 뺄 key ──────────────────────────────────────────────
   # **제외 수단은 이것 하나다.** 두 종류를 여기 함께 적는다.
@@ -95,12 +109,9 @@ source:
 #               `{"BRAND_NM": ..., "ANNUAL_FEE": ...}` 문자열). 값이 없는 키도 null 로
 #               남고 원천 필드는 그대로 남는다. 본문 관련 키에는 쓸 수 없다
 #
-# 적용 순서는 rows/records 와 같다.
-#   원천값 -> default(빈 값만) -> const(덮어씀) -> values -> transform -> template
-#   -> llm 필드 채움 -> pack 묶기(값이 다 확정된 뒤라 llm 산출까지 담긴다)
-# `require` 검사는 그 **뒤**라, const/template 으로 채운 필드도 정상 통과한다.
-#
-# `from`/`as` 는 이 kind 가 **읽지 않는다**(적으면 기동 시 실패한다).
+# `collect`·`seq` 는 이 kind 가 **읽지 않는다**(적으면 기동 시 실패한다) — collect 는
+# records 전용, seq 는 레코드 루프가 있는 rows/records 전용이다(섹션형에는 "항목 N번째"가
+# 정의되지 않는다). `seq` 는 오류 메시지가 내부 이름 `sequence` 로 나온다.
 #
 # 여기 적은 값은 두 곳에 들어간다.
 #   · 청크 본문 맨 앞  → "상품명: <값>" 처럼 라벨과 함께 붙어 검색이 잘 되게 한다
@@ -127,6 +138,13 @@ fields:
   #   transform: [{name: regex_sub, pattern: "[^0-9]", repl: ""}, {name: to_int}]
   # <DISPLAY_NM>:
   #   template: "{{<BRAND_NM>}} {{<TARGET_FIELD_1>}}"      # 다른 필드를 합쳐 만든다
+
+# ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
+# 공통 필드 하나가 확정되기까지 이 순서로 처리된다(rows/records 와 같다):
+#   원천값 → default(빈 값만) → const(덮어씀) → values → transform → template
+#   → llm 필드 채움 → pack 묶기(값이 다 확정된 뒤라 llm 산출까지 담긴다)
+# default 가 빈 값을 채운 **뒤에** const 가 덮어쓴다 — 둘 다 선언했다면 언제나 const 가 이긴다.
+# `require` 검사는 이 모든 단계의 **뒤**라, const/template 으로 채운 필드도 정상 통과한다.
 
 # ── [선택] 필수 공통 필드 ───────────────────────────────────────────────────
 # 여기 적은 필드가 문서 루트에서 하나라도 안 잡히면(원천에 아예 없거나 key 이름이 어긋나면)
@@ -214,6 +232,14 @@ fields:
 #         {{raw_text}}
 #         </document>
 
+# ── [선택] 표 설명(table_text_description)을 이 문서유형에서만 바꾼다 ────────
+# 프로세서 config 의 공통 `table_text_description` 값이 기본이고, 여기 적은 키만 덮어쓴다.
+# **최상위 키**이며 kind 와 무관하다 — 섹션 본문 안의 <table> 에도 표 설명이 붙는다.
+# 키 구성은 custom_field_TEMPLATE_llm.yaml 의 같은 이름 블록에 전부 적혀 있다.
+# table_text_description:
+#   rag:
+#     key_fact_limit: 5
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  기동 시 자동 검사 — 무엇을 잡아주고 무엇을 못 잡나
 #
@@ -222,7 +248,7 @@ fields:
 #     이름을 제안하고, 다른 kind 의 키는 어디 전용인지 알려준다.
 #     sections 가 **읽지 않는** 대표 키는 아래와 같다.
 #       body.split · body.repeat · body.mirror_to
-#       필드 스펙의 from/as
+#       필드 스펙의 collect · seq
 #       filter · source.records_at · source.merge_rows
 #   · `transform` 의 변환기 이름이 틀렸거나 필수 인자가 빠진 경우, 안 되는 정규식
 #   · `template` 이 아무도 만들지 않는 필드를 참조하는 경우
@@ -244,23 +270,30 @@ fields:
 #   · `sections`·`ignore_keys` 의 key 이름 오타 — 원천에 없는 이름이라 아무 일도 일어나지 않는다
 #
 # ═══════════════════════════════════════════════════════════════════════════
-#  확인 방법 — 실제 json 으로 결과를 눈으로 본다 (LLM 호출 없음)
-#  실행 위치: 저장소 루트
-#      SP=$(ls -d genon/preprocessor/.venv/lib/python*/site-packages)
-#      PYTHONPATH="$PWD:$SP" .venv/bin/python -c "
-#    import json
-#    from genon.preprocessor.facade.enrichment.json_semantic import SemanticJsonMapper as M
-#    m = M(config_file='custom_field_<유형>_semantic.yaml', resource_path='genon/preprocessor/resource',
-#          doc_type='<유형>', extractor='json_semantic')
-#    payload = json.load(open('<내_데이터.json>', encoding='utf-8'))
-#    out = m.to_parse_format(m.build_fields(payload, '<유형>'), '<유형>')
-#    print(f'섹션 {len(out[\"elements\"])}건')
-#    for e in out['elements']:
-#        print('=' * 60); print(e['content'])
-#        print(' ->', {k: e['metadata'].get(k) for k in ('SECTION_NM', 'SOURCE_JSON_PATH')})
-#    "
+#  확인 방법
 #
-#  · require.fields 를 못 찾으면(기본 on_missing: error) 위 스크립트가 ValueError 로 죽는다 —
+#  1) 설정만 검사 — 파싱·LLM 없이 yaml 만 읽는다.
+#       genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
+#
+#  2) 실제 json 으로 섹션 결과 보기 — 가장 확실하다(LLM 호출 없음).
+#     실행 위치: genon/preprocessor  (그 폴더의 .venv 로 돌린다)
+#       .venv/bin/python -c "
+#     import sys, json; sys.path.insert(0,'.'); sys.path.insert(0,'../..')
+#     from facade.enrichment.json_semantic import SemanticJsonMapper as M
+#     m = M(config_file='custom_field_<유형>_semantic.yaml', resource_path='resource',
+#           doc_type='<유형>', extractor='json_semantic')
+#     payload = json.load(open('<내_데이터.json>', encoding='utf-8'))
+#     out = m.to_parse_format(m.build_fields(payload, '<유형>'), '<유형>')
+#     print(f'섹션 {len(out[\"elements\"])}건')
+#     for e in out['elements']:
+#         print('=' * 60); print(e['content'])
+#         print(' ->', {k: e['metadata'].get(k) for k in ('SECTION_NM', 'SOURCE_JSON_PATH')})
+#     "
+#
+#  3) doc_type 자동 검증 — 파싱·청킹까지 태워 약속한 필드가 실제 청크에 실렸는지 본다.
+#       genon/preprocessor/examples/parse_chunk/parse_chunk_verify.sh --only <유형>
+#
+#  · require.fields 를 못 찾으면(기본 on_missing: error) 위 2번 스크립트가 ValueError 로 죽는다 —
 #    `fields` 의 alias 가 원천과 어긋난 것이다. require 를 안 쓰는 경우 섹션이 0건이면
 #    같은 원인을 의심한다.
 #  · 관계없는 대상의 내용이나 이상한 값(색상·경로·코드뿐인 짧은 줄)이 섞여 나오면

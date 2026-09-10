@@ -5,7 +5,15 @@
 #              필드 몇 개를 뽑고 싶을 때 (상품설명서의 상품명·상품코드, 카드 혜택 요약 …)
 #  결과      : 문서 metadata → 그 문서에서 나온 **모든 청크에 같은 값**이 붙는다.
 #              (행/레코드마다 다른 값이 필요하면 rows/records 템플릿을 쓴다)
-#  LLM 호출  : 문서당 1회.
+#  LLM 호출  : 문서당 1회. (값을 LLM 이 아니라 고객 파이썬 함수로 만들려면 맨 아래
+#              `python:` 블록을 쓴다 — 연결·프롬프트가 필요 없다)
+#
+#  ── 4종 중 어느 템플릿인가 ───────────────────────────────────────────────
+#   rows     · 엑셀/CSV 한 행 = 검색 1건           custom_field_TEMPLATE_tabular.yaml
+#   records  · JSON 배열 한 요소 = 검색 1건        custom_field_TEMPLATE_json.yaml
+#   sections · 대상 하나를 깊게 설명한 중첩 JSON   custom_field_TEMPLATE_semantic.yaml
+#   document · 문서 1건에서 필드 몇 개를 LLM 으로  custom_field_TEMPLATE_llm.yaml  ← 이 파일
+#   더 자세한 비교는 facade/gitbook_doc/parser_processor.md 의 "extractor 4종" 표.
 #
 #  ── 쓰는 순서 ────────────────────────────────────────────────────────────
 #  ① 이 파일을 resource/custom_field_<유형>.yaml 로 복사한다.
@@ -23,10 +31,12 @@
 #    별도 md 로 빼도 된다 — 파일 지정이 인라인보다 우선한다.
 #
 #  이 템플릿은 참고용이므로 parser_processor_config.yaml 에 등록하지 않는다.
+#     <...> 가 남은 상태로 등록하면 프롬프트가 문서와 맞지 않아 값이 비어서 나온다.
 # ═══════════════════════════════════════════════════════════════════════════
 
 schema: v2
 
+# ── [필수] 레코드 소스 ──────────────────────────────────────────────────────
 source:
   kind: document
 
@@ -62,7 +72,12 @@ source:
 # 이 kind 의 원천은 둘이다 — LLM 응답과 **markdown front matter**.
 # 한 필드의 규칙(어디서 오나 / 어떻게 접나 / 뭐라고 부르나)을 전부 여기 한 자리에 적는다.
 #
-# 쓸 수 있는 키 (rows/records 와 같다. `from`/`as` 만 못 쓴다)
+# 쓸 수 있는 키 — rows/records 와 같되 `collect`·`seq`·`raw` 는 못 쓴다(적으면 기동 실패).
+#   collect : records 전용. 오류 메시지도 `collect` 라고 나온다.
+#   seq     : 레코드 루프가 있는 rows/records 전용(문서형은 항상 1건이라 "N번째"가 없다).
+#   raw     : "객체를 구조로 볼지 값으로 볼지" 판정이 있는 JSON 원천 2종 전용.
+#   뒤의 둘은 오류 메시지가 **내부 이름**(`sequence`·`raw_fields`)으로 나온다 — 설정에
+#   적은 이름과 다르니, 못 보던 이름이 나오면 이 대응표에서 되짚는다.
 #   alias     : 값이 들어 있는 **front matter 키 이름들**. 먼저 찾은 것을 쓴다.
 #   const     : 원천과 무관하게 항상 같은 값. LLM 이 다른 값을 내놔도 이긴다.
 #   default   : LLM 도 front matter 도 값을 못 준 자리만 채운다.
@@ -74,10 +89,6 @@ source:
 #               `{"BRAND_NM": ..., "ANNUAL_FEE": ...}` 문자열). 값이 없는 키도 null 로
 #               남고 원천 필드는 그대로 남는다. 본문 관련 키에는 쓸 수 없다
 #
-# 적용 순서
-#   default < LLM < front matter < const  →  values → transform → template → pack
-# 값 파이프라인은 이 병합이 끝난 뒤에 도는 후처리라, LLM 이 준 값도 const 로 못 박은 값도
-# 똑같이 지나간다. 순서는 rows/records/sections 와 같다.
 # fields:
 #   <GROUP_C>:     {const: "<고정값>"}
 #   <BIZ_ID>:      {default: null}
@@ -86,6 +97,14 @@ source:
 #   <PRODUCT_C>:   {alias: [product_code, prod_cd]}
 #   <SALE_STATUS>: {alias: [sale_state], values: {SALE: ["1"], STOP: ["0"]}}
 #   <DISPLAY_NM>:  {template: "{{<BRAND_NM>}} {{<PRODUCT_NM>}}"}
+
+# ── [참고] 값 적용 순서 ──────────────────────────────────────────────────────
+# 필드 하나가 확정되기까지 이 순서로 처리된다:
+#   default < LLM < front matter < const  →  values → transform → template → pack
+# 값 파이프라인은 이 병합이 끝난 뒤에 도는 후처리라, LLM 이 준 값도 const 로 못 박은 값도
+# 똑같이 지나간다. 순서는 rows/records/sections 와 같다.
+# `const` 는 LLM 응답보다 우선한다 — 고정값이라고 선언한 이상 모델이 뭘 내놓든 그 값이고,
+# front matter 로 온 구조화 원천값보다도 우선한다.
 
 # ── [선택] 청크 본문 관련 규칙 ──────────────────────────────────────────────
 # 값이 아니라 규칙이다. 프롬프트·`llm.out` 에 넣지 않는다.
@@ -158,19 +177,6 @@ llm:
     temperature: 0.0
     timeout: 300
 
-  # ── [선택] 텍스트 표 RAG 설명의 문서유형별 override ──────────────────────
-  # 프로세서 config 의 공통 `table_text_description` 값이 기본이며, 아래처럼 필요한 키만 쓰면
-  # 이 문서유형에서만 덮어쓴다(rag 하위도 키 단위 병합). model/max_tokens/thinking 은 표 설명도
-  # 이 custom_fields 호출의 값을 그대로 공유한다(별도 호출·별도 모델 없음).
-  # table_text_description:
-  #   prompt_template_file: prompt_table_text_description_rag.md
-  #   input_format: auto
-  #   before_items: 4
-  #   after_items: 3
-  #   rag:
-  #     key_fact_limit: 5
-  #     include_search_terms: true
-
   prompt:
     # system_file / user_file 로 프롬프트를 별도 md 로 뺄 수도 있다(이 yaml 과 같은 폴더 기준).
     # 지정하면 인라인보다 우선한다. variables 로 사용자 변수를, mode 로 strict/lenient 를 정한다.
@@ -200,17 +206,43 @@ llm:
       {{raw_text}}
       </document>
 
+# ── [선택] 값을 LLM 이 아니라 고객 파이썬 함수로 만든다 ──────────────────────
+# 위 `llm` 블록 **대신** 쓴다(둘을 함께 쓰면 기동 시 실패한다 — 값을 만드는 주체는 하나다).
+# 파일명·수집일자 같은 패턴에서 규칙으로 뽑아낼 수 있는 값은 모델에 맡길 이유가 없다.
+# 만들어진 값은 위 `fields` 의 값 파이프라인(values·transform·template·pack)을 그대로 탄다.
+# kind: document 전용이다.
+# python:
+#   file: custom_field_<유형>.py    # 이 yaml 과 같은 폴더 기준
+#   callable: extract               # 생략 시 기본 진입점 이름을 쓴다
+#   out: [<TARGET_FIELD_1>, <TARGET_FIELD_2>]   # 그 함수가 돌려주는 dict 의 키
+
+# ── [선택] 표 설명(table_text_description)을 이 문서유형에서만 바꾼다 ────────
+# 프로세서 config 의 공통 `table_text_description` 값이 기본이며, 아래처럼 필요한 키만 쓰면
+# 이 문서유형에서만 덮어쓴다(rag 하위도 키 단위 병합). model/max_tokens/thinking 은 표 설명도
+# 이 custom_fields 호출의 값을 그대로 공유한다(별도 호출·별도 모델 없음).
+# **최상위 키**이며 kind 와 무관하다 — rows/records/sections 설정에도 똑같이 쓸 수 있다.
+# table_text_description:
+#   prompt_template_file: prompt_table_text_description_rag.md
+#   input_format: auto
+#   before_items: 4
+#   after_items: 3
+#   rag:
+#     key_fact_limit: 5
+#     include_search_terms: true
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  기동 시 자동 검사 — 무엇을 잡아주고 무엇을 못 잡나
 #
 #  실패시킨다(요청 전에 바로 안다)
 #   · **이 kind 가 읽지 않는 키를 적은 경우.** 어느 스키마에도 없는 키(오타)는 가장 가까운
 #     이름을 제안하고(`out` 을 `outs` 로 쓴 경우 등), 다른 kind 의 키는 어디 전용인지 알려준다.
-#   · 필드 스펙에 `from`/`as` 를 쓴 경우 — 원천 컬럼의 평문 사본을 만드는 스펙이라
-#     rows/records 전용이다(나머지 스펙은 이 kind 도 그대로 쓴다)
+#   · 필드 스펙에 `collect`·`seq`·`raw` 를 쓴 경우 — 각각 records · rows/records ·
+#     JSON 원천 2종 전용이다(나머지 스펙은 이 kind 도 그대로 쓴다).
+#     `seq`·`raw` 는 내부 이름 `sequence`·`raw_fields` 로 보고된다
 #   · `transform` 의 변환기 이름이 틀렸거나 필수 인자가 빠진 경우, 안 되는 정규식
 #   · `template` 이 아무도 만들지 않는 필드를 참조하는 경우
 #   · 정의되지 않은 `{{변수}}` 를 프롬프트에 쓴 경우(strict 기본)
+#   · `llm` 과 `python` 을 함께 쓴 경우, 또는 `python.file` 을 빠뜨린 경우
 #
 #  경고만 남긴다(로그를 봐야 안다)
 #   · `alias` 의 front matter 키를 원천에서 못 찾을 때 — 그 필드가 빈 값으로 지나간다
@@ -227,8 +259,8 @@ llm:
 #       genon/preprocessor/examples/config_precheck/precheck_custom_fields.sh
 #
 #  2) 프롬프트·출력필드가 제대로 실렸는지 검사한다(LLM 호출 없음).
-#     실행 위치: genon/preprocessor
-#       python -c "
+#     실행 위치: genon/preprocessor  (그 폴더의 .venv 로 돌린다)
+#       .venv/bin/python -c "
 #     import sys; sys.path.insert(0,'.'); sys.path.insert(0,'../..')
 #     from facade.enrichment.custom_fields_enricher import CustomFieldsEnricher as E
 #     e = E(config_file='custom_field_<유형>.yaml', resource_path='resource')
@@ -248,6 +280,5 @@ llm:
 #  · `params.max_tokens: 1000` / `temperature: 0.0` / `timeout: 60` 처럼 **기본값과 같은 값**을
 #    등록 블록에 써도 이제는 등록 블록이 이긴다(예전에는 "미지정"과 구분되지 않아 이 파일의
 #    값이 이겼다).
-#  · `fields` 의 `const` 는 LLM 응답보다 우선한다 — 고정값이라고 선언한 이상 모델이 뭘 내놓든
-#    그 값이다. front matter 로 온 구조화 원천값보다도 우선한다.
+#  · `const` 가 LLM 응답을 이기는 규칙은 위 "[참고] 값 적용 순서" 에 적혀 있다.
 # ═══════════════════════════════════════════════════════════════════════════

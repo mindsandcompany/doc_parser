@@ -66,7 +66,7 @@ def test_doc_type_matching_is_normalized_and_missing_config_is_wildcard():
 @pytest.mark.unit
 def test_document_factory_excludes_tabular_mapping(tmp_path):
     faq_config = tmp_path / "faq.yaml"
-    faq_config.write_text("column_map: {}\n", encoding="utf-8")
+    faq_config.write_text("schema: v2\nsource:\n  kind: rows\n", encoding="utf-8")
     configs = [
         {
             "doc_type": "card",
@@ -123,15 +123,17 @@ def test_llm_custom_fields_runs_only_for_matching_doc_type(monkeypatch):
 
 def _write_mapping(path: Path) -> Path:
     config = {
-        "column_map": {
-            "question": ["대표질문", "질문", "depth4"],
-            "answer_text": ["답변", "description"],
-            "category_code": ["분류", "depth3"],
-            "needs_realtime_yn": ["실시간보완필요"],
+        "schema": "v2",
+        "source": {"kind": "rows"},
+        "fields": {
+            "question": {"alias": ["대표질문", "질문", "depth4"]},
+            "answer_text": {"alias": ["답변", "description"]},
+            "category_code": {"alias": ["분류", "depth3"]},
+            "needs_realtime_yn": {"alias": ["실시간보완필요"], "default": "N"},
+            "question_variant_text": {"default": None},
         },
-        "required": ["question", "answer_text", "needs_realtime_yn"],
-        "defaults": {"needs_realtime_yn": "N", "question_variant_text": None},
-        "text_fields": ["question", "answer_text"],
+        "require": {"fields": ["question", "answer_text", "needs_realtime_yn"]},
+        "body": {"fields": ["question", "answer_text"]},
     }
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
     return path
@@ -177,7 +179,7 @@ def test_tabular_mapping_splits_long_row_and_repeats_prefix(tmp_path):
     """긴 Excel 행은 chunk_size 로 나뉘고 모든 조각에 질문이 유지된다."""
     config_path = _write_mapping(tmp_path / "faq.yaml")
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    config.update({"split": True, "chunk_prefix_fields": ["question"]})
+    config["body"].update({"split": True, "repeat": ["question"]})
     config_path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
 
     mapper = TabularCustomFieldsMapper(
@@ -216,7 +218,7 @@ def test_tabular_mapping_short_row_stays_one_chunk_even_with_split(tmp_path):
     """split: true 를 켜도 chunk_size 미만 행은 여전히 "행 1개 = 청크 1개" 다."""
     config_path = _write_mapping(tmp_path / "faq.yaml")
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    config.update({"split": True, "chunk_prefix_fields": ["question"]})
+    config["body"].update({"split": True, "repeat": ["question"]})
     config_path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
 
     mapper = TabularCustomFieldsMapper(
@@ -249,7 +251,7 @@ def test_tabular_mapping_split_false_ignores_chunk_prefix_fields(tmp_path):
     """
     config_path = _write_mapping(tmp_path / "faq.yaml")
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    config.update({"split": False, "chunk_prefix_fields": ["answer_text"]})
+    config["body"].update({"split": False, "repeat": ["answer_text"]})
     config_path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
 
     mapper = TabularCustomFieldsMapper(
@@ -342,11 +344,15 @@ def test_value_map_rejects_alias_claimed_by_two_canonicals():
 @pytest.mark.unit
 def test_tabular_mapping_applies_value_map_and_transforms(tmp_path):
     config = {
-        "column_map": {"GROUP_C": ["회사명"], "TERM": ["용어"], "TERM_NORM": ["용어"]},
-        "value_map": {"GROUP_C": {"SLF": ["삼성생명", "생명"]}},
-        "transforms": {"TERM_NORM": "text_norm"},
-        "required": ["GROUP_C", "TERM"],
-        "text_fields": ["TERM"],
+        "schema": "v2",
+        "source": {"kind": "rows"},
+        "fields": {
+            "GROUP_C": {"alias": ["회사명"], "values": {"SLF": ["삼성생명", "생명"]}},
+            "TERM": {"alias": ["용어"]},
+            "TERM_NORM": {"alias": ["용어"], "transform": "text_norm"},
+        },
+        "require": {"fields": ["GROUP_C", "TERM"]},
+        "body": {"fields": ["TERM"]},
     }
     path = tmp_path / "term.yaml"
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
@@ -397,14 +403,15 @@ def test_tabular_build_fields_and_to_parse_format_round_trip(tmp_path):
 def test_tabular_mapping_compiles_llm_fields(tmp_path):
     """tabular 도 json_mapping 과 같은 llm_fields 스펙을 받는다(요약본문 생성용)."""
     config = {
-        "column_map": {"TITLE": ["제목"]},
-        "required": ["TITLE"],
-        "text_fields": ["TITLE", "SUMMARY_TEXT"],
-        "llm_fields": [{
-            "output_fields": ["SUMMARY_TEXT"],
-            "input_fields": ["TITLE"],
-            "url": "http://example/v1/chat/completions",
-            "model": "model",
+        "schema": "v2",
+        "source": {"kind": "rows"},
+        "fields": {"TITLE": {"alias": ["제목"]}},
+        "require": {"fields": ["TITLE"]},
+        "body": {"fields": ["TITLE", "SUMMARY_TEXT"]},
+        "llm": [{
+            "out": ["SUMMARY_TEXT"],
+            "in": ["TITLE"],
+            "endpoint": {"url": "http://example/v1/chat/completions", "model": "model"},
         }],
     }
     path = tmp_path / "cs.yaml"
@@ -425,9 +432,10 @@ def test_tabular_mapping_compiles_llm_fields(tmp_path):
 @pytest.mark.unit
 def test_tabular_mapping_rejects_unknown_transform(tmp_path):
     config = {
-        "column_map": {"TITLE": ["제목"]},
-        "transforms": {"TITLE": "does_not_exist"},
-        "text_fields": ["TITLE"],
+        "schema": "v2",
+        "source": {"kind": "rows"},
+        "fields": {"TITLE": {"alias": ["제목"], "transform": "does_not_exist"}},
+        "body": {"fields": ["TITLE"]},
     }
     path = tmp_path / "bad.yaml"
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
@@ -579,25 +587,28 @@ def test_shipped_monimo_configs_use_db_column_names(resource_dir, config_name):
 
 def _write_row_merge_cfg(tmp_path: Path, **overrides) -> Path:
     config = {
-        "column_map": {
-            "REGT_NO": ["regt_no"],
-            "NTC_OBJLINE_NO": ["ntc_objline"],
-            "JONG_CODE": ["jong_code"],
-            "JONG_NM": ["jong_name"],
-            "DETAIL_DESC": ["detail_desc"],
-            "DETAIL_TEXT": ["detail_desc"],
+        "schema": "v2",
+        "source": {
+            "kind": "rows",
+            "merge_rows": overrides.pop("row_merge", {
+                "group_by": ["REGT_NO", "JONG_CODE"],
+                "order_by": "NTC_OBJLINE_NO",
+                "concat": ["DETAIL_DESC", "DETAIL_TEXT"],
+            }),
         },
-        "row_merge": {
-            "group_by": ["REGT_NO", "JONG_CODE"],
-            "order_by": "NTC_OBJLINE_NO",
-            "concat": ["DETAIL_DESC", "DETAIL_TEXT"],
+        "fields": {
+            "REGT_NO": {"alias": ["regt_no"]},
+            "NTC_OBJLINE_NO": {"alias": ["ntc_objline"]},
+            "JONG_CODE": {"alias": ["jong_code"]},
+            "JONG_NM": {"alias": ["jong_name"]},
+            "DETAIL_DESC": {"alias": ["detail_desc"]},
+            # 원본(DETAIL_DESC)은 남기고 평문 사본을 만든다 — 같은 alias 를 한 번 더 붙이고
+            # `text`(종류 자동 판별) 변환을 건다. 병합 대상에도 함께 넣는다.
+            "DETAIL_TEXT": {"alias": ["detail_desc"], "transform": "text"},
         },
-        # 원본(DETAIL_DESC)은 남기고 평문 사본을 만든다 — 같은 alias 를 한 번 더 붙이고
-        # `text`(종류 자동 판별) 변환을 건다. 병합 대상에도 함께 넣는다.
-        "transforms": {"DETAIL_TEXT": "text"},
-        "text_fields": ["JONG_NM", "DETAIL_TEXT"],
+        "body": {"fields": ["JONG_NM", "DETAIL_TEXT"]},
     }
-    config.update(overrides)
+    config["source"].update(overrides)
     path = tmp_path / "stock.yaml"
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
     return path
@@ -681,10 +692,9 @@ def test_row_merge_splits_on_group_boundary(tmp_path):
 def test_row_merge_absent_keeps_one_record_per_row(tmp_path):
     """row_merge 미선언이면 종전대로 행 1개 = 레코드 1개다(회귀 가드)."""
     config = yaml.safe_load(_write_row_merge_cfg(tmp_path).read_text(encoding="utf-8"))
-    config.pop("row_merge")
-    config.pop("transforms")
-    config["column_map"].pop("DETAIL_TEXT")
-    config["text_fields"] = ["JONG_NM", "DETAIL_DESC"]
+    config["source"].pop("merge_rows")
+    config["fields"].pop("DETAIL_TEXT")
+    config["body"]["fields"] = ["JONG_NM", "DETAIL_DESC"]
     path = tmp_path / "stock.yaml"
     path.write_text(yaml.safe_dump(config, allow_unicode=True), encoding="utf-8")
 
@@ -835,9 +845,13 @@ def _write_mapper_cfg(tmp_path, body: str):
 def test_reserved_target_field_name_rejected_at_startup(tmp_path, target):
     """예약 필드명을 목표필드로 쓰면 기동 시 막는다(런타임 크래시 예방)."""
     _write_mapper_cfg(tmp_path, f"""
-        column_map:
-          {target}: [원천컬럼]
-        text_fields: [{target}]
+        schema: v2
+        source: {{kind: rows}}
+        fields:
+          {target}:
+            alias: [원천컬럼]
+        body:
+          fields: [{target}]
     """)
     with pytest.raises(ValueError, match="예약 필드"):
         TabularCustomFieldsMapper(
@@ -851,9 +865,13 @@ def test_reserved_target_field_name_rejected_at_startup(tmp_path, target):
 def test_invalid_property_name_rejected_at_startup(tmp_path, target):
     """한글·공백·기호·숫자시작 목표필드명은 적재 시 실패하므로 기동 시 막는다."""
     _write_mapper_cfg(tmp_path, f"""
-        column_map:
-          "{target}": [원천컬럼]
-        text_fields: ["{target}"]
+        schema: v2
+        source: {{kind: rows}}
+        fields:
+          "{target}":
+            alias: [원천컬럼]
+        body:
+          fields: ["{target}"]
     """)
     with pytest.raises(ValueError, match="이름 규칙"):
         TabularCustomFieldsMapper(
@@ -866,13 +884,17 @@ def test_invalid_property_name_rejected_at_startup(tmp_path, target):
 def test_reserved_name_checked_in_constants_and_llm_fields(tmp_path):
     """column_map 뿐 아니라 constants·defaults·llm_fields 출력도 검사 대상이다."""
     _write_mapper_cfg(tmp_path, """
-        column_map:
-          TITLE: [제목]
-        text_fields: [TITLE]
-        llm_fields:
-          - output_fields: [created_date]
-            input_fields: [TITLE]
-            url: "http://example/v1/chat/completions"
+        schema: v2
+        source: {kind: rows}
+        fields:
+          TITLE:
+            alias: [제목]
+        body:
+          fields: [TITLE]
+        llm:
+          - out: [created_date]
+            in: [TITLE]
+            endpoint: {url: "http://example/v1/chat/completions"}
     """)
     with pytest.raises(ValueError, match="예약 필드"):
         TabularCustomFieldsMapper(
@@ -885,11 +907,14 @@ def test_reserved_name_checked_in_constants_and_llm_fields(tmp_path):
 def test_db_column_style_target_names_pass(tmp_path):
     """출고 관례(대문자 DB 컬럼명)는 그대로 통과해야 한다 — 오탐 방지."""
     _write_mapper_cfg(tmp_path, """
-        column_map:
-          TITLE: [제목]
-          GROUP_C: [회사명]
-          SRC_LAST_MOD_DT: [최종수정일]
-        text_fields: [TITLE]
+        schema: v2
+        source: {kind: rows}
+        fields:
+          TITLE: {alias: [제목]}
+          GROUP_C: {alias: [회사명]}
+          SRC_LAST_MOD_DT: {alias: [최종수정일]}
+        body:
+          fields: [TITLE]
     """)
     mapper = TabularCustomFieldsMapper(
         config_file="custom_field_probe.yaml", resource_path=str(tmp_path),
@@ -926,11 +951,20 @@ async def test_row_metadata_validation_failure_is_wrapped_with_stage():
 @pytest.mark.parametrize("key", ["required", "text_fields", "chunk_prefix_fields"])
 def test_scalar_instead_of_list_rejected_at_startup(tmp_path, key):
     """`- ` 를 빠뜨려 스칼라가 되면 글자 단위로 쪼개져 전 행이 걸러진다 — 기동 시 거부."""
+    body_fields = "TITLE" if key == "text_fields" else "[TITLE]"
+    repeat = "TITLE" if key == "chunk_prefix_fields" else "[TITLE]"
+    required = "TITLE" if key == "required" else "[TITLE]"
     _write_mapper_cfg(tmp_path, f"""
-        column_map:
-          TITLE: [제목]
-        text_fields: [TITLE]
-        {key}: TITLE
+        schema: v2
+        source: {{kind: rows}}
+        fields:
+          TITLE:
+            alias: [제목]
+        body:
+          fields: {body_fields}
+          repeat: {repeat}
+        require:
+          fields: {required}
     """)
     with pytest.raises(ValueError, match="목록이어야"):
         TabularCustomFieldsMapper(
@@ -942,10 +976,14 @@ def test_scalar_instead_of_list_rejected_at_startup(tmp_path, key):
 @pytest.mark.unit
 def test_unknown_chunk_prefix_field_rejected_at_startup(tmp_path):
     _write_mapper_cfg(tmp_path, """
-        column_map:
-          TITLE: [제목]
-        text_fields: [TITLE]
-        chunk_prefix_fields: [MISSING_TITLE]
+        schema: v2
+        source: {kind: rows}
+        fields:
+          TITLE:
+            alias: [제목]
+        body:
+          fields: [TITLE]
+          repeat: [MISSING_TITLE]
     """)
     with pytest.raises(ValueError, match="chunk_prefix_fields.*만드는 설정이 없습니다"):
         TabularCustomFieldsMapper(
@@ -955,15 +993,27 @@ def test_unknown_chunk_prefix_field_rejected_at_startup(tmp_path):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("key", ["constants", "defaults", "value_map", "transforms"])
-def test_list_instead_of_mapping_rejected_at_startup(tmp_path, key):
-    """맵이어야 하는 키를 리스트로 쓰면 dict() 강제 변환이 요청마다 터진다 — 기동 시 거부."""
+@pytest.mark.parametrize("bad_spec", [
+    "            values:\n              - X",
+    "            transform:\n              - [1, 2]",
+])
+def test_list_instead_of_mapping_rejected_at_startup(tmp_path, bad_spec):
+    """맵/object 여야 하는 필드 스펙 키가 리스트면 dict() 강제 변환이 요청마다 터진다 — 기동 시 거부.
+
+    v1 에서는 constants/defaults/value_map/transforms 네 블록이 전부 대상이었다. v2 는 필드별로
+    조립되어 그 블록이 통째로 리스트가 되는 경로 자체가 없다 — const/default 는 값을 그대로
+    옮기기만 해 이 버그 클래스가 v2 구조상 발생하지 않는다(파라미터에서 뺐다). values/transform
+    만 v2 자신 또는 하위 컴파일러가 여전히 shape 를 검사한다.
+    """
     _write_mapper_cfg(tmp_path, f"""
-        column_map:
-          TITLE: [제목]
-        text_fields: [TITLE]
-        {key}:
-          - X
+        schema: v2
+        source: {{kind: rows}}
+        fields:
+          TITLE:
+            alias: [제목]
+{bad_spec}
+        body:
+          fields: [TITLE]
     """)
     with pytest.raises(ValueError, match="object 여야"):
         TabularCustomFieldsMapper(
@@ -976,14 +1026,19 @@ def test_list_instead_of_mapping_rejected_at_startup(tmp_path, key):
 def test_required_on_llm_generated_field_rejected_at_startup(tmp_path):
     """필수값 검사는 LLM 호출보다 먼저 돈다 — LLM 생성 필드를 required 로 걸면 전 행이 사라진다."""
     _write_mapper_cfg(tmp_path, """
-        column_map:
-          TITLE: [제목]
-        required: [SUMMARY_TEXT]
-        text_fields: [TITLE]
-        llm_fields:
-          - output_fields: [SUMMARY_TEXT]
-            input_fields: [TITLE]
-            url: "http://example/v1/chat/completions"
+        schema: v2
+        source: {kind: rows}
+        fields:
+          TITLE:
+            alias: [제목]
+        require:
+          fields: [SUMMARY_TEXT]
+        body:
+          fields: [TITLE]
+        llm:
+          - out: [SUMMARY_TEXT]
+            in: [TITLE]
+            endpoint: {url: "http://example/v1/chat/completions"}
     """)
     with pytest.raises(ValueError, match="llm_fields 가 만드는 필드"):
         TabularCustomFieldsMapper(
@@ -999,9 +1054,13 @@ def test_unproducible_text_field_warns_but_loads(tmp_path, caplog):
     출고 custom_field_monimo_event.yaml 이 현재 이 상태라 hard error 로 두면 기동이 막힌다.
     """
     _write_mapper_cfg(tmp_path, """
-        column_map:
-          TITLE: [제목]
-        text_fields: [TITLE, SUMMARY_TEXT]
+        schema: v2
+        source: {kind: rows}
+        fields:
+          TITLE:
+            alias: [제목]
+        body:
+          fields: [TITLE, SUMMARY_TEXT]
     """)
     with caplog.at_level("WARNING"):
         TabularCustomFieldsMapper(
@@ -1084,7 +1143,7 @@ def test_unknown_key_is_rejected_with_suggestion(tmp_path):
     )
 
     cfg = tmp_path / "custom_field_x.yaml"
-    cfg.write_text("column_maps:\n  Q: [질문]\ntext_fields: [Q]\n", encoding="utf-8")
+    cfg.write_text("schema: v2\ncolumn_maps:\n  Q: [질문]\ntext_fields: [Q]\n", encoding="utf-8")
     with pytest.raises(ValueError) as exc:
         TabularCustomFieldsMapper(
             config_file=cfg.name, resource_path=str(tmp_path),
@@ -1106,9 +1165,10 @@ def test_key_of_another_extractor_is_rejected(tmp_path):
 
     cfg = tmp_path / "custom_field_s.yaml"
     cfg.write_text(
-        "shared_fields:\n  PRODUCT_NM: [prodNm]\n"
-        "sections:\n  ksp: {name: 혜택, include: true}\n"
-        "chunk_prefix_fields: [PRODUCT_NM]\n",
+        "schema: v2\n"
+        "source:\n  kind: sections\n  sections:\n    ksp: {name: 혜택, include: true}\n"
+        "fields:\n  PRODUCT_NM:\n    alias: [prodNm]\n"
+        "body:\n  repeat: [PRODUCT_NM]\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError) as exc:
@@ -1128,7 +1188,10 @@ def test_llm_config_rejects_output_field_typo(tmp_path):
 
     cfg = tmp_path / "custom_field_l.yaml"
     cfg.write_text(
-        'url: "u"\nmodel: m\noutput_field:\n  - TITLE\nuser_prompt: |\n  {{raw_text}}\n',
+        "schema: v2\nsource: {kind: document}\n"
+        "llm:\n  - endpoint: {url: \"u\", model: m}\n"
+        "    output_field: [TITLE]\n"
+        "    prompt: {user: '{{raw_text}}'}\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError) as exc:
@@ -1188,9 +1251,10 @@ def test_column_map_can_reference_sheet_name(tmp_path):
 
     cfg = tmp_path / "custom_field_ctx.yaml"
     cfg.write_text(
-        "column_map:\n  COMPANY: [sheet_name]\n  QUESTION: [질문]\n"
-        "required: [COMPANY, QUESTION]\n"
-        "text_fields: [QUESTION]\n",
+        "schema: v2\nsource: {kind: rows}\n"
+        "fields:\n  COMPANY:\n    alias: [sheet_name]\n  QUESTION:\n    alias: [질문]\n"
+        "require:\n  fields: [COMPANY, QUESTION]\n"
+        "body:\n  fields: [QUESTION]\n",
         encoding="utf-8",
     )
     mapper = TabularCustomFieldsMapper(
@@ -1215,7 +1279,9 @@ def test_real_column_wins_over_sheet_context(tmp_path):
 
     cfg = tmp_path / "custom_field_ctx2.yaml"
     cfg.write_text(
-        "column_map:\n  SRC: [sheet_name]\n  QUESTION: [질문]\ntext_fields: [QUESTION]\n",
+        "schema: v2\nsource: {kind: rows}\n"
+        "fields:\n  SRC:\n    alias: [sheet_name]\n  QUESTION:\n    alias: [질문]\n"
+        "body:\n  fields: [QUESTION]\n",
         encoding="utf-8",
     )
     mapper = TabularCustomFieldsMapper(
@@ -1245,7 +1311,7 @@ def test_removed_keys_are_rejected(tmp_path, key):
     cfg = tmp_path / "custom_field_x.yaml"
     body = "  - BIZ_ID\n" if key == "nulls" else "  D: SRC\n"
     cfg.write_text(
-        f"column_map:\n  Q: [질문]\n  SRC: [원문]\ntext_fields: [Q]\n{key}:\n{body}",
+        f"schema: v2\ncolumn_map:\n  Q: [질문]\n  SRC: [원문]\ntext_fields: [Q]\n{key}:\n{body}",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match=key):
@@ -1264,8 +1330,10 @@ def test_defaults_null_declares_field_without_mapping(tmp_path):
 
     cfg = tmp_path / "custom_field_d.yaml"
     cfg.write_text(
-        'column_map:\n  Q: [질문]\ndefaults:\n  STATUS: "PUBLISHED"\n  BIZ_ID: null\n'
-        "text_fields: [Q]\n",
+        "schema: v2\nsource: {kind: rows}\n"
+        "fields:\n  Q:\n    alias: [질문]\n  STATUS:\n    default: \"PUBLISHED\"\n"
+        "  BIZ_ID:\n    default: null\n"
+        "body:\n  fields: [Q]\n",
         encoding="utf-8",
     )
     mapper = TabularCustomFieldsMapper(
@@ -1296,8 +1364,11 @@ def test_thinking_falls_back_to_config_file(tmp_path):
 
     cfg = tmp_path / "custom_field_t.yaml"
     cfg.write_text(
-        "url: u\nmodel: m\nthinking: auto\nthinking_dialect: hcx\n"
-        "output_fields: [T]\nuser_prompt: |\n  {{raw_text}}\n",
+        "schema: v2\nsource: {kind: document}\n"
+        "llm:\n  - endpoint: {url: u, model: m}\n"
+        "    params: {thinking: auto, thinking_dialect: hcx}\n"
+        "    out: [T]\n"
+        "    prompt: {user: '{{raw_text}}\\n'}\n",
         encoding="utf-8",
     )
     kwargs = {"config_file": cfg.name, "resource_path": str(tmp_path)}
@@ -1311,15 +1382,19 @@ def test_thinking_falls_back_to_config_file(tmp_path):
 # ── 등록 블록 ↔ config_file 병합 규칙 (B3) ──────────────────────────────────
 # 규칙은 하나다 — 등록 블록이 config_file 을 이기고, 미지정이면 config_file 을 쓴다.
 
-def _llm_cfg(tmp_path, extra=""):
+def _llm_cfg(tmp_path, prompt_extra=""):
+    """`prompt_extra` 는 llm 항목의 `prompt:` 블록 안에 붙는다(들여쓰기 6칸)."""
     path = tmp_path / "custom_field_b3.yaml"
     path.write_text(
-        "url: cfg-url\nmodel: cfg-model\n"
-        "max_tokens: 4000\ntemperature: 0.7\ntimeout: 300\n"
-        "constants:\n  FROM_CFG: cfg\n  BOTH: cfg\n"
-        "system_prompt: |\n  cfg-system\n"
-        "user_prompt: |\n  cfg-user {{raw_text}}\n"
-        "output_fields: [A]\n" + extra,
+        "schema: v2\nsource: {kind: document}\n"
+        "fields:\n  FROM_CFG:\n    const: cfg\n  BOTH:\n    const: cfg\n"
+        "llm:\n  - endpoint: {url: cfg-url, model: cfg-model}\n"
+        "    params: {max_tokens: 4000, temperature: 0.7, timeout: 300}\n"
+        "    out: [A]\n"
+        "    prompt:\n"
+        "      system: |\n        cfg-system\n"
+        "      user: |\n        cfg-user {{raw_text}}\n"
+        f"{prompt_extra}",
         encoding="utf-8",
     )
     return {"config_file": path.name, "resource_path": str(tmp_path)}
@@ -1365,7 +1440,7 @@ def test_registration_inline_prompt_beats_config_file_prompt_file(tmp_path):
     )
 
     (tmp_path / "sys.md").write_text("cfg-system-from-file", encoding="utf-8")
-    kwargs = _llm_cfg(tmp_path, extra="system_prompt_file: sys.md\n")
+    kwargs = _llm_cfg(tmp_path, prompt_extra="      system_file: sys.md\n")
 
     assert CustomFieldsEnricher(**kwargs)._system_prompt == "cfg-system-from-file"
     named = CustomFieldsEnricher(**kwargs, system_prompt="item-system")

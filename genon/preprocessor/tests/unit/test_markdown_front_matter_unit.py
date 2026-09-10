@@ -144,12 +144,16 @@ def test_builder_routes_by_document_extractor_only():
 def test_builder_loads_child_markdown_config_and_applies_inline_override(tmp_path: Path):
     child = tmp_path / "product.yaml"
     child.write_text(
-        "markdown:\n"
-        "  front_matter:\n"
-        "    metadata_fields:\n"
-        "      source_file: source_file\n"
-        "      created_at: created_date\n"
-        "    exclude_text_fields: ['*']\n",
+        "schema: v2\n"
+        "source:\n"
+        "  kind: document\n"
+        "  pre:\n"
+        "    markdown:\n"
+        "      front_matter:\n"
+        "        metadata_fields:\n"
+        "          source_file: source_file\n"
+        "          created_at: created_date\n"
+        "        exclude_text_fields: ['*']\n",
         encoding="utf-8",
     )
     config = {
@@ -179,9 +183,13 @@ def test_builder_loads_child_markdown_config_and_applies_inline_override(tmp_pat
 def test_inline_markdown_false_disables_child_config(tmp_path: Path):
     child = tmp_path / "product.yaml"
     child.write_text(
-        "markdown:\n"
-        "  front_matter:\n"
-        "    metadata_fields: [source_file]\n",
+        "schema: v2\n"
+        "source:\n"
+        "  kind: document\n"
+        "  pre:\n"
+        "    markdown:\n"
+        "      front_matter:\n"
+        "        metadata_fields: [source_file]\n",
         encoding="utf-8",
     )
     config = {

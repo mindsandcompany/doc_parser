@@ -48,6 +48,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/sid.list && \
     printf "Package: python3.13 python3.13-minimal libpython3.13 libpython3.13-minimal libpython3.13-stdlib\nPin: release n=sid\nPin-Priority: 990\n\nPackage: *\nPin: release n=sid\nPin-Priority: 100\n" > /etc/apt/preferences.d/pin-python3.13 && \
     apt-get update && \
+    # CVE-2026-14456 등 openssl 22건, CVE-2026-2219(dpkg), CVE-2026-47063(openjdk-21): 베이스의 trixie 패키지를
+    # 보안 수정본으로 전체 상향한다. sid 소스는 우선순위 100이라 python3.13 계열 외에는 끌려오지 않는다.
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
       net-tools curl wget git fontconfig procps supervisor vim \
       libmagic1 libmagic-dev \

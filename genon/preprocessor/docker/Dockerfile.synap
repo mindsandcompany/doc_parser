@@ -46,6 +46,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     echo "deb http://deb.debian.org/debian sid main" > /etc/apt/sources.list.d/sid.list && \
     printf "Package: python3.13 python3.13-minimal libpython3.13 libpython3.13-minimal libpython3.13-stdlib\nPin: release a=sid\nPin-Priority: 990\n\nPackage: *\nPin: release a=sid\nPin-Priority: 100\n" > /etc/apt/preferences.d/pin-python3.13 && \
     apt-get update && \
+    # CVE-2026-14456 등 openssl 22건, CVE-2026-2219(dpkg), CVE-2025-59375(expat), CVE-2026-26740(giflib),
+    # CVE-2026-47063(openjdk-21): 베이스의 trixie 패키지를 보안 수정본으로 전체 상향한다.
+    # sid 소스는 우선순위 100이라 python3.13 계열 외에는 끌려오지 않는다.
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
       net-tools \
       curl \
@@ -147,8 +151,10 @@ RUN uv venv ${APP_VENV}
 
 # ✅ 그 venv에 설치
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen || \
-    uv sync
+    # CVE-2026-42215 등 GitPython 14건, CVE-2025-67725 등 tornado 4건, CVE-2026-24049(wheel), CVE-2026-23949(jaraco.context 6.0.1):
+    # 전부 dev 그룹(python-semantic-release, ipykernel, jupyter-client, twine) 전용 의존성이라 --no-dev로 런타임 이미지에서 제외한다.
+    uv sync --frozen --no-dev || \
+    uv sync --no-dev
 
 # 이슈 #210 — CPU 빌드 시 GPU 용 torch / nvidia / triton 을 제거하고 CPU wheel 재설치
 ARG HW_VARIANT
@@ -159,7 +165,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
       uv pip install --python /app/.venv/bin/python \
         --reinstall-package torch --reinstall-package torchvision \
         --index-url "${TORCH_CPU_INDEX_URL}" \
-        torch==2.9.0 torchvision==0.24.0 && \
+        # CVE-2026-24747: torch 2.9.0 취약, 2.10.0으로 상향(torchvision 0.25.0은 torch 2.10.0 짝, uv.lock과 동일 버전).
+        torch==2.10.0 torchvision==0.25.0 && \
       uv pip uninstall --python /app/.venv/bin/python \
         nvidia-cublas-cu12 \
         nvidia-cuda-cupti-cu12 \

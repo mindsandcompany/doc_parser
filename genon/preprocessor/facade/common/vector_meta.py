@@ -19,11 +19,25 @@ from docling_core.types.doc import PictureItem, TableItem
 
 # core_payload() 가 내보내는 공통 필드. build() 는 여기에 facade 고유 필드를 더한다.
 CORE_FIELDS = (
-    "text", "n_char", "n_word", "n_line",
-    "i_page", "e_page", "i_chunk_on_page", "n_chunk_of_page",
-    "i_chunk_on_doc", "n_chunk_of_doc", "n_page",
-    "reg_date", "chunk_bboxes", "media_files", "guardrail_categories",
-    "has_table", "table_refs", "table_split_index", "table_split_total",
+    "text",
+    "n_char",
+    "n_word",
+    "n_line",
+    "i_page",
+    "e_page",
+    "i_chunk_on_page",
+    "n_chunk_of_page",
+    "i_chunk_on_doc",
+    "n_chunk_of_doc",
+    "n_page",
+    "reg_date",
+    "chunk_bboxes",
+    "media_files",
+    "guardrail_categories",
+    "has_table",
+    "table_refs",
+    "table_split_index",
+    "table_split_total",
 )
 
 
@@ -98,14 +112,15 @@ class VectorMetaBuilderBase:
             for prov in item.prov:
                 size = document.pages.get(prov.page_no).size
                 bbox = prov.bbox
-                bbox_data = {'l': bbox.l / size.width,
-                             't': bbox.t / size.height,
-                             'r': bbox.r / size.width,
-                             'b': bbox.b / size.height,
-                             'coord_origin': bbox.coord_origin.value}
-                chunk_bboxes.append({'page': prov.page_no, 'bbox': bbox_data,
-                                     'type': item.label, 'ref': item.self_ref})
-        self.e_page = max([bbox['page'] for bbox in chunk_bboxes]) if chunk_bboxes else 0
+                bbox_data = {
+                    "l": bbox.l / size.width,
+                    "t": bbox.t / size.height,
+                    "r": bbox.r / size.width,
+                    "b": bbox.b / size.height,
+                    "coord_origin": bbox.coord_origin.value,
+                }
+                chunk_bboxes.append({"page": prov.page_no, "bbox": bbox_data, "type": item.label, "ref": item.self_ref})
+        self.e_page = max([bbox["page"] for bbox in chunk_bboxes]) if chunk_bboxes else 0
         self.chunk_bboxes = json.dumps(chunk_bboxes)
         return self
 
@@ -114,19 +129,16 @@ class VectorMetaBuilderBase:
         for item in doc_items:
             if isinstance(item, PictureItem) and item.image:
                 path = str(item.image.uri)
-                temp_list.append({'name': path.rsplit("/", 1)[-1], 'type': 'image',
-                                  'ref': item.self_ref})
+                temp_list.append({"name": path.rsplit("/", 1)[-1], "type": "image", "ref": item.self_ref})
             elif include_tables and isinstance(item, TableItem) and item.image:
                 # 표 이미지는 picture 와 구분되도록 type='table_image' 로 기록한다.
                 # ref(self_ref)는 chunk_bboxes 의 table 엔트리 ref 와 동일 → 조인 가능.
                 path = str(item.image.uri)
-                temp_list.append({'name': path.rsplit("/", 1)[-1], 'type': 'table_image',
-                                  'ref': item.self_ref})
+                temp_list.append({"name": path.rsplit("/", 1)[-1], "type": "table_image", "ref": item.self_ref})
         self.media_files = json.dumps(temp_list)
         return self
 
-    def set_table_info(self, doc_items: list, split_totals: Optional[dict] = None,
-                       seen_counts: Optional[dict] = None):
+    def set_table_info(self, doc_items: list, split_totals: Optional[dict] = None, seen_counts: Optional[dict] = None):
         """청크가 담은 표를 메타데이터로 드러낸다.
 
         예전에는 chunk_bboxes 안 type 을 파헤쳐야만 표 청크인지 알 수 있었다. 하이브리드
@@ -139,6 +151,8 @@ class VectorMetaBuilderBase:
         refs = [item.self_ref for item in doc_items if isinstance(item, TableItem)]
         self.has_table = bool(refs)
         self.table_refs = json.dumps(refs) if refs else None
+        self.table_split_index = -1
+        self.table_split_total = -1
         if not refs or not split_totals or seen_counts is None:
             return self
         # 한 청크에 표가 여럿이면 조각 순서라는 개념이 성립하지 않으므로 비워 둔다.

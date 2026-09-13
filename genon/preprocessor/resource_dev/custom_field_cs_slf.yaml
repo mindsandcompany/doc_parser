@@ -33,74 +33,126 @@
 # 제목을 앞에 두어 LLM 미설정/실패 시에도 본문이 비지 않게 한다.
 
 schema: v2
+# source:
+#   kind: rows
+# fields:
+#   BIZ_ID:
+#     alias: [문서ID, 문서 ID, ID, 문서번호]
+#     default: null
+#   CS_CATEGORY:
+#     alias: [카테고리, 문의유형, 분류, 대분류]
+#     default: null
+#   TITLE:
+#     alias: [대표질문, 제목, 질문]
+#   CONTENT:
+#     alias: [답변, 안내본문, 핵심요약, 상세가이드]
+#   DEEP_LINK_URL:
+#     alias: [딥링크, 앱 딥링크, 확인방법, 링크]
+#     default: null
+#   RELATED_KEYWORDS:
+#     alias: [동의어, 키워드, 연관 키워드]
+#     default: null
+#   SEARCHABLE_YN:
+#     alias: [노출여부]
+#     default: N
+#   GROUP_C:
+#     const: SLF
+# require:
+#   fields: [GROUP_C, TITLE]
+# body:
+#   fields: [TITLE, SUMMARY_TEXT]
+#   labels:
+#     TITLE: 제목
+#     SUMMARY_TEXT: 안내요약
+# llm:
+# - out: [SUMMARY_TEXT]
+#   in: [TITLE, CS_CATEGORY, CONTENT]
+#   concurrency: 4
+#   on_error: null
+#   parser:
+#     type: json
+#   endpoint:
+#     url: http://llmops-gateway-api-service:8080/rep/serving/<ENRICHMENT_SERVING_ID>/v1/chat/completions
+#     api_key: ''
+#     model: model
+#   params:
+#     max_tokens: 1000
+#     temperature: 0.0
+#     timeout: 120
+#   prompt:
+#     system: |
+#       너는 보험 고객센터 안내문 요약 전문가다. 주어진 안내 항목을 검색용 임베딩에 넣을 요약본문으로 압축한다.
+
+#       규칙:
+#       - 반드시 하나의 JSON 객체만 반환한다. 설명 문구·마크다운 코드펜스 없이 순수 JSON 만 출력한다.
+#       - 키는 `SUMMARY_TEXT` 하나다. 값은 요약본문 문자열이다.
+#       - 원문에 없는 정보를 지어내지 않는다(환각 금지). 금액·기간·비율은 원문 숫자를 그대로 쓴다.
+#       - 요약본문에는 이용자가 검색할 만한 표현을 남긴다: 무엇을 하는 절차인지, 필요한 서류·조건,
+#         처리 기간, 예외사항, 이용 가능한 채널. 상담원 내부 지침·이관 조건은 제외한다.
+#       - 문장형 한국어로 3~6문장, 800자 이내로 쓴다. 불릿·머리기호를 쓰지 않는다.
+#       - 안내본문이 비어 있거나 요약할 내용이 없으면 값을 null 로 둔다.
+
+#       출력 예시 형식(값은 예시):
+#       {"SUMMARY_TEXT": "보험금 청구는 청구서와 진단서를 준비해 …"}
+#     user: |
+#       아래 고객센터 안내 항목을 검색용 요약본문으로 압축하라.
+
+#       - SUMMARY_TEXT (요약본문) — 필수
+
+#       반드시 `SUMMARY_TEXT` 키 하나를 가진 JSON 객체로만 반환하라.
+
+#       <cs_item>
+#       {{raw_text}}
+#       </cs_item>
+
+
 source:
-  kind: rows
+  kind: records
+  on_missing: error
 fields:
   BIZ_ID:
-    alias: [문서ID, 문서 ID, ID, 문서번호]
+    alias: [ID, id]
     default: null
-  CS_CATEGORY:
-    alias: [카테고리, 문의유형, 분류, 대분류]
+  GROUP_C:
+    alias: [회사명, corp_code, 고객사]
+    const: SLF
+    values:
+      IFP: [모니모]
+      SLF: [삼성생명, 생명]
+      SSF: [삼성화재, 화재]
+      HPP: [삼성카드, 카드]
+      SSS: [삼성증권, 증권]
+  CS_CTGR_L1:
+    alias: [UDR_NM, 대분류]
+    default: null
+  CS_CTGR_L2:
+    alias: [LV2_THEMA_TERY_NM, 중분류]
+    default: null
+  CS_CTGR_L3:
+    alias: [소분류]
     default: null
   TITLE:
-    alias: [대표질문, 제목, 질문]
+    alias: [TIT_NM, 제목, 대표질문]
   CONTENT:
-    alias: [답변, 안내본문, 핵심요약, 상세가이드]
-  DEEP_LINK_URL:
-    alias: [딥링크, 앱 딥링크, 확인방법, 링크]
-    default: null
+    alias: [CONT, 안내본문, 답변]
+    transform: html_text
   RELATED_KEYWORDS:
-    alias: [동의어, 키워드, 연관 키워드]
+    alias: [KEYW_LIS]
     default: null
-  SEARCHABLE_YN:
-    alias: [노출여부]
-    default: N
-  GROUP_C:
-    const: SLF
+    transform: [{name: to_json, key: "KEYW_LIS"}]
+  DEEP_LINK_URL:
+    alias: [딥링크, 앱 딥링크]
+    default: null
+  SRC_LAST_MOD_DT:
+    alias: [UD_DTM]
+    default: null
 require:
-  fields: [GROUP_C, TITLE]
+  fields: [TITLE]
 body:
-  fields: [TITLE, SUMMARY_TEXT]
+  fields: [CS_CTGR_L1, TITLE, CONTENT]
   labels:
+    CS_CTGR_L1: 문의유형
     TITLE: 제목
-    SUMMARY_TEXT: 안내요약
-llm:
-- out: [SUMMARY_TEXT]
-  in: [TITLE, CS_CATEGORY, CONTENT]
-  concurrency: 4
-  on_error: null
-  parser:
-    type: json
-  endpoint:
-    url: https://genos.genon.ai/api/gateway/rep/serving/752/v1/chat/completions
-    api_key: d1a9e0acab6243019008a96cd8af868e
-    model: model
-  params:
-    max_tokens: 1000
-    temperature: 0.0
-    timeout: 120
-  prompt:
-    system: |
-      너는 보험 고객센터 안내문 요약 전문가다. 주어진 안내 항목을 검색용 임베딩에 넣을 요약본문으로 압축한다.
-
-      규칙:
-      - 반드시 하나의 JSON 객체만 반환한다. 설명 문구·마크다운 코드펜스 없이 순수 JSON 만 출력한다.
-      - 키는 `SUMMARY_TEXT` 하나다. 값은 요약본문 문자열이다.
-      - 원문에 없는 정보를 지어내지 않는다(환각 금지). 금액·기간·비율은 원문 숫자를 그대로 쓴다.
-      - 요약본문에는 이용자가 검색할 만한 표현을 남긴다: 무엇을 하는 절차인지, 필요한 서류·조건,
-        처리 기간, 예외사항, 이용 가능한 채널. 상담원 내부 지침·이관 조건은 제외한다.
-      - 문장형 한국어로 3~6문장, 800자 이내로 쓴다. 불릿·머리기호를 쓰지 않는다.
-      - 안내본문이 비어 있거나 요약할 내용이 없으면 값을 null 로 둔다.
-
-      출력 예시 형식(값은 예시):
-      {"SUMMARY_TEXT": "보험금 청구는 청구서와 진단서를 준비해 …"}
-    user: |
-      아래 고객센터 안내 항목을 검색용 요약본문으로 압축하라.
-
-      - SUMMARY_TEXT (요약본문) — 필수
-
-      반드시 `SUMMARY_TEXT` 키 하나를 가진 JSON 객체로만 반환하라.
-
-      <cs_item>
-      {{raw_text}}
-      </cs_item>
+    CONTENT: 안내내용
+  split: true
+  repeat: [CS_CTGR_L1, TITLE]

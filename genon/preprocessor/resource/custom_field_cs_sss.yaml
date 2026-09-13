@@ -80,8 +80,14 @@ fields:
       SSF: [삼성화재, 화재]
       HPP: [삼성카드, 카드]
       SSS: [삼성증권, 증권]
-  CS_CATEGORY:
-    alias: [category, 문의유형, 카테고리]
+  CS_CTGR_L1:
+    alias: [category, 대분류]
+    default: null
+  CS_CTGR_L2:
+    alias: [중분류]
+    default: null
+  CS_CTGR_L3:
+    alias: [소분류]
     default: null
   TITLE:
     alias: [question, 제목, 대표질문]
@@ -95,14 +101,15 @@ fields:
     alias: [딥링크, 앱 딥링크]
     default: null
   SRC_LAST_MOD_DT:
+    alias: [updated_date]
     default: null
 require:
   fields: [TITLE]
 body:
-  fields: [CS_CATEGORY, TITLE, CONTENT]
+  fields: [CS_CTGR_L1, TITLE, CONTENT]
   labels:
-    CS_CATEGORY: 문의유형
+    CS_CTGR_L1: 문의유형
     TITLE: 제목
     CONTENT: 안내내용
   split: true
-  repeat: [CS_CATEGORY, TITLE]
+  repeat: [CS_CTGR_L1, TITLE]

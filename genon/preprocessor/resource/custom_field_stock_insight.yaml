@@ -132,13 +132,13 @@ fields:
   BIZ_ID:
     alias: [ID, 아이디]
     default: null
-  REGT_NO_ORG:
+  REGT_NO:
     alias: [등록번호, regt_no, REGT_NO]
     default: null
   NTC_OBJLINE_NO:
-    alias: [ntc_objline, ntc_objline_no, NTC_OBJLINE_NO, 게시물 라인번호]
+    alias: [NTC_OBJLINE_NO, ntc_objline, ntc_objline_no, 게시물 라인번호]
     default: null
-  JONG_CODE:
+  JONG_CODE_ORG:
     alias: [종목코드, jong_code, JONG_CODE]
   JONG_NM:
     alias: [종목명, jong_name, jong_nm, JONG_NAME]
@@ -150,8 +150,8 @@ fields:
   # `template` 은 값 파이프라인의 **마지막**에 돌므로 NEWS_DATE 는 date_int_flex 를 거친
   # 정수 표기(20260827)가 들어간다. 원천 문자열 그대로 붙이려면 변환 없는 필드를 따로 둔다.
   # 참조하는 필드를 만드는 설정이 없으면 기동 시 실패한다 — 오타가 조용히 통과하지 않는다.
-  REGT_NO:
-    template: "{{REGT_NO_ORG}}_{{NEWS_DATE}}"
+  JONG_CODE:
+    template: "{{JONG_CODE_ORG}}_{{NEWS_DATE}}"
   DETAIL_DESC:
     alias: [상세내용, detail_desc, DETAIL_DESC, 세부내용]
     default: null
